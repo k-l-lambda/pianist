@@ -4,39 +4,70 @@ TODO:
 
 2017.8.5	K.L.	<k.l.lambda@gmail.com>
 
+	*	Hand rig structure:
+			struct Rig
+			{
+				Vector3[]				Positions;
+				float[]					Orientations;
+				pair<float, float>[]	RotationRanges;
+			}
+
+		Position indices:
+			thumb_z, thumb2, thumb3, thumb_tip,
+			palm_index, index_y, index2, index3, index_tip,
+			palm_middle, middle_y, middle2, middle3, middle_tip,
+			palm_ring, ring_y, ring2, ring3, ring_tip,
+			palm_pinky, pinky_y, pinky2, pinky3, pinky_tip,
+
+		Orientation indices:
+			wrist_y, wrist_x,
+			thumb_z, thumb_y, thumb1, thumb2, thumb3,
+			palm_index, index_y, index1, index2, index3,
+			palm_middle, middle_y, middle1, middle2, middle3,
+			palm_ring, ring_y, ring1, ring2, ring3,
+			palm_pinky, pinky_y, pinky1, pinky2, pinky3,
+
+		Range indices:
+			wrist_y, wrist_x,
+			thumb_z, thumb_y, thumb1, thumb2, thumb3,
+			index_y, index1, index2, index3,
+			middle_y, middle1, middle2, middle3,
+			ring_y, ring1, ring2, ring3,
+			pinky_y, pinky1, pinky2, pinky3,
+
 	*	Hand hierarchical skeleton: (front: Z+, up: Y+, right: X+)
-			wrist_y
-				wrist_x
-					thumb_z (pos)
-						thumb_y
-							thumb1
-								thumb2 (pos)
-									thumb3 (pos)
-										thumb_tip (pos)
+			wrist_y (ry)
+				wrist_x (rx)
+					thumb_z (rz, pos)
+						thumb_y (ry)
+							thumb1 (rx)
+								thumb2 (rx, pos)
+									thumb3 (rx, pos)
+										thumb_tip (pos, shape)
 					palm_index (pos)
-						index_y (pos)
-							index1
-								index2 (pos)
-									index3 (pos)
-										index_tip (pos)
+						index_y (ry, pos)
+							index1 (rx)
+								index2 (rx, pos)
+									index3 (rx, pos)
+										index_tip (pos, shape)
 					palm_middle (pos)
-						middle_y (pos)
-							middle1
-								middle2 (pos)
-									middle3 (pos)
-										middle_tip (pos)
+						middle_y (ry, pos)
+							middle1 (rx)
+								middle2 (rx, pos)
+									middle3 (rx, pos)
+										middle_tip (pos, shape)
 					palm_ring (pos)
-						ring_y (pos)
-							ring1
-								ring2 (pos)
-									ring3 (pos)
-										ring_tip (pos)
+						ring_y (ry, pos)
+							ring1 (rx)
+								ring2 (rx, pos)
+									ring3 (rx, pos)
+										ring_tip (pos, shape)
 					palm_pinky (pos)
-						pinky_y (pos)
-							pinky1
-								pinky2 (pos)
-									pinky3 (pos)
-										pinky_tip (pos)
+						pinky_y (ry, pos)
+							pinky1 (rx)
+								pinky2 (rx, pos)
+									pinky3 (rx, pos)
+										pinky_tip (pos, shape)
 
 
 2017.8.4	K.L.	<k.l.lambda@gmail.com>
