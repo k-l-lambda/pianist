@@ -1,0 +1,54 @@
+
+TODO:
+
+
+2017.8.5	K.L.	<k.l.lambda@gmail.com>
+
+	*	Hand hierarchical skeleton: (front: Z+, up: Y+, right: X+)
+			wrist_y
+				wrist_x
+					thumb_z (pos)
+						thumb_y
+							thumb1
+								thumb2 (pos)
+									thumb3 (pos)
+										thumb_tip (pos)
+					palm_index (pos)
+						index_y (pos)
+							index1
+								index2 (pos)
+									index3 (pos)
+										index_tip (pos)
+					palm_middle (pos)
+						middle_y (pos)
+							middle1
+								middle2 (pos)
+									middle3 (pos)
+										middle_tip (pos)
+					palm_ring (pos)
+						ring_y (pos)
+							ring1
+								ring2 (pos)
+									ring3 (pos)
+										ring_tip (pos)
+					palm_pinky (pos)
+						pinky_y (pos)
+							pinky1
+								pinky2 (pos)
+									pinky3 (pos)
+										pinky_tip (pos)
+
+
+2017.8.4	K.L.	<k.l.lambda@gmail.com>
+
+	*	Project outline:
+			Finger IK system
+			Finger score generator engine
+			Score reading vision system
+			Mechanical hands playing system
+
+
+	+	ChangeLog.txt: created.
+
+
+------------------------------------------------------- Pianist ChangeLog -------------------------------------------------------
