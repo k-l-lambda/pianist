@@ -5,10 +5,10 @@ using System.Collections;
 [ExecuteInEditMode]
 public class BoneMarker : MonoBehaviour
 {
-
 	public Transform Tip;
-	public float Width = 0.6f;
+	public float Width = 0.4f;
 	public bool AutoUpdateMesh = false;
+
 
 	// Use this for initialization
 	void Start () {
