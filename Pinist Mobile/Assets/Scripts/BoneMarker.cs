@@ -14,6 +14,15 @@ public class BoneMarker : MonoBehaviour
 	void Start () {
 		if (AutoUpdateMesh)
 			updateMesh();
+
+		MeshRenderer mr = GetComponent<MeshRenderer>();
+		if (mr)
+		{
+			MaterialPropertyBlock block = new MaterialPropertyBlock();
+			block.SetColor("_Color", new Color(0.48f, 1, 0.78f));
+
+			mr.SetPropertyBlock(block);
+		}
 	}
 	
 	// Update is called once per frame
