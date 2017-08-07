@@ -46,6 +46,11 @@ namespace Pianist
 							PINKY2,
 								PINKY3,
 									PINKY_TIP,
+
+		Count,
+
+		Begin = WRIST_Y,
+		End = PINKY_TIP + 1,
 	}
 
 
@@ -76,11 +81,53 @@ namespace Pianist
 			bi.RING_Y, bi.RING1, bi.RING2, bi.RING3,
 			bi.PINKY_Y, bi.PINKY1, bi.PINKY2, bi.PINKY3,
 		};
+
+		public static readonly Vector3[] RotationAxies = new Vector3[]{
+			Vector3.up,			// WRIST_Y
+			Vector3.right,		// WRIST_X
+
+			Vector3.forward,	// THUMB_Z
+			Vector3.up,			// THUMB_Y
+			Vector3.right,		// THUMB1
+			Vector3.right,		// THUMB2
+			Vector3.right,		// THUMB3
+			Vector3.zero,		// THUMB_TIP
+
+			Vector3.up,			// PALM_INDEX
+			Vector3.up,			// INDEX_Y
+			Vector3.right,		// INDEX1
+			Vector3.right,		// INDEX2
+			Vector3.right,		// INDEX3
+			Vector3.zero,		// INDEX_TIP
+
+			Vector3.up,			// PALM_MIDDLE
+			Vector3.up,			// MIDDLE_Y
+			Vector3.right,		// MIDDLE1
+			Vector3.right,		// MIDDLE2
+			Vector3.right,		// MIDDLE3
+			Vector3.zero,		// MIDDLE_TIP
+
+			Vector3.up,			// PALM_RING
+			Vector3.up,			// RING_Y
+			Vector3.right,		// RING1
+			Vector3.right,		// RING2
+			Vector3.right,		// RING3
+			Vector3.zero,		// RING_TIP
+
+			Vector3.up,			// PALM_PINKY
+			Vector3.up,			// PINKY_Y
+			Vector3.right,		// PINKY1
+			Vector3.right,		// PINKY2
+			Vector3.right,		// PINKY3
+			Vector3.zero,		// PINKY_TIP
+		};
 	};
 
 
-	public class HandRig
+	[System.Serializable]
+	public class HandRigData
 	{
+		[System.Serializable]
 		public struct Range
 		{
 			public float low, up;
