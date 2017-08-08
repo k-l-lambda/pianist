@@ -22,6 +22,12 @@ public class HandRigEditor : Editor
 		if (GUILayout.Button("Apply Data"))
 		{
 			t.applyData();
+
+			BoneMarker[] markers = t.gameObject.GetComponentsInChildren<BoneMarker>();
+			foreach (BoneMarker marker in markers)
+			{
+				marker.updateMesh();
+			}
 		}
 	}
 }

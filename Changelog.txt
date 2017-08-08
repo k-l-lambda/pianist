@@ -1,5 +1,11 @@
 
 TODO:
+	added nodes of palm_xxx_z
+
+
+2017.8.8	K.L.	<k.l.lambda@gmail.com>
+
+	+	SkeletonDrawing.unity created.
 
 
 2017.8.7	K.L.	<k.l.lambda@gmail.com>

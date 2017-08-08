@@ -48,7 +48,12 @@ namespace Pianist
 
 			i = 0;
 			foreach (HandBoneIndex index in HandBoneIndices.Orientations)
-				Data.Orientations[i++] = Vector3.Dot(Nodes[(int)index].localRotation.eulerAngles, HandBoneIndices.RotationAxies[(int)index]);
+			{
+				float angle = Vector3.Dot(Nodes[(int)index].localRotation.eulerAngles, HandBoneIndices.RotationAxies[(int)index]);
+				if (angle > 180)
+					angle -= 360;
+				Data.Orientations[i++] = angle;
+			}
 	}
 
 		public void applyData()
