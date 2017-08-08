@@ -64,6 +64,8 @@ namespace Pianist
 			bi.PALM_PINKY, bi.PINKY_Y, bi.PINKY2, bi.PINKY3, bi.PINKY_TIP,
 		};
 
+		//public static readonly string[] PositionNames = Array.ConvertAll(HandBoneIndices.Positions, x => x.ToString());
+
 		public static readonly HandBoneIndex[] Orientations = new HandBoneIndex[] {
 			bi.WRIST_Y, bi.WRIST_X,
 			bi.THUMB_Z, bi.THUMB_Y, bi.THUMB1, bi.THUMB2, bi.THUMB3,
@@ -73,6 +75,8 @@ namespace Pianist
 			bi.PALM_PINKY, bi.PINKY_Y, bi.PINKY1, bi.PINKY2, bi.PINKY3,
 		};
 
+		//public static readonly string[] OrientationsNames = Array.ConvertAll(HandBoneIndices.Orientations, x => x.ToString());
+
 		public static readonly HandBoneIndex[] Ranges = new HandBoneIndex[] {
 			bi.WRIST_Y, bi.WRIST_X,
 			bi.THUMB_Z, bi.THUMB_Y, bi.THUMB1, bi.THUMB2, bi.THUMB3,
@@ -81,6 +85,8 @@ namespace Pianist
 			bi.RING_Y, bi.RING1, bi.RING2, bi.RING3,
 			bi.PINKY_Y, bi.PINKY1, bi.PINKY2, bi.PINKY3,
 		};
+
+		//public static readonly string[] RangesNames = Array.ConvertAll(HandBoneIndices.Ranges, x => x.ToString());
 
 		public static readonly Vector3[] RotationAxies = new Vector3[]{
 			Vector3.up,			// WRIST_Y
@@ -124,6 +130,15 @@ namespace Pianist
 	};
 
 
+	/*public class NamedArrayAttribute : UnityEngine.PropertyAttribute
+	{
+		public readonly System.Type type;
+		public readonly string[] names;
+
+		public NamedArrayAttribute(System.Type type, string[] names) { this.names = names; }
+	}*/
+
+
 	[System.Serializable]
 	public class HandRigData
 	{
@@ -133,8 +148,15 @@ namespace Pianist
 			public float low, up;
 		};
 
+		/*[NamedArrayAttribute(new string[]{"thumb_z", "thumb2", "thumb3", "thumb_tip",
+			"palm_index", "index_y", "index2", "index3", "index_tip",
+			"palm_middle", "middle_y", "middle2", "middle3", "middle_tip",
+			"palm_ring", "ring_y", "ring2", "ring3", "ring_tip",
+			"palm_pinky", "pinky_y", "pinky2", "pinky3", "pinky_tip",})]*/
 		public Vector3[] Positions = new Vector3[HandBoneIndices.Positions.Length];
+
 		public float[] Orientations = new float[HandBoneIndices.Orientations.Length];
+
 		public Range[] Ranges = new Range[HandBoneIndices.Ranges.Length];
 	};
 }
