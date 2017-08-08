@@ -22,7 +22,7 @@ TODO:
 
 2017.8.6	K.L.	<k.l.lambda@gmail.com>
 
-	+	Unity project of Pinist Mobile setup.
+	+	Unity project of Pianist Mobile setup.
 
 
 2017.8.5	K.L.	<k.l.lambda@gmail.com>
