@@ -5,6 +5,8 @@ TODO:
 
 2017.8.9	K.L.	<k.l.lambda@gmail.com>
 
+	>	HandSkeleton.cs: refined definitions.
+
 	>	Color.shader: make compatible with lower Unity version.
 
 	*	indices groups:
