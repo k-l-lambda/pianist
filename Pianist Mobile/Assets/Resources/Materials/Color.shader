@@ -1,5 +1,9 @@
 // Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
 
+// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+
+// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+
 Shader "Custom/Color"
 {
 	Properties
@@ -34,7 +38,11 @@ Shader "Custom/Color"
 			v2f vert (appdata v)
 			{
 				v2f o;
-				o.vertex = mul(UNITY_MATRIX_MVP, v.vertex);
+#if UNITY_VERSION >= 201700
+				o.vertex = UnityObjectToClipPos(v.vertex);
+#else
+				o.vertex = UnityObjectToClipPos(v.vertex);
+#endif
 				return o;
 			}
 

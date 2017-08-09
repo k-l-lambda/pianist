@@ -5,6 +5,8 @@ TODO:
 
 2017.8.9	K.L.	<k.l.lambda@gmail.com>
 
+	>	Color.shader: make compatible with lower Unity version.
+
 	*	indices groups:
 			Position indices:
 				thumb0_z, thumb1_fz, thumb2_fz, thumb_tip,
