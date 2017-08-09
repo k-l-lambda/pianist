@@ -5,29 +5,6 @@ using UnityEditor;
 using Pianist;
 
 
-/*[CustomPropertyDrawer(typeof(NamedArrayAttribute))]
-public class NamedArrayDrawer : PropertyDrawer
-{
-	public override void OnGUI(Rect rect, SerializedProperty property, GUIContent label)
-	{
-		try
-		{
-			int pos = int.Parse(property.propertyPath.Split('[', ']')[1]);
-			NamedArrayAttribute na = attribute as NamedArrayAttribute;
-
-			if(na.type == typeof(float))
-				EditorGUI.FloatField(rect, property, new GUIContent(na.names[pos]));
-			else if(na.type == typeof(float))
-				EditorGUI.Vector3Field(rect, property, new GUIContent(na.names[pos]));
-		}
-		catch
-		{
-			EditorGUI.ObjectField(rect, property, label);
-		}
-	}
-}*/
-
-
 [CustomPropertyDrawer(typeof(HandRigData))]
 public class HandRigDrawer : PropertyDrawer {
 	bool showPositions = true;
@@ -63,39 +40,39 @@ public class HandRigDrawer : PropertyDrawer {
 			EditorGUI.indentLevel--;
 		}
 
-		showOrientations = EditorGUI.Foldout(new Rect(position.x, y, position.width, LINE_HEIGHT), showOrientations, "Orientations:");
+		showOrientations = EditorGUI.Foldout(new Rect(position.x, y, position.width, LINE_HEIGHT), showOrientations, "FixedAngles:");
 		y += LINE_HEIGHT;
 
 		if (showOrientations)
 		{
 			EditorGUI.indentLevel++;
 
-			for (int i = 0; i < HandBoneIndices.Orientations.Length; ++i)
+			for (int i = 0; i < HandBoneIndices.FixedAngles.Length; ++i)
 			{
-				HandBoneIndex index = HandBoneIndices.Orientations[i];
+				HandBoneIndex index = HandBoneIndices.FixedAngles[i];
 
-				data.Orientations[i] = EditorGUI.FloatField(new Rect(position.x, y, position.width, LINE_HEIGHT), index.ToString().ToLower(), data.Orientations[i]);
+				data.FixedAngles[i] = EditorGUI.FloatField(new Rect(position.x, y, position.width, LINE_HEIGHT), index.ToString().ToLower(), data.FixedAngles[i]);
 				y += LINE_HEIGHT;
 			}
 
 			EditorGUI.indentLevel--;
 		}
 
-		showRanges = EditorGUI.Foldout(new Rect(position.x, y, position.width, LINE_HEIGHT), showRanges, "Ranges:");
+		showRanges = EditorGUI.Foldout(new Rect(position.x, y, position.width, LINE_HEIGHT), showRanges, "RangedAngles:");
 		y += LINE_HEIGHT;
 
 		if (showRanges)
 		{
 			EditorGUI.indentLevel++;
 
-			for (int i = 0; i < HandBoneIndices.Ranges.Length; ++i)
+			for (int i = 0; i < HandBoneIndices.RangedAngles.Length; ++i)
 			{
-				HandBoneIndex index = HandBoneIndices.Ranges[i];
+				HandBoneIndex index = HandBoneIndices.RangedAngles[i];
 
 				EditorGUI.LabelField(new Rect(position.x, y, position.width * 0.3f, LINE_HEIGHT), index.ToString().ToLower());
 
-				data.Ranges[i].low = EditorGUI.FloatField(new Rect(position.x + position.width * 0.3f, y, position.width * 0.35f, LINE_HEIGHT), "", data.Ranges[i].low);
-				data.Ranges[i].high = EditorGUI.FloatField(new Rect(position.x + position.width * 0.65f, y, position.width * 0.35f, LINE_HEIGHT), "", data.Ranges[i].high);
+				data.RangedAngles[i].low = EditorGUI.FloatField(new Rect(position.x + position.width * 0.3f, y, position.width * 0.35f, LINE_HEIGHT), "", data.RangedAngles[i].low);
+				data.RangedAngles[i].high = EditorGUI.FloatField(new Rect(position.x + position.width * 0.65f, y, position.width * 0.35f, LINE_HEIGHT), "", data.RangedAngles[i].high);
 				y += LINE_HEIGHT;
 			}
 
@@ -109,6 +86,6 @@ public class HandRigDrawer : PropertyDrawer {
 
 	public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
 	{
-		return (3 + (showPositions ? HandBoneIndices.Positions.Length : 0) + (showOrientations ? HandBoneIndices.Orientations.Length : 0) + (showRanges ? HandBoneIndices.Ranges.Length : 0)) * LINE_HEIGHT;
+		return (3 + (showPositions ? HandBoneIndices.Positions.Length : 0) + (showOrientations ? HandBoneIndices.FixedAngles.Length : 0) + (showRanges ? HandBoneIndices.RangedAngles.Length : 0)) * LINE_HEIGHT;
 	}
 }

@@ -47,12 +47,12 @@ namespace Pianist
 				Data.Positions[i++] = Nodes[(int)index].localPosition;
 
 			i = 0;
-			foreach (HandBoneIndex index in HandBoneIndices.Orientations)
+			foreach (HandBoneIndex index in HandBoneIndices.FixedAngles)
 			{
 				float angle = Vector3.Dot(Nodes[(int)index].localRotation.eulerAngles, HandBoneIndices.RotationAxies[(int)index]);
 				if (angle > 180)
 					angle -= 360;
-				Data.Orientations[i++] = angle;
+				Data.FixedAngles[i++] = angle;
 			}
 	}
 
@@ -63,8 +63,8 @@ namespace Pianist
 				Nodes[(int)index].localPosition = Data.Positions[i++];
 
 			i = 0;
-			foreach (HandBoneIndex index in HandBoneIndices.Orientations)
-				Nodes[(int)index].localRotation = Quaternion.AngleAxis(Data.Orientations[i++], HandBoneIndices.RotationAxies[(int)index]);
+			foreach (HandBoneIndex index in HandBoneIndices.FixedAngles)
+				Nodes[(int)index].localRotation = Quaternion.AngleAxis(Data.FixedAngles[i++], HandBoneIndices.RotationAxies[(int)index]);
 		}
 
 		public void Start()

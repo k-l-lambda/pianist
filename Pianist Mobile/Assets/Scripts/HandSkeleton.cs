@@ -11,41 +11,69 @@ namespace Pianist
 	{
 		WRIST_Y,
 			WRIST_X,
-
-				THUMB_Z,
-					THUMB_Y,
-						THUMB1,
-							THUMB2,
-								THUMB3,
-									THUMB_TIP,
-
-				PALM_INDEX,
-					INDEX_Y,
-						INDEX1,
-							INDEX2,
-								INDEX3,
-									INDEX_TIP,
-
-				PALM_MIDDLE,
-					MIDDLE_Y,
-						MIDDLE1,
-							MIDDLE2,
-								MIDDLE3,
-									MIDDLE_TIP,
-
-				PALM_RING,
-					RING_Y,
-						RING1,
-							RING2,
-								RING3,
-									RING_TIP,
-
-				PALM_PINKY,
-					PINKY_Y,
-						PINKY1,
-							PINKY2,
-								PINKY3,
-									PINKY_TIP,
+				WRIST_Z,
+					THUMB0_Z,
+						THUMB0_Y,
+							THUMB0_X,
+								THUMB1_FZ,
+									THUMB1_FY,
+										THUMB1_X,
+											THUMB2_FZ,
+												THUMB2_FY,
+													THUMB2_X,
+														THUMB_TIP,
+					INDEX0_FZ,
+						INDEX0_FY,
+							INDEX0_FX,
+								INDEX1_FZ,
+									INDEX1_FY,
+										INDEX1_X,
+											INDEX2_FZ,
+												INDEX2_FY,
+													INDEX2_X,
+														INDEX3_FZ,
+															INDEX3_FY,
+																INDEX3_X,
+																	INDEX_TIP,
+					MIDDLE0_FZ,
+						MIDDLE0_FY,
+							MIDDLE0_FX,
+								MIDDLE1_FZ,
+									MIDDLE1_FY,
+										MIDDLE1_X,
+											MIDDLE2_FZ,
+												MIDDLE2_FY,
+													MIDDLE2_X,
+														MIDDLE3_FZ,
+															MIDDLE3_FY,
+																MIDDLE3_X,
+																	MIDDLE_TIP,
+					RING0_FZ,
+						RING0_FY,
+							RING0_FX,
+								RING1_FZ,
+									RING1_FY,
+										RING1_X,
+											RING2_FZ,
+												RING2_FY,
+													RING2_X,
+														RING3_FZ,
+															RING3_FY,
+																RING3_X,
+																	RING_TIP,
+					PINKY0_FZ,
+						PINKY0_FY,
+							PINKY0_FX,
+								PINKY1_FZ,
+									PINKY1_FY,
+										PINKY1_X,
+											PINKY2_FZ,
+												PINKY2_FY,
+													PINKY2_X,
+														PINKY3_FZ,
+															PINKY3_FY,
+																PINKY3_X,
+																	PINKY_TIP,
 
 		Count,
 
@@ -57,86 +85,103 @@ namespace Pianist
 	public class HandBoneIndices
 	{
 		public static readonly HandBoneIndex[] Positions = new HandBoneIndex[] {
-			bi.THUMB_Z, bi.THUMB2, bi.THUMB3, bi.THUMB_TIP,
-			bi.PALM_INDEX, bi.INDEX_Y, bi.INDEX2, bi.INDEX3, bi.INDEX_TIP,
-			bi.PALM_MIDDLE, bi.MIDDLE_Y, bi.MIDDLE2, bi.MIDDLE3, bi.MIDDLE_TIP,
-			bi.PALM_RING, bi.RING_Y, bi.RING2, bi.RING3, bi.RING_TIP,
-			bi.PALM_PINKY, bi.PINKY_Y, bi.PINKY2, bi.PINKY3, bi.PINKY_TIP,
+			bi.THUMB0_Z, bi.THUMB1_FZ, bi.THUMB2_FZ, bi.THUMB_TIP,
+			bi.INDEX0_FZ, bi.INDEX1_FZ, bi.INDEX2_FZ, bi.INDEX3_FZ, bi.INDEX_TIP,
+			bi.MIDDLE0_FZ, bi.MIDDLE1_FZ, bi.MIDDLE2_FZ, bi.MIDDLE3_FZ, bi.MIDDLE_TIP,
+			bi.RING0_FZ, bi.RING1_FZ, bi.RING2_FZ, bi.RING3_FZ, bi.RING_TIP,
+			bi.PINKY0_FZ, bi.PINKY1_FZ, bi.PINKY2_FZ, bi.PINKY3_FZ, bi.PINKY_TIP,
 		};
 
-		//public static readonly string[] PositionNames = Array.ConvertAll(HandBoneIndices.Positions, x => x.ToString());
-
-		public static readonly HandBoneIndex[] Orientations = new HandBoneIndex[] {
-			bi.WRIST_Y, bi.WRIST_X,
-			bi.THUMB_Z, bi.THUMB_Y, bi.THUMB1, bi.THUMB2, bi.THUMB3,
-			bi.PALM_INDEX, bi.INDEX_Y, bi.INDEX1, bi.INDEX2, bi.INDEX3,
-			bi.PALM_MIDDLE, bi.MIDDLE_Y, bi.MIDDLE1, bi.MIDDLE2, bi.MIDDLE3,
-			bi.PALM_RING, bi.RING_Y, bi.RING1, bi.RING2, bi.RING3,
-			bi.PALM_PINKY, bi.PINKY_Y, bi.PINKY1, bi.PINKY2, bi.PINKY3,
+		public static readonly HandBoneIndex[] FixedAngles = new HandBoneIndex[] {
+			bi.THUMB1_FZ, bi.THUMB1_FY, bi.THUMB2_FZ, bi.THUMB2_FY,
+			bi.INDEX0_FZ, bi.INDEX0_FY, bi.INDEX1_FZ, bi.INDEX1_FZ, bi.INDEX1_FY, bi.INDEX2_FZ, bi.INDEX2_FY, bi.INDEX3_FZ, bi.INDEX3_FY,
+			bi.MIDDLE0_FZ, bi.MIDDLE0_FY, bi.MIDDLE1_FZ, bi.MIDDLE1_FZ, bi.MIDDLE1_FY, bi.MIDDLE2_FZ, bi.MIDDLE2_FY, bi.MIDDLE3_FZ, bi.MIDDLE3_FY,
+			bi.RING0_FZ, bi.RING0_FY, bi.RING1_FZ, bi.RING1_FZ, bi.RING1_FY, bi.RING2_FZ, bi.RING2_FY, bi.RING3_FZ, bi.RING3_FY,
+			bi.PINKY0_FZ, bi.PINKY0_FY, bi.PINKY1_FZ, bi.PINKY1_FZ, bi.PINKY1_FY, bi.PINKY2_FZ, bi.PINKY2_FY, bi.PINKY3_FZ, bi.PINKY3_FY,
 		};
 
-		//public static readonly string[] OrientationsNames = Array.ConvertAll(HandBoneIndices.Orientations, x => x.ToString());
-
-		public static readonly HandBoneIndex[] Ranges = new HandBoneIndex[] {
-			bi.WRIST_Y, bi.WRIST_X,
-			bi.THUMB_Z, bi.THUMB_Y, bi.THUMB1, bi.THUMB2, bi.THUMB3,
-			bi.INDEX_Y, bi.INDEX1, bi.INDEX2, bi.INDEX3,
-			bi.MIDDLE_Y, bi.MIDDLE1, bi.MIDDLE2, bi.MIDDLE3,
-			bi.RING_Y, bi.RING1, bi.RING2, bi.RING3,
-			bi.PINKY_Y, bi.PINKY1, bi.PINKY2, bi.PINKY3,
+		public static readonly HandBoneIndex[] RangedAngles = new HandBoneIndex[] {
+			bi.WRIST_Y, bi.WRIST_X, bi.WRIST_Z,
+			bi.THUMB0_Z, bi.THUMB0_Y, bi.THUMB0_X, bi.THUMB1_X, bi.THUMB2_X,
+			bi.INDEX1_X, bi.INDEX2_X, bi.INDEX3_X,
+			bi.MIDDLE1_X, bi.MIDDLE2_X, bi.MIDDLE3_X,
+			bi.RING1_X, bi.RING2_X, bi.RING3_X,
+			bi.PINKY1_X, bi.PINKY2_X, bi.PINKY3_X,
 		};
-
-		//public static readonly string[] RangesNames = Array.ConvertAll(HandBoneIndices.Ranges, x => x.ToString());
 
 		public static readonly Vector3[] RotationAxies = new Vector3[]{
-			Vector3.up,			// WRIST_Y
-			Vector3.right,		// WRIST_X
+			Vector3.up,				// WRIST_Y,
+			Vector3.right,			// WRIST_X,
+			Vector3.forward,		// WRIST_Z,
 
-			Vector3.forward,	// THUMB_Z
-			Vector3.up,			// THUMB_Y
-			Vector3.right,		// THUMB1
-			Vector3.right,		// THUMB2
-			Vector3.right,		// THUMB3
-			Vector3.zero,		// THUMB_TIP
+			Vector3.forward,		// THUMB0_Z,
+			Vector3.up,				// THUMB0_Y,
+			Vector3.right,			// THUMB0_X,
+			Vector3.forward,		// THUMB1_FZ,
+			Vector3.up,				// THUMB1_FY,
+			Vector3.right,			// THUMB1_X,
+			Vector3.forward,		// THUMB2_FZ,
+			Vector3.up,				// THUMB2_FY,
+			Vector3.right,			// THUMB2_X,
+			Vector3.forward,		// THUMB_TIP,
 
-			Vector3.up,			// PALM_INDEX
-			Vector3.up,			// INDEX_Y
-			Vector3.right,		// INDEX1
-			Vector3.right,		// INDEX2
-			Vector3.right,		// INDEX3
-			Vector3.zero,		// INDEX_TIP
+			Vector3.forward,		// INDEX0_FZ,
+			Vector3.up,				// INDEX0_FY,
+			Vector3.right,			// INDEX0_FX,
+			Vector3.forward,		// INDEX1_FZ,
+			Vector3.up,				// INDEX1_FY,
+			Vector3.right,			// INDEX1_X,
+			Vector3.forward,		// INDEX2_FZ,
+			Vector3.up,				// INDEX2_FY,
+			Vector3.right,			// INDEX2_X,
+			Vector3.forward,		// INDEX3_FZ,
+			Vector3.up,				// INDEX3_FY,
+			Vector3.right,			// INDEX3_X,
+			Vector3.forward,		// INDEX_TIP,
 
-			Vector3.up,			// PALM_MIDDLE
-			Vector3.up,			// MIDDLE_Y
-			Vector3.right,		// MIDDLE1
-			Vector3.right,		// MIDDLE2
-			Vector3.right,		// MIDDLE3
-			Vector3.zero,		// MIDDLE_TIP
+			Vector3.forward,		// MIDDLE0_FZ,
+			Vector3.up,				// MIDDLE0_FY,
+			Vector3.right,			// MIDDLE0_FX,
+			Vector3.forward,		// MIDDLE1_FZ,
+			Vector3.up,				// MIDDLE1_FY,
+			Vector3.right,			// MIDDLE1_X,
+			Vector3.forward,		// MIDDLE2_FZ,
+			Vector3.up,				// MIDDLE2_FY,
+			Vector3.right,			// MIDDLE2_X,
+			Vector3.forward,		// MIDDLE3_FZ,
+			Vector3.up,				// MIDDLE3_FY,
+			Vector3.right,			// MIDDLE3_X,
+			Vector3.forward,		// MIDDLE_TIP,
 
-			Vector3.up,			// PALM_RING
-			Vector3.up,			// RING_Y
-			Vector3.right,		// RING1
-			Vector3.right,		// RING2
-			Vector3.right,		// RING3
-			Vector3.zero,		// RING_TIP
+			Vector3.forward,		// RING0_FZ,
+			Vector3.up,				// RING0_FY,
+			Vector3.right,			// RING0_FX,
+			Vector3.forward,		// RING1_FZ,
+			Vector3.up,				// RING1_FY,
+			Vector3.right,			// RING1_X,
+			Vector3.forward,		// RING2_FZ,
+			Vector3.up,				// RING2_FY,
+			Vector3.right,			// RING2_X,
+			Vector3.forward,		// RING3_FZ,
+			Vector3.up,				// RING3_FY,
+			Vector3.right,			// RING3_X,
+			Vector3.forward,		// RING_TIP,
 
-			Vector3.up,			// PALM_PINKY
-			Vector3.up,			// PINKY_Y
-			Vector3.right,		// PINKY1
-			Vector3.right,		// PINKY2
-			Vector3.right,		// PINKY3
-			Vector3.zero,		// PINKY_TIP
+			Vector3.forward,		// PINKY0_FZ,
+			Vector3.up,				// PINKY0_FY,
+			Vector3.right,			// PINKY0_FX,
+			Vector3.forward,		// PINKY1_FZ,
+			Vector3.up,				// PINKY1_FY,
+			Vector3.right,			// PINKY1_X,
+			Vector3.forward,		// PINKY2_FZ,
+			Vector3.up,				// PINKY2_FY,
+			Vector3.right,			// PINKY2_X,
+			Vector3.forward,		// PINKY3_FZ,
+			Vector3.up,				// PINKY3_FY,
+			Vector3.right,			// PINKY3_X,
+			Vector3.forward,		// PINKY_TIP,
 		};
 	};
-
-
-	/*public class NamedArrayAttribute : UnityEngine.PropertyAttribute
-	{
-		public readonly System.Type type;
-		public readonly string[] names;
-
-		public NamedArrayAttribute(System.Type type, string[] names) { this.names = names; }
-	}*/
 
 
 	[System.Serializable]
@@ -148,15 +193,10 @@ namespace Pianist
 			public float low, high;
 		};
 
-		/*[NamedArrayAttribute(new string[]{"thumb_z", "thumb2", "thumb3", "thumb_tip",
-			"palm_index", "index_y", "index2", "index3", "index_tip",
-			"palm_middle", "middle_y", "middle2", "middle3", "middle_tip",
-			"palm_ring", "ring_y", "ring2", "ring3", "ring_tip",
-			"palm_pinky", "pinky_y", "pinky2", "pinky3", "pinky_tip",})]*/
 		public Vector3[] Positions = new Vector3[HandBoneIndices.Positions.Length];
 
-		public float[] Orientations = new float[HandBoneIndices.Orientations.Length];
+		public float[] FixedAngles = new float[HandBoneIndices.FixedAngles.Length];
 
-		public Range[] Ranges = new Range[HandBoneIndices.Ranges.Length];
+		public Range[] RangedAngles = new Range[HandBoneIndices.RangedAngles.Length];
 	};
 }
