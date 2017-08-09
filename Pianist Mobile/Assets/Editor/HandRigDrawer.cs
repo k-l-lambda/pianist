@@ -29,7 +29,7 @@ public class NamedArrayDrawer : PropertyDrawer
 
 
 [CustomPropertyDrawer(typeof(HandRigData))]
-public class IngredientDrawer : PropertyDrawer {
+public class HandRigDrawer : PropertyDrawer {
 	bool showPositions = true;
 	bool showOrientations = true;
 	bool showRanges = true;
@@ -95,7 +95,7 @@ public class IngredientDrawer : PropertyDrawer {
 				EditorGUI.LabelField(new Rect(position.x, y, position.width * 0.3f, LINE_HEIGHT), index.ToString().ToLower());
 
 				data.Ranges[i].low = EditorGUI.FloatField(new Rect(position.x + position.width * 0.3f, y, position.width * 0.35f, LINE_HEIGHT), "", data.Ranges[i].low);
-				data.Ranges[i].up = EditorGUI.FloatField(new Rect(position.x + position.width * 0.65f, y, position.width * 0.35f, LINE_HEIGHT), "", data.Ranges[i].up);
+				data.Ranges[i].high = EditorGUI.FloatField(new Rect(position.x + position.width * 0.65f, y, position.width * 0.35f, LINE_HEIGHT), "", data.Ranges[i].high);
 				y += LINE_HEIGHT;
 			}
 

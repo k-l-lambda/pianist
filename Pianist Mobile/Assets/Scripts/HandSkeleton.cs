@@ -145,7 +145,7 @@ namespace Pianist
 		[System.Serializable]
 		public struct Range
 		{
-			public float low, up;
+			public float low, high;
 		};
 
 		/*[NamedArrayAttribute(new string[]{"thumb_z", "thumb2", "thumb3", "thumb_tip",

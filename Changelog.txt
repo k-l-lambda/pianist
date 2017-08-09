@@ -3,9 +3,102 @@ TODO:
 	added nodes of palm_xxx_z
 
 
+2017.8.9	K.L.	<k.l.lambda@gmail.com>
+
+	*	indices groups:
+			Position indices:
+				thumb0_z, thumb1_fz, thumb2_fz, thumb_tip,
+				index0_fz, index1_fz, index2_fz, index3_fz, index_tip,
+				middle0_fz, middle1_fz, middle2_fz, middle3_fz, middle_tip,
+				ring0_fz, ring1_fz, ring2_fz, ring3_fz, ring_tip,
+				pinky0_fz, pinky1_fz, pinky2_fz, pinky3_fz, pinky_tip,
+
+			Fixed Rotation indices:
+				thumb1_fz, thumb1_fy, thumb2_fz, thumb2_fy,
+				index0_fz, index0_fy, index1_fz, index1_fz, index1_fy, index2_fz, index2_fy, index3_fz, index3_fy,
+				middle0_fz, middle0_fy, middle1_fz, middle1_fz, middle1_fy, middle2_fz, middle2_fy, middle3_fz, middle3_fy,
+				ring0_fz, ring0_fy, ring1_fz, ring1_fz, ring1_fy, ring2_fz, ring2_fy, ring3_fz, ring3_fy,
+				pinky0_fz, pinky0_fy, pinky1_fz, pinky1_fz, pinky1_fy, pinky2_fz, pinky2_fy, pinky3_fz, pinky3_fy,
+
+			Range Rotation indices:
+				wrist_y, wrist_x, wrist_z,
+				thumb0_z, thumb0_y, thumb0_x, thumb1_x, thumb2_x,
+				index1_x, index2_x, index3_x,
+				middle1_x, middle2_x, middle3_x,
+				ring1_x, ring2_x, ring3_x,
+				pinky1_x, pinky2_x, pinky3_x,
+
+	*	Hand hierarchical skeleton: (front: Z+, up: Y+, right: X+)
+			wrist_y
+				wrist_x
+					wrist_z
+						thumb0_z
+							thumb0_y
+								thumb0_x
+									thumb1_fz
+										thumb1_fy
+											thumb1_x
+												thumb2_fz
+													thumb2_fy
+														thumb2_x
+															thumb_tip
+						index0_fz
+							index0_fy
+								index0_fx
+									index1_fz
+										index1_fy
+											index1_x
+												index2_fz
+													index2_fy
+														index2_x
+															index3_fz
+																index3_fy
+																	index3_x
+																		index_tip
+						middle0_fz
+							middle0_fy
+								middle0_fx
+									middle1_fz
+										middle1_fy
+											middle1_x
+												middle2_fz
+													middle2_fy
+														middle2_x
+															middle3_fz
+																middle3_fy
+																	middle3_x
+																		middle_tip
+						ring0_fz
+							ring0_fy
+								ring0_fx
+									ring1_fz
+										ring1_fy
+											ring1_x
+												ring2_fz
+													ring2_fy
+														ring2_x
+															ring3_fz
+																ring3_fy
+																	ring3_x
+																		ring_tip
+						pinky0_fz
+							pinky0_fy
+								pinky0_fx
+									pinky1_fz
+										pinky1_fy
+											pinky1_x
+												pinky2_fz
+													pinky2_fy
+														pinky2_x
+															pinky3_fz
+																pinky3_fy
+																	pinky3_x
+																		pinky_tip
+
+
 2017.8.8	K.L.	<k.l.lambda@gmail.com>
 
-	+	IngredientDrawer.cs: created.
+	+	HandRigDrawer.cs: created.
 
 	+	SkeletonDrawing.unity created.
 

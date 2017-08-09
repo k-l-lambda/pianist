@@ -9,7 +9,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{D870B184-24E2-00DA-25B8-680A907801AA}</ProjectGuid>
+    <ProjectGuid>{2E147CAA-517F-3D8C-0335-BDFE6C7C5DFF}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Assembly-CSharp</AssemblyName>
@@ -55,7 +55,7 @@
      <Compile Include="Assets\Scripts\HandController.cs" />
      <Compile Include="Assets\Scripts\HandRig.cs" />
      <Compile Include="Assets\Scripts\HandSkeleton.cs" />
-     <None Include="Assets\Resource\Materials\Color.shader" />
+     <None Include="Assets\Resources\Materials\Color.shader" />
  <Reference Include="UnityEngine.UI">
  <HintPath>E:/Program Files/Unity/Editor/Data/UnityExtensions/Unity/GUISystem/UnityEngine.UI.dll</HintPath>
  </Reference>

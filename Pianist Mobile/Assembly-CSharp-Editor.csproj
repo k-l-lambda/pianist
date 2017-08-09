@@ -9,7 +9,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{5F4AF32F-46F4-68F9-6817-E06ECBD2D249}</ProjectGuid>
+    <ProjectGuid>{C364F38F-70B2-23EC-AC68-AA12E293658B}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Assembly-CSharp-Editor</AssemblyName>
@@ -51,8 +51,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+     <Compile Include="Assets\Editor\HandRigDrawer.cs" />
      <Compile Include="Assets\Editor\HandRigEditor.cs" />
-     <None Include="Assets\Resource\Materials\Color.shader" />
+     <None Include="Assets\Resources\Materials\Color.shader" />
  <Reference Include="UnityEditor.Advertisements">
  <HintPath>E:/Program Files/Unity/Editor/Data/UnityExtensions/Unity/Advertisements/Editor/UnityEditor.Advertisements.dll</HintPath>
  </Reference>
@@ -128,7 +129,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="Assembly-CSharp.csproj">
-      <Project>{D870B184-24E2-00DA-25B8-680A907801AA}</Project>      <Name>Assembly-CSharp</Name>    </ProjectReference>
+      <Project>{2E147CAA-517F-3D8C-0335-BDFE6C7C5DFF}</Project>      <Name>Assembly-CSharp</Name>    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
