@@ -40,6 +40,14 @@ namespace Pianist
 			Debug.Log("HandRig: nodes load.");
 		}
 
+		public Transform[] getNodes()
+		{
+			if (Nodes == null)
+				searchNodes();
+
+			return Nodes;
+		}
+
 		public void captureData()
 		{
 			int i = 0;
@@ -69,7 +77,8 @@ namespace Pianist
 
 		public void Start()
 		{
-			searchNodes();
+			if (Nodes == null)
+				searchNodes();
 		}
 	}
 }

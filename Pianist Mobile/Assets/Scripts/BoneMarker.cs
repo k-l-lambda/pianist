@@ -3,6 +3,7 @@ using System.Collections;
 
 
 [ExecuteInEditMode]
+[RequireComponent(typeof(MeshFilter))]
 public class BoneMarker : MonoBehaviour
 {
 	public Transform Tip;
@@ -33,6 +34,11 @@ public class BoneMarker : MonoBehaviour
 	public void updateMesh() {
 		const float sqrt3_3 = 0.57735f;
 		float half_wid = Width / 2f;
+		if (Tip == null)
+		{
+			Debug.LogError("Marker for " + gameObject.name + " Tip is not set.");
+			return;
+		}
 		Vector3 tip_pos = Tip.localPosition;
 
 		Vector3[] vertices = new Vector3[] {
