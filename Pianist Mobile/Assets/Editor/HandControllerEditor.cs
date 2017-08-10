@@ -52,7 +52,7 @@ public class HandControllerEditor : Editor
 	private Transform createBoneNode(Transform parent, HandBoneIndex name)
 	{
 		string sname = ((HandBoneIndex)(int)name).ToString().ToLower();
-		Transform trans = parent.FindChild(sname);
+		Transform trans = parent.Find(sname);
 		if (trans == null)
 		{
 			GameObject obj;

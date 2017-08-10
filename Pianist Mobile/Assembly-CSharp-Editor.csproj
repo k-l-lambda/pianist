@@ -51,6 +51,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+     <Compile Include="Assets\Editor\HandControllerEditor.cs" />
      <Compile Include="Assets\Editor\HandRigDrawer.cs" />
      <Compile Include="Assets\Editor\HandRigEditor.cs" />
      <None Include="Assets\Resources\Materials\Color.shader" />
