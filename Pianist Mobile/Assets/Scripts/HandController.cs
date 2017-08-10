@@ -36,23 +36,30 @@ namespace Pianist
 		};
 
 
-		HandRig Rig;
-		private Transform[] Nodes;
+		public HandRig Rig;
+		public Transform[] Nodes;
 
-		Dictionary<HandBoneIndex, Gear> Gears = new Dictionary<HandBoneIndex,Gear>();
+		public Dictionary<HandBoneIndex, Gear> Gears = new Dictionary<HandBoneIndex,Gear>();
 
 
-		void Start () {
+		void Start()
+		{
 			Rig = GetComponent<HandRig>();
 			Nodes = Rig.getNodes();
 
+			createGears();
+		}
+
+		public void createGears()
+		{
 			foreach (HandBoneIndex bone in HandBoneIndices.RangedAngles)
 			{
 				Gears[bone] = new Gear(Nodes[(int)bone], bone);
 			}
 		}
-	
-		void Update () {
+
+		void Update()
+		{
 		}
 	}
 }

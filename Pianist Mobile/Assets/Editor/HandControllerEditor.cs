@@ -12,6 +12,17 @@ public class HandControllerEditor : Editor
 	{
 		HandController t = target as HandController;
 
+		if (t.Gears.Count == 0)
+			t.createGears();
+
+		EditorGUILayout.LabelField("Gears:");
+		EditorGUI.indentLevel++;
+		foreach (var entry in t.Gears)
+			entry.Value.angle = EditorGUILayout.FloatField(entry.Key.ToString().ToLower(), entry.Value.angle);
+		EditorGUI.indentLevel--;
+
+		EditorGUILayout.Space();
+
 		if (GUILayout.Button("Generate Skeleton"))
 		{
 			Transform parent = t.transform;
