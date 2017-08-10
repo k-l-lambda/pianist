@@ -76,14 +76,31 @@ namespace Pianist
 																	PINKY_TIP,
 
 		Count,
-
-		Begin = WRIST_Y,
-		End = PINKY_TIP + 1,
 	}
 
 
 	public class HandBoneIndices
 	{
+		public static readonly HandBoneIndex Begin = bi.WRIST_Y;
+		public static readonly HandBoneIndex End = bi.PINKY_TIP + 1;
+
+		public static readonly HandBoneIndex WristStart = bi.WRIST_Y;
+		public static readonly HandBoneIndex WristEnd = bi.WRIST_Z + 1;
+		public static readonly HandBoneIndex ThumbStart = bi.THUMB0_Z;
+		public static readonly HandBoneIndex ThumbEnd = bi.THUMB_TIP + 1;
+		public static readonly HandBoneIndex IndexStart = bi.INDEX0_FZ;
+		public static readonly HandBoneIndex IndexEnd = bi.INDEX_TIP + 1;
+		public static readonly HandBoneIndex MiddleStart = bi.MIDDLE0_FZ;
+		public static readonly HandBoneIndex MiddleEnd = bi.MIDDLE_TIP + 1;
+		public static readonly HandBoneIndex RingStart = bi.RING0_FZ;
+		public static readonly HandBoneIndex RingEnd = bi.RING_TIP + 1;
+		public static readonly HandBoneIndex PinkyStart = bi.PINKY0_FZ;
+		public static readonly HandBoneIndex PinkyEnd = bi.PINKY_TIP + 1;
+
+		public static readonly HandBoneIndex[] Tips = new HandBoneIndex[] {
+			bi.THUMB_TIP, bi.INDEX_TIP, bi.MIDDLE_TIP, bi.RING_TIP, bi.PINKY_TIP,
+		};
+
 		public static readonly HandBoneIndex[] Positions = new HandBoneIndex[] {
 			bi.THUMB0_Z, bi.THUMB1_FZ, bi.THUMB2_FZ, bi.THUMB_TIP,
 			bi.INDEX0_FZ, bi.INDEX1_FZ, bi.INDEX2_FZ, bi.INDEX3_FZ, bi.INDEX_TIP,

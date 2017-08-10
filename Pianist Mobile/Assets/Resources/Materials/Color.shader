@@ -41,7 +41,7 @@ Shader "Custom/Color"
 #if UNITY_VERSION >= 201700
 				o.vertex = UnityObjectToClipPos(v.vertex);
 #else
-				o.vertex = UnityObjectToClipPos(v.vertex);
+				o.vertex = mul(UNITY_MATRIX_MVP, v.vertex);
 #endif
 				return o;
 			}

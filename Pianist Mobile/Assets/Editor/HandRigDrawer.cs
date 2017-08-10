@@ -7,9 +7,9 @@ using Pianist;
 
 [CustomPropertyDrawer(typeof(HandRigData))]
 public class HandRigDrawer : PropertyDrawer {
-	bool showPositions = true;
-	bool showOrientations = true;
-	bool showRanges = true;
+	bool showPositions = false;
+	bool showOrientations = false;
+	bool showRanges = false;
 
 	static readonly float LINE_HEIGHT = 18;
 

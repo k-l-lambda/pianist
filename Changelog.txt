@@ -5,6 +5,8 @@ TODO:
 
 2017.8.10	K.L.	<k.l.lambda@gmail.com>
 
+	+	HandControllerEditor.cs: created.
+
 	*	Static posture solution:
 			hand rig, tensity function -> tip point IK field per finger -> button IK field per finger -> chord composition field -> tensity minimum solution.
 

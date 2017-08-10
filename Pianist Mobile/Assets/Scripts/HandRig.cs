@@ -12,7 +12,7 @@ namespace Pianist
 		private Transform[] Nodes;
 
 
-		private void searchNodes()
+		public void searchNodes()
 		{
 			Transform[] children = gameObject.GetComponentsInChildren<Transform>();
 
@@ -29,7 +29,7 @@ namespace Pianist
 				}
 			}
 
-			for (HandBoneIndex i = HandBoneIndex.Begin; i < HandBoneIndex.End; ++i)
+			for (HandBoneIndex i = HandBoneIndices.Begin; i < HandBoneIndices.End; ++i)
 			{
 				if (!Nodes[(int)i])
 				{
