@@ -16,10 +16,19 @@ public class HandControllerEditor : Editor
 			t.createGears();
 
 		EditorGUILayout.LabelField("Gears:");
-		EditorGUI.indentLevel++;
-		foreach (var entry in t.Gears)
-			entry.Value.angle = EditorGUILayout.FloatField(entry.Key.ToString().ToLower(), entry.Value.angle);
-		EditorGUI.indentLevel--;
+		{
+			EditorGUI.indentLevel++;
+			int i = 0;
+			foreach (var entry in t.Gears)
+			{
+				entry.Value.angle = EditorGUILayout.FloatField(entry.Key.ToString().ToLower(), entry.Value.angle);
+
+				HandRigData.Range range = t.Rig.Data.RangedAngles[i++];
+				entry.Value.angle = Mathf.Max(entry.Value.angle, range.low);
+				entry.Value.angle = Mathf.Min(entry.Value.angle, range.high);
+			}
+			EditorGUI.indentLevel--;
+		}
 
 		EditorGUILayout.Space();
 
@@ -44,7 +53,7 @@ public class HandControllerEditor : Editor
 				pinky = createBoneNode(pinky, i);
 
 			HandRig rig = t.GetComponent<HandRig>();
-			if(rig)
+			if (rig)
 				rig.searchNodes();
 		}
 	}

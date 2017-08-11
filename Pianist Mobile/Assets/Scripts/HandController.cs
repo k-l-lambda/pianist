@@ -54,7 +54,8 @@ namespace Pianist
 		{
 			foreach (HandBoneIndex bone in HandBoneIndices.RangedAngles)
 			{
-				Gears[bone] = new Gear(Nodes[(int)bone], bone);
+				if (Nodes.Length > (int)bone && Nodes[(int)bone])
+					Gears[bone] = new Gear(Nodes[(int)bone], bone);
 			}
 		}
 

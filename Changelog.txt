@@ -3,6 +3,11 @@ TODO:
 	added nodes of palm_xxx_z
 
 
+2017.8.11	K.L.	<k.l.lambda@gmail.com>
+
+	>	HandControllerEditor.cs: limit gear range by rig data.
+
+
 2017.8.10	K.L.	<k.l.lambda@gmail.com>
 
 	+	HandControllerEditor.cs: display gears.
@@ -13,6 +18,7 @@ TODO:
 
 	*	Static posture solution:
 			hand rig, tensity function -> tip point IK field per finger -> button IK field per finger -> chord composition field -> tensity minimum solution.
+			IK field is 4 dimension: (x, y, z, key position in keyborad coordinate), field value is posture tensity
 
 
 2017.8.9	K.L.	<k.l.lambda@gmail.com>
