@@ -108,6 +108,7 @@
     <Compile Include="Assets\Editor\HandControllerEditor.cs" />
     <Compile Include="Assets\Editor\HandRigDrawer.cs" />
     <Compile Include="Assets\Editor\HandRigEditor.cs" />
+    <Compile Include="Assets\Editor\MeshBuilderEditor.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Resources\Materials\Color.shader" />
