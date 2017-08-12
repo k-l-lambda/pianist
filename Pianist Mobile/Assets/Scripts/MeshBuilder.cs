@@ -40,9 +40,21 @@ public class MeshBuilder : MonoBehaviour
 		}
 	}
 
+	public Mesh ResultMesh
+	{
+		get {
+			// TODO:
+			return new Mesh();
+		}
+	}
+
+	public string Name;
+	public string AssetFolder = "Assets/Resources/";
+
 
 	void Start()
 	{
+		Name = gameObject.name;
 	}
 
 	void Update()

@@ -4,6 +4,8 @@ TODO:
 
 2017.8.12	K.L.	<k.l.lambda@gmail.com>
 
+	+	MeshBuilderEditor.cs: export mesh added.
+
 	>	HandSkeleton.cs: fixed eular axis order.
 
 	+	MeshBuilderEditor.cs: created.
