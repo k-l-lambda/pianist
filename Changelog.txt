@@ -37,18 +37,18 @@ TODO:
 
 			Fixed Rotation indices:
 				thumb1_fz, thumb1_fy, thumb2_fz, thumb2_fy,
-				index0_fz, index0_fy, index1_fz, index1_fz, index1_fy, index2_fz, index2_fy, index3_fz, index3_fy,
-				middle0_fz, middle0_fy, middle1_fz, middle1_fz, middle1_fy, middle2_fz, middle2_fy, middle3_fz, middle3_fy,
-				ring0_fz, ring0_fy, ring1_fz, ring1_fz, ring1_fy, ring2_fz, ring2_fy, ring3_fz, ring3_fy,
-				pinky0_fz, pinky0_fy, pinky1_fz, pinky1_fz, pinky1_fy, pinky2_fz, pinky2_fy, pinky3_fz, pinky3_fy,
+				index0_fz, index0_fy, index1_fz, index2_fz, index2_fy, index3_fz, index3_fy,
+				middle0_fz, middle0_fy, middle1_fz, middle2_fz, middle2_fy, middle3_fz, middle3_fy,
+				ring0_fz, ring0_fy, ring1_fz, ring2_fz, ring2_fy, ring3_fz, ring3_fy,
+				pinky0_fz, pinky0_fy, pinky1_fz, pinky2_fz, pinky2_fy, pinky3_fz, pinky3_fy,
 
 			Range Rotation indices:
 				wrist_y, wrist_x, wrist_z,
 				thumb0_z, thumb0_y, thumb0_x, thumb1_x, thumb2_x,
-				index1_x, index2_x, index3_x,
-				middle1_x, middle2_x, middle3_x,
-				ring1_x, ring2_x, ring3_x,
-				pinky1_x, pinky2_x, pinky3_x,
+				index1_y, index1_x, index2_x, index3_x,
+				middle1_y, middle1_x, middle2_x, middle3_x,
+				ring1_y, ring1_x, ring2_x, ring3_x,
+				pinky1_y, pinky1_x, pinky2_x, pinky3_x,
 
 	*	Hand hierarchical skeleton: (front: Z+, up: Y+, right: X+)
 			wrist_y

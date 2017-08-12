@@ -1321,7 +1321,7 @@ Transform:
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1433256048559958}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0.0348995, w: 0.99939084}
   m_LocalPosition: {x: 1.24, y: 0, z: 1.6800001}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
@@ -1461,14 +1461,14 @@ Transform:
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1361040030679870}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: 0, y: 0.0878512, z: 0, w: 0.9961336}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
   - {fileID: 4614537256303896}
   m_Father: {fileID: 4299449746411602}
   m_RootOrder: 0
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 10.08, z: 0}
 --- !u!4 &4471088995361188
 Transform:
   m_ObjectHideFlags: 1
@@ -1698,7 +1698,7 @@ Transform:
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1083494776098498}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0.06975648, w: 0.9975641}
   m_LocalPosition: {x: 2.11, y: 0, z: 1.69}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
@@ -1919,14 +1919,14 @@ Transform:
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1896208514838832}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: 0, y: 0.20201813, z: 0, w: 0.9793818}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
   - {fileID: 4483524953763246}
   m_Father: {fileID: 4694660673905186}
   m_RootOrder: 0
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 23.31, z: 0}
 --- !u!4 &4947957524963450
 Transform:
   m_ObjectHideFlags: 1
@@ -3058,27 +3058,27 @@ MonoBehaviour:
     - 0
     - 0
     - 0
-    - 0
     - 1.4
     - 0
     - 0
     - 0
     - 0
     - 0
-    - 0
-    - 0
-    - 0
-    - 9.510002
+    - -4
+    - 10.08
     - 9.510002
     - 0
     - 0
     - 0
     - 0
-    - 0
-    - 0
+    - -8
+    - 23.309996
     - -10
     - -10
     - 25.000002
+    - 0
+    - 0
+    - -4.9299927
     - 0
     - 0
     - -4.9299927

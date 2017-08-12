@@ -111,9 +111,9 @@ namespace Pianist
 
 		public static readonly HandBoneIndex[] FixedAngles = new HandBoneIndex[] {
 			bi.THUMB1_FZ, bi.THUMB1_FY, bi.THUMB2_FZ, bi.THUMB2_FY,
-			bi.INDEX0_FZ, bi.INDEX0_FY, bi.INDEX1_FZ, bi.INDEX1_FZ, bi.INDEX2_FZ, bi.INDEX2_FY, bi.INDEX3_FZ, bi.INDEX3_FY,
-			bi.MIDDLE0_FZ, bi.MIDDLE0_FY, bi.MIDDLE1_FZ, bi.MIDDLE1_FZ, bi.MIDDLE2_FZ, bi.MIDDLE2_FY, bi.MIDDLE3_FZ, bi.MIDDLE3_FY,
-			bi.RING0_FZ, bi.RING0_FY, bi.RING1_FZ, bi.RING1_FZ, bi.RING2_FZ, bi.RING2_FY, bi.RING3_FZ, bi.RING3_FY,
+			bi.INDEX0_FZ, bi.INDEX0_FY, bi.INDEX1_FZ, bi.INDEX2_FZ, bi.INDEX2_FY, bi.INDEX3_FZ, bi.INDEX3_FY,
+			bi.MIDDLE0_FZ, bi.MIDDLE0_FY, bi.MIDDLE1_FZ, bi.MIDDLE2_FZ, bi.MIDDLE2_FY, bi.MIDDLE3_FZ, bi.MIDDLE3_FY,
+			bi.RING0_FZ, bi.RING0_FY, bi.RING1_FZ, bi.RING2_FZ, bi.RING2_FY, bi.RING3_FZ, bi.RING3_FY,
 			bi.PINKY0_FZ, bi.PINKY0_FY, bi.PINKY1_FZ, bi.PINKY1_FZ, bi.PINKY2_FZ, bi.PINKY2_FY, bi.PINKY3_FZ, bi.PINKY3_FY,
 		};
 
