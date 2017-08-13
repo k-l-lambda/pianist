@@ -10,6 +10,7 @@ public class MeshBuilderEditor : Editor
 {
 	bool showVertecies = true;
 	bool showNormals = true;
+	//bool showIndices = true;
 
 	public override void OnInspectorGUI()
 	{
@@ -46,6 +47,15 @@ public class MeshBuilderEditor : Editor
 			showNormals = showNormals_;
 		}
 		//showNormals = GUILayout.Toggle(showNormals, "Show Normals");
+
+		{
+			EditorGUI.BeginChangeCheck();
+
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("Faces"), true);
+
+			if (EditorGUI.EndChangeCheck())
+				serializedObject.ApplyModifiedProperties();
+		}
 
 		if (GUILayout.Button("Export Mesh"))
 		{

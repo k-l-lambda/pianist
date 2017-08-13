@@ -6,7 +6,23 @@ using System.Collections.Generic;
 [ExecuteInEditMode]
 public class MeshBuilder : MonoBehaviour
 {
+	[System.Serializable]
+	public class Face
+	{
+		public MeshTopology topology;
+		public string indicesSource;
+
+		public int[] indices
+		{
+			get {
+				return System.Array.ConvertAll(indicesSource.Split(','), int.Parse);
+			}
+		}
+	};
+
 	private List<GameObject> Pointers = new List<GameObject>();
+
+	public Face[] Faces;
 
 	public int PointerCount
 	{
@@ -23,8 +39,21 @@ public class MeshBuilder : MonoBehaviour
 	public Mesh ResultMesh
 	{
 		get {
-			// TODO:
-			return new Mesh();
+			Mesh mesh = new Mesh();
+
+			Vector3[] positions = new Vector3[Pointers.Count];
+			Vector3[] normals = new Vector3[Pointers.Count];
+
+			mesh.vertices = positions;
+			mesh.normals = normals;
+
+			int i = 0;
+			foreach (Face face in Faces)
+			{
+				mesh.SetIndices(face.indices, face.topology, i++);
+			}
+
+			return mesh;
 		}
 	}
 
