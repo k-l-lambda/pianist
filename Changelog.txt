@@ -2,6 +2,11 @@
 TODO:
 
 
+2017.8.13	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilderEditor.cs: draw gizmos for pointers.
+
+
 2017.8.12	K.L.	<k.l.lambda@gmail.com>
 
 	+	MeshBuilderEditor.cs: export mesh added.

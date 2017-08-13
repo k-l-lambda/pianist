@@ -6,26 +6,6 @@ using System.Collections.Generic;
 [ExecuteInEditMode]
 public class MeshBuilder : MonoBehaviour
 {
-	/*[System.Serializable]
-	public class Pointer
-	{
-		public Transform transform;
-
-		public Vector3 position
-		{
-			get {
-				return transform ? transform.localPosition : Vector3.zero;
-			}
-			set {
-				if (transform)
-					transform.localPosition = value;
-			}
-		}
-	};
-
-
-	public Pointer[] Pointers;*/
-
 	private List<GameObject> Pointers = new List<GameObject>();
 
 	public int PointerCount
