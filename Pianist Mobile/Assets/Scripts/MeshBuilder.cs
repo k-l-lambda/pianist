@@ -56,12 +56,17 @@ public class MeshBuilder : MonoBehaviour
 		}
 		else
 		{
+			Transform lastTransform = Pointers.Count > 0 ? getPointerAt(PointerCount - 1) : null;
+
 			for (int i = Pointers.Count; i < newSize; ++i)
 			{
 				Transform trans = transform.Find(i.ToString());
 				GameObject obj = trans ? trans.gameObject : new GameObject(i.ToString());
 
 				obj.transform.parent = transform;
+				obj.transform.position = lastTransform ? lastTransform.position : Vector3.zero;
+				obj.transform.rotation = lastTransform ? lastTransform.rotation : Quaternion.identity;
+
 				obj.SetActive(true);
 
 				Pointers.Add(obj);

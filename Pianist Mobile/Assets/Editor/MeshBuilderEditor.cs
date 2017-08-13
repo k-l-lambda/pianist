@@ -8,6 +8,9 @@ using Pianist;
 [CustomEditor(typeof(MeshBuilder))]
 public class MeshBuilderEditor : Editor
 {
+	bool showVertecies = true;
+	bool showNormals = true;
+
 	public override void OnInspectorGUI()
 	{
 		MeshBuilder t = target as MeshBuilder;
@@ -24,11 +27,25 @@ public class MeshBuilderEditor : Editor
 
 		t.PointerCount = EditorGUILayout.IntField("Pointers Count", t.PointerCount);
 
-		for (int i = 0; i < t.PointerCount; ++i)
+		showVertecies = EditorGUILayout.Foldout(showVertecies, "Vertecies");
+		if (showVertecies)
 		{
-			Transform trans = t.getPointerAt(i);
-			trans.localPosition = EditorGUILayout.Vector3Field(i.ToString(), trans.localPosition);
+			EditorGUI.indentLevel++;
+			for (int i = 0; i < t.PointerCount; ++i)
+			{
+				Transform trans = t.getPointerAt(i);
+				trans.localPosition = EditorGUILayout.Vector3Field(i.ToString(), trans.localPosition);
+			}
+			EditorGUI.indentLevel--;
 		}
+
+		bool showNormals_ = EditorGUILayout.Toggle("Show Normals", showNormals);
+		if (showNormals_ != showNormals)
+		{
+			SceneView.RepaintAll();
+			showNormals = showNormals_;
+		}
+		//showNormals = GUILayout.Toggle(showNormals, "Show Normals");
 
 		if (GUILayout.Button("Export Mesh"))
 		{
@@ -41,22 +58,21 @@ public class MeshBuilderEditor : Editor
 	{
 		MeshBuilder t = target as MeshBuilder;
 
-		drawPointerLabels(t, GizmoType.Selected);
+		drawPointerGizmos(t, GizmoType.Selected, showNormals);
 	}
 
 	[DrawGizmo(GizmoType.NonSelected)]
 	static void DrawGizmos(MeshBuilder mb, GizmoType gizmoType)
 	{
-		drawPointerLabels(mb, gizmoType);
+		drawPointerGizmos(mb, gizmoType, false);
 	}
 
-	static void drawPointerLabels(MeshBuilder mb, GizmoType gizmoType)
+	static void drawPointerGizmos(MeshBuilder mb, GizmoType gizmoType, bool withNormals)
 	{
 		Color color = gizmoType == GizmoType.Selected ? new Color(0.3f, 1, 0.3f) : new Color(0.7f, 0.7f, 0.7f);
 
 		GUIStyle style = new GUIStyle();
 		style.normal.textColor = color;
-		Handles.color = color;
 
 		float dotScale = gizmoType == GizmoType.Selected ? 0.02f : 0.01f;
 
@@ -65,7 +81,14 @@ public class MeshBuilderEditor : Editor
 			Transform trans = mb.getPointerAt(i);
 			Handles.Label(trans.position, i.ToString(), style);
 
+			Handles.color = color;
 			Handles.DotHandleCap(0, trans.position, trans.rotation, HandleUtility.GetHandleSize(trans.position) * dotScale, EventType.Repaint);
+
+			if (withNormals)
+			{
+				Handles.color = Color.blue;
+				Handles.ArrowHandleCap(0, trans.position, trans.rotation, 0.4f, EventType.Repaint);
+			}
 		}
 	}
 }
