@@ -52,7 +52,7 @@ public class MeshBuilderEditor : Editor
 				normalScales[i] = 1;
 		}
 
-		showNormals = EditorGUILayout.Foldout(showVertecies, "Normals");
+		showNormals = EditorGUILayout.Foldout(showNormals, "Normals");
 		if (showNormals)
 		{
 			EditorGUI.indentLevel++;
@@ -63,9 +63,17 @@ public class MeshBuilderEditor : Editor
 				normalScales[i] = tf.magnitude;
 				tf.Normalize();
 
-				Vector3 cross = Vector3.Cross(Vector3.forward, tf);
-				float dot = Vector3.Dot(Vector3.forward, tf);
-				trans.rotation = new Quaternion(cross.x, cross.y, cross.z, 1 + dot);
+				if (tf == -Vector3.forward)
+				{
+					trans.rotation = new Quaternion(1, 0, 0, 0);
+				}
+				else
+				{
+					Vector3 cross = Vector3.Cross(Vector3.forward, tf);
+					float dot = Vector3.Dot(Vector3.forward, tf);
+					trans.rotation = new Quaternion(cross.x, cross.y, cross.z, 1 + dot);
+					//trans.rotation.SetFromToRotation(Vector3.forward, tf);
+				}
 			}
 			EditorGUI.indentLevel--;
 		}

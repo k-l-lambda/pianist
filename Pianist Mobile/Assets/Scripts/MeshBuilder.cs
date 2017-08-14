@@ -11,7 +11,7 @@ public class MeshBuilder : MonoBehaviour
 	{
 		public MeshTopology topology;
 
-		[TextArea(1, 12)]
+		[TextArea(1, 20)]
 		public string indicesSource;
 
 		public int[] indices
@@ -126,13 +126,30 @@ public class MeshBuilder : MonoBehaviour
 
 	void Start()
 	{
-		Name = gameObject.name;
+		if (Name == "")
+			Name = gameObject.name;
+
+		loadPointers();
 	}
 
 	void Update()
 	{
 	}
 
+
+	public void loadPointers()
+	{
+		int count = 0;
+		while (true)
+		{
+			if (!transform.FindChild(count.ToString()))
+				break;
+
+			++count;
+		}
+
+		resizePointers(count);
+	}
 
 	public void resizePointers(int newSize)
 	{
@@ -146,7 +163,7 @@ public class MeshBuilder : MonoBehaviour
 
 			Pointers.RemoveRange(newSize, Pointers.Count - newSize);
 		}
-		else
+		else if (newSize > Pointers.Count)
 		{
 			Transform lastTransform = Pointers.Count > 0 ? getPointerAt(PointerCount - 1) : null;
 
