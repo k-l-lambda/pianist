@@ -156,8 +156,8 @@ public class MeshBuilder : MonoBehaviour
 				GameObject obj = trans ? trans.gameObject : new GameObject(i.ToString());
 
 				obj.transform.parent = transform;
-				obj.transform.position = lastTransform ? lastTransform.position : Vector3.zero;
-				obj.transform.rotation = lastTransform ? lastTransform.rotation : Quaternion.identity;
+				obj.transform.localPosition = lastTransform ? lastTransform.localPosition : Vector3.zero;
+				obj.transform.localRotation = lastTransform ? lastTransform.localRotation : Quaternion.identity;
 
 				obj.SetActive(true);
 

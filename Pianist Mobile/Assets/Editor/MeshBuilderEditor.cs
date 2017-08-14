@@ -10,7 +10,10 @@ public class MeshBuilderEditor : Editor
 {
 	bool showVertecies = true;
 	bool showNormals = true;
+	bool showNormalGizmos = true;
 	bool showMesh = true;
+
+	float[] normalScales = new float[0];
 
 	public override void OnInspectorGUI()
 	{
@@ -40,13 +43,40 @@ public class MeshBuilderEditor : Editor
 			EditorGUI.indentLevel--;
 		}
 
-		bool showNormals_ = EditorGUILayout.Toggle("Show Normals", showNormals);
-		if (showNormals_ != showNormals)
+		if (t.PointerCount != normalScales.Length)
+		{
+			int start = normalScales.Length;
+			System.Array.Resize(ref normalScales, t.PointerCount);
+
+			for (int i = start; i < t.PointerCount; ++i)
+				normalScales[i] = 1;
+		}
+
+		showNormals = EditorGUILayout.Foldout(showVertecies, "Normals");
+		if (showNormals)
+		{
+			EditorGUI.indentLevel++;
+			for (int i = 0; i < t.PointerCount; ++i)
+			{
+				Transform trans = t.getPointerAt(i);
+				Vector3 tf = EditorGUILayout.Vector3Field(i.ToString(), trans.TransformVector(Vector3.forward) * normalScales[i]);
+				normalScales[i] = tf.magnitude;
+				tf.Normalize();
+
+				Vector3 cross = Vector3.Cross(Vector3.forward, tf);
+				float dot = Vector3.Dot(Vector3.forward, tf);
+				trans.rotation = new Quaternion(cross.x, cross.y, cross.z, 1 + dot);
+			}
+			EditorGUI.indentLevel--;
+		}
+
+		bool showNormalGizmos_ = EditorGUILayout.Toggle("Show Normals", showNormalGizmos);
+		if (showNormalGizmos_ != showNormalGizmos)
 		{
 			SceneView.RepaintAll();
-			showNormals = showNormals_;
+			showNormalGizmos = showNormalGizmos_;
 		}
-		//showNormals = GUILayout.Toggle(showNormals, "Show Normals");
+		//showNormalGizmos = GUILayout.Toggle(showNormalGizmos, "Show Normals");
 
 		{
 			EditorGUI.BeginChangeCheck();
@@ -88,7 +118,7 @@ public class MeshBuilderEditor : Editor
 	{
 		MeshBuilder t = target as MeshBuilder;
 
-		drawPointerGizmos(t, GizmoType.Selected, showNormals);
+		drawPointerGizmos(t, GizmoType.Selected, showNormalGizmos);
 
 		if (showMesh)
 			drawMeshGizmo(t);
