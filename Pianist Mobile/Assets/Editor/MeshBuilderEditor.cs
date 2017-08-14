@@ -10,7 +10,7 @@ public class MeshBuilderEditor : Editor
 {
 	bool showVertecies = true;
 	bool showNormals = true;
-	//bool showIndices = true;
+	bool showMesh = true;
 
 	public override void OnInspectorGUI()
 	{
@@ -57,6 +57,13 @@ public class MeshBuilderEditor : Editor
 				serializedObject.ApplyModifiedProperties();
 		}
 
+		bool showMesh_ = EditorGUILayout.Toggle("Show Mesh", showMesh);
+		if (showMesh_ != showMesh)
+		{
+			SceneView.RepaintAll();
+			showMesh = showMesh_;
+		}
+
 		if (GUILayout.Button("Export Mesh"))
 		{
 			string path = t.AssetFolder + t.Name + ".prefab";
@@ -72,6 +79,9 @@ public class MeshBuilderEditor : Editor
 		MeshBuilder t = target as MeshBuilder;
 
 		drawPointerGizmos(t, GizmoType.Selected, showNormals);
+
+		if (showMesh)
+			drawMeshGizmo(t);
 	}
 
 	[DrawGizmo(GizmoType.NonSelected)]
@@ -111,5 +121,10 @@ public class MeshBuilderEditor : Editor
 #endif
 			}
 		}
+	}
+
+	static void drawMeshGizmo(MeshBuilder mb)
+	{
+		Graphics.DrawMeshNow(mb.ResultMesh, mb.transform.position, mb.transform.rotation);
 	}
 }

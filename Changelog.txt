@@ -2,6 +2,13 @@
 TODO:
 
 
+2017.8.14	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilderEditor.cs: draw mesh gizmo.
+
+	+	MeshBuilder.cs: export mesh implemented.
+
+
 2017.8.13	K.L.	<k.l.lambda@gmail.com>
 
 	+	MeshBuilder.cs: added Face.
