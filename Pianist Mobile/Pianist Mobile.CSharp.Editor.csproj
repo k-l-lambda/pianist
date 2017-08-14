@@ -111,6 +111,7 @@
     <Compile Include="Assets\Editor\MeshBuilderEditor.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\Editor\Resources\MeshPreview.shader" />
     <None Include="Assets\Resources\Materials\Color.shader" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\SyntaxTree\UnityVS\2012\UnityVS.CSharp.targets" />

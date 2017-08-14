@@ -1,13 +1,14 @@
 
 TODO:
 	MeshBuilder
-		shader for mesh preview
 		move mesh builder asset to standalone folder
 		load mesh
 
 
 
 2017.8.14	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilder: preview mesh shader added.
 
 	+	MeshBuilder: loadPointers added.
 

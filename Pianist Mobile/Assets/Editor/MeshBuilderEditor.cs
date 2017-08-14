@@ -95,7 +95,7 @@ public class MeshBuilderEditor : Editor
 				serializedObject.ApplyModifiedProperties();
 		}
 
-		bool showMesh_ = EditorGUILayout.Toggle("Show Mesh", showMesh);
+		bool showMesh_ = EditorGUILayout.Toggle("Preview Mesh", showMesh);
 		if (showMesh_ != showMesh)
 		{
 			SceneView.RepaintAll();
@@ -128,14 +128,16 @@ public class MeshBuilderEditor : Editor
 
 		drawPointerGizmos(t, GizmoType.Selected, showNormalGizmos);
 
-		if (showMesh)
-			drawMeshGizmo(t);
+		//if (showMesh)
+		//	drawMeshGizmo(t, GizmoType.Selected);
+		//t.PreviewMeshMpb.SetColor("_Color", new Color(0.7f, 0.7f, 0.7f, 0.6f));
 	}
 
 	[DrawGizmo(GizmoType.NonSelected)]
 	static void DrawGizmos(MeshBuilder mb, GizmoType gizmoType)
 	{
 		drawPointerGizmos(mb, gizmoType, true);
+		//drawMeshGizmo(mb, gizmoType);
 	}
 
 	static void drawPointerGizmos(MeshBuilder mb, GizmoType gizmoType, bool withNormals)
@@ -171,11 +173,14 @@ public class MeshBuilderEditor : Editor
 		}
 	}
 
-	static void drawMeshGizmo(MeshBuilder mb)
+	static void drawMeshGizmo(MeshBuilder mb, GizmoType gizmoType)
 	{
-		if (mb.PreviewMaterial)
-			mb.PreviewMaterial.SetPass(0);
+		//if (mb.PreviewMaterial)
+		//	mb.PreviewMaterial.SetPass(0);
+		MaterialPropertyBlock block = new MaterialPropertyBlock();
+		block.SetColor("_Color", new Color(0.7f, 0.7f, 0.7f, gizmoType == GizmoType.Selected ? 0.6f : 0.1f));
 
-		Graphics.DrawMeshNow(mb.ResultMesh, mb.transform.position, mb.transform.rotation);
+		for (int i = 0; i < mb.Faces.Length; ++i)
+			Graphics.DrawMesh(mb.ResultMesh, mb.transform.localToWorldMatrix, mb.PreviewMaterial, 0, null, i, block);
 	}
 }
