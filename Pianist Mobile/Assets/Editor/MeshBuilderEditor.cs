@@ -64,6 +64,16 @@ public class MeshBuilderEditor : Editor
 			showMesh = showMesh_;
 		}
 
+		if (showMesh)
+		{
+			EditorGUI.BeginChangeCheck();
+
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("PreviewMaterial"), true);
+
+			if (EditorGUI.EndChangeCheck())
+				serializedObject.ApplyModifiedProperties();
+		}
+
 		if (GUILayout.Button("Export Mesh"))
 		{
 			string path = t.AssetFolder + t.Name + ".prefab";
@@ -92,10 +102,10 @@ public class MeshBuilderEditor : Editor
 
 	static void drawPointerGizmos(MeshBuilder mb, GizmoType gizmoType, bool withNormals)
 	{
-		Color color = gizmoType == GizmoType.Selected ? new Color(0.3f, 1, 0.3f) : new Color(0.7f, 0.7f, 0.7f);
+		Color dotColor = gizmoType == GizmoType.Selected ? new Color(0.3f, 1, 0.3f) : new Color(0.3f, 1, 0.3f, 0.4f);
 
 		GUIStyle style = new GUIStyle();
-		style.normal.textColor = color;
+		style.normal.textColor = gizmoType == GizmoType.Selected ? Color.white : new Color(1, 1, 1, 0.4f);
 
 		float dotScale = gizmoType == GizmoType.Selected ? 0.02f : 0.01f;
 
@@ -104,7 +114,7 @@ public class MeshBuilderEditor : Editor
 			Transform trans = mb.getPointerAt(i);
 			Handles.Label(trans.position, i.ToString(), style);
 
-			Handles.color = color;
+			Handles.color = dotColor;
 #if UNITY_2017
 			Handles.DotHandleCap(0, trans.position, trans.rotation, HandleUtility.GetHandleSize(trans.position) * dotScale, EventType.Repaint);
 #else
@@ -113,7 +123,7 @@ public class MeshBuilderEditor : Editor
 
 			if (withNormals)
 			{
-				Handles.color = gizmoType == GizmoType.Selected ? Color.blue : new Color(0.4f, 0.4f, 0.4f);
+				Handles.color = gizmoType == GizmoType.Selected ? new Color(1, 0.6f, 0) : new Color(1, 0.6f, 0, 0.4f);
 #if UNITY_2017
 				Handles.ArrowHandleCap(0, trans.position, trans.rotation, 0.4f, EventType.Repaint);
 #else
@@ -125,6 +135,9 @@ public class MeshBuilderEditor : Editor
 
 	static void drawMeshGizmo(MeshBuilder mb)
 	{
+		if (mb.PreviewMaterial)
+			mb.PreviewMaterial.SetPass(0);
+
 		Graphics.DrawMeshNow(mb.ResultMesh, mb.transform.position, mb.transform.rotation);
 	}
 }

@@ -10,19 +10,70 @@ public class MeshBuilder : MonoBehaviour
 	public class Face
 	{
 		public MeshTopology topology;
+
+		[TextArea(1, 12)]
 		public string indicesSource;
 
 		public int[] indices
 		{
 			get {
-				return System.Array.ConvertAll<string, int>(indicesSource.Split(','), int.Parse);
+				string[] lines = indicesSource.Split('\n');
+
+				int [] results = new int[0];
+
+				foreach (string line in lines)
+				{
+					try
+					{
+						int[] indices = System.Array.ConvertAll<string, int>(line.Split(','), int.Parse);
+
+						switch (topology)
+						{
+							case MeshTopology.Triangles:
+								{
+									int size = indices.Length - indices.Length % 3;
+									if (size != indices.Length)
+										System.Array.Resize(ref indices, size);
+								}
+
+								break;
+							case MeshTopology.Lines:
+								{
+									int size = indices.Length - indices.Length % 2;
+									if (size != indices.Length)
+										System.Array.Resize(ref indices, size);
+								}
+
+								break;
+							case MeshTopology.Quads:
+								{
+									int size = indices.Length - indices.Length % 4;
+									if (size != indices.Length)
+										System.Array.Resize(ref indices, size);
+								}
+
+								break;
+						}
+
+						int start = results.Length;
+						System.Array.Resize(ref results, results.Length + indices.Length);
+						indices.CopyTo(results, start);
+					}
+					catch(System.FormatException)
+					{
+					}
+				}
+
+				return results;
 			}
 		}
 	};
 
+	public Material PreviewMaterial;
+
 	private List<GameObject> Pointers = new List<GameObject>();
 
-	public Face[] Faces;
+	public Face[] Faces = new Face[0];
 
 	public int PointerCount
 	{
@@ -54,11 +105,14 @@ public class MeshBuilder : MonoBehaviour
 			mesh.vertices = positions;
 			mesh.normals = normals;
 
+			mesh.subMeshCount = Faces.Length;
 			{
 				int i = 0;
 				foreach (Face face in Faces)
 				{
-					mesh.SetIndices(face.indices, face.topology, i++);
+					//Debug.Log(System.String.Join(",", new List<int>(face.indices).ConvertAll(ii => ii.ToString()).ToArray()));
+					if (face.indices.Length > 0)
+						mesh.SetIndices(face.indices, face.topology, i++);
 				}
 			}
 

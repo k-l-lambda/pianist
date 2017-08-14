@@ -1,8 +1,12 @@
 
 TODO:
+	shader for mesh preview
+	move mesh builder asset to standalone folder
 
 
 2017.8.14	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilder: added indices lines parse.
 
 	+	MeshBuilderEditor.cs: draw mesh gizmo.
 
