@@ -59,8 +59,11 @@ public class MeshBuilderEditor : Editor
 
 		if (GUILayout.Button("Export Mesh"))
 		{
-			UnityEditor.AssetDatabase.CreateAsset(t.ResultMesh, t.AssetFolder + t.Name + ".prefab");
+			string path = t.AssetFolder + t.Name + ".prefab";
+			UnityEditor.AssetDatabase.CreateAsset(t.ResultMesh, path);
 			UnityEditor.AssetDatabase.SaveAssets();
+
+			Debug.Log("Mesh export completed: " + path);
 		}
 	}
 
@@ -74,7 +77,7 @@ public class MeshBuilderEditor : Editor
 	[DrawGizmo(GizmoType.NonSelected)]
 	static void DrawGizmos(MeshBuilder mb, GizmoType gizmoType)
 	{
-		drawPointerGizmos(mb, gizmoType, false);
+		drawPointerGizmos(mb, gizmoType, true);
 	}
 
 	static void drawPointerGizmos(MeshBuilder mb, GizmoType gizmoType, bool withNormals)
@@ -92,12 +95,20 @@ public class MeshBuilderEditor : Editor
 			Handles.Label(trans.position, i.ToString(), style);
 
 			Handles.color = color;
+#if UNITY_2017
 			Handles.DotHandleCap(0, trans.position, trans.rotation, HandleUtility.GetHandleSize(trans.position) * dotScale, EventType.Repaint);
+#else
+			Handles.DotCap(0, trans.position, trans.rotation, HandleUtility.GetHandleSize(trans.position) * dotScale);
+#endif
 
 			if (withNormals)
 			{
-				Handles.color = Color.blue;
+				Handles.color = gizmoType == GizmoType.Selected ? Color.blue : new Color(0.4f, 0.4f, 0.4f);
+#if UNITY_2017
 				Handles.ArrowHandleCap(0, trans.position, trans.rotation, 0.4f, EventType.Repaint);
+#else
+				Handles.ArrowCap(0, trans.position, trans.rotation, 0.4f);
+#endif
 			}
 		}
 	}

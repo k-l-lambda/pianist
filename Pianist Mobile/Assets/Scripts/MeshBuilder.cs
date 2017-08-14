@@ -15,7 +15,7 @@ public class MeshBuilder : MonoBehaviour
 		public int[] indices
 		{
 			get {
-				return System.Array.ConvertAll(indicesSource.Split(','), int.Parse);
+				return System.Array.ConvertAll<string, int>(indicesSource.Split(','), int.Parse);
 			}
 		}
 	};
@@ -38,19 +38,28 @@ public class MeshBuilder : MonoBehaviour
 
 	public Mesh ResultMesh
 	{
-		get {
+		get
+		{
 			Mesh mesh = new Mesh();
 
 			Vector3[] positions = new Vector3[Pointers.Count];
 			Vector3[] normals = new Vector3[Pointers.Count];
 
+			for (int i = 0; i < Pointers.Count; ++i)
+			{
+				positions[i] = Pointers[i].transform.localPosition;
+				normals[i] = Pointers[i].transform.TransformVector(Vector3.forward);
+			}
+
 			mesh.vertices = positions;
 			mesh.normals = normals;
 
-			int i = 0;
-			foreach (Face face in Faces)
 			{
-				mesh.SetIndices(face.indices, face.topology, i++);
+				int i = 0;
+				foreach (Face face in Faces)
+				{
+					mesh.SetIndices(face.indices, face.topology, i++);
+				}
 			}
 
 			return mesh;
