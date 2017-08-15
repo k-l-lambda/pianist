@@ -199,7 +199,7 @@ public class MeshBuilder : MonoBehaviour
 	public void importMesh(Mesh mesh)
 	{
 		Vector3[] vertices = mesh.vertices;
-		Vector3[] normal = mesh.normals;
+		Vector3[] normals = mesh.normals;
 
 		resizePointers(mesh.vertexCount);
 		for (int i = 0; i < mesh.vertexCount; ++i)
@@ -207,9 +207,11 @@ public class MeshBuilder : MonoBehaviour
 			Transform trans = getPointerAt(i);
 			trans.localPosition = vertices[i];
 
-			if (normal != null && normal[i] != null)
+			if (normals != null && normals[i] != null)
 			{
-				trans.localRotation.SetFromToRotation(Vector3.forward, normal[i].normalized);
+				Quaternion q = new Quaternion();
+				q.SetFromToRotation(Vector3.forward, normals[i].normalized);
+				trans.localRotation = q;
 			}
 		}
 

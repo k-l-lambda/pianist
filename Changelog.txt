@@ -1,7 +1,5 @@
 
 TODO:
-	MeshBuilder
-		load mesh normal issues.
 
 
 
