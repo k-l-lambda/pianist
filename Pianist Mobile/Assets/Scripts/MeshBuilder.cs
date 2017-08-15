@@ -123,30 +123,19 @@ public class MeshBuilder : MonoBehaviour
 	public string Name;
 	public string AssetFolder = "Assets/Resources/";
 
-	public bool PreviewMesh = true;
-	//public MaterialPropertyBlock PreviewMeshMpb = new MaterialPropertyBlock();
-
 
 	void Start()
 	{
 		if (Name == "")
 			Name = gameObject.name;
 
+		PreviewMaterial = UnityEditor.EditorGUIUtility.Load("Assets/Editor/Resources/MeshPreview.mat") as Material;
+
 		loadPointers();
 	}
 
 	void Update()
 	{
-		if (PreviewMesh)
-		{
-			bool selected = System.Array.IndexOf(UnityEditor.Selection.gameObjects, gameObject) >= 0;
-
-			MaterialPropertyBlock block = new MaterialPropertyBlock();
-			block.SetColor("_Color", new Color(0.7f, 0.7f, selected ? 0.7f : 0f, 0.6f));
-
-			for (int i = 0; i < Faces.Length; ++i)
-				Graphics.DrawMesh(ResultMesh, transform.localToWorldMatrix, PreviewMaterial, 0, null, i, block);
-		}
 	}
 
 
