@@ -1,11 +1,13 @@
 
 TODO:
 	MeshBuilder
-		load mesh
+		load mesh normal issues.
 
 
 
 2017.8.15	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilder: import mesh implemented.
 
 	+	MeshBuilder: register undo data when inspector changed.
 

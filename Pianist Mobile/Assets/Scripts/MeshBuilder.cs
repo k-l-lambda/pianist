@@ -66,6 +66,9 @@ public class MeshBuilder : MonoBehaviour
 
 				return results;
 			}
+			set {
+				indicesSource = string.Join(",", new List<int>(value).ConvertAll(ii => ii.ToString()).ToArray());
+			}
 		}
 	};
 
@@ -191,5 +194,31 @@ public class MeshBuilder : MonoBehaviour
 	public Transform getPointerAt(int i)
 	{
 		return Pointers[i].transform;
+	}
+
+	public void importMesh(Mesh mesh)
+	{
+		Vector3[] vertices = mesh.vertices;
+		Vector3[] normal = mesh.normals;
+
+		resizePointers(mesh.vertexCount);
+		for (int i = 0; i < mesh.vertexCount; ++i)
+		{
+			Transform trans = getPointerAt(i);
+			trans.localPosition = vertices[i];
+
+			if (normal != null && normal[i] != null)
+			{
+				trans.localRotation.SetFromToRotation(Vector3.forward, normal[i].normalized);
+			}
+		}
+
+		Faces = new Face[mesh.subMeshCount];
+		for (int i = 0; i < mesh.subMeshCount; ++i)
+		{
+			Faces[i] = new Face();
+			Faces[i].topology = mesh.GetTopology(i);
+			Faces[i].indices = mesh.GetIndices(i);
+		}
 	}
 }

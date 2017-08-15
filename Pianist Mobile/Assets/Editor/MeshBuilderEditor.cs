@@ -15,6 +15,8 @@ public class MeshBuilderEditor : Editor
 
 	float[] normalScales = new float[0];
 
+	Mesh meshToImport;
+
 	public override void OnInspectorGUI()
 	{
 		MeshBuilder t = target as MeshBuilder;
@@ -23,11 +25,12 @@ public class MeshBuilderEditor : Editor
 			EditorGUI.BeginChangeCheck();
 
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("Name"), true);
-			EditorGUILayout.PropertyField(serializedObject.FindProperty("AssetFolder"), true);
 
 			if (EditorGUI.EndChangeCheck())
 				serializedObject.ApplyModifiedProperties();
 		}
+
+		EditorGUILayout.Space();
 
 		t.PointerCount = EditorGUILayout.IntField("Pointers Count", t.PointerCount);
 
@@ -92,6 +95,8 @@ public class MeshBuilderEditor : Editor
 			EditorGUI.indentLevel--;
 		}
 
+		EditorGUILayout.Space();
+
 		bool showNormalGizmos_ = EditorGUILayout.Toggle("Show Normals", showNormalGizmos);
 		if (showNormalGizmos_ != showNormalGizmos)
 		{
@@ -99,6 +104,8 @@ public class MeshBuilderEditor : Editor
 			showNormalGizmos = showNormalGizmos_;
 		}
 		//showNormalGizmos = GUILayout.Toggle(showNormalGizmos, "Show Normals");
+
+		EditorGUILayout.Space();
 
 		{
 			EditorGUI.BeginChangeCheck();
@@ -111,6 +118,8 @@ public class MeshBuilderEditor : Editor
 				Undo.RecordObject(target, "Changed Face");
 			}
 		}
+
+		EditorGUILayout.Space();
 
 		bool showMesh_ = EditorGUILayout.Toggle("Preview Mesh", showMesh);
 		if (showMesh_ != showMesh)
@@ -129,6 +138,17 @@ public class MeshBuilderEditor : Editor
 				serializedObject.ApplyModifiedProperties();
 		}*/
 
+		EditorGUILayout.Space();
+
+		{
+			EditorGUI.BeginChangeCheck();
+
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("AssetFolder"), true);
+
+			if (EditorGUI.EndChangeCheck())
+				serializedObject.ApplyModifiedProperties();
+		}
+
 		if (GUILayout.Button("Export Mesh"))
 		{
 			string path = t.AssetFolder + t.Name + ".prefab";
@@ -137,6 +157,20 @@ public class MeshBuilderEditor : Editor
 
 			Debug.Log("Mesh export completed: " + path);
 		}
+
+		EditorGUILayout.Space();
+
+		GUILayout.BeginHorizontal();
+
+		meshToImport = EditorGUILayout.ObjectField(meshToImport, typeof(Mesh)) as Mesh;
+
+		if (GUILayout.Button("Import Mesh"))
+		{
+			t.importMesh(meshToImport);
+			Debug.Log("Mesh import completed.");
+		}
+
+		GUILayout.EndHorizontal();
 
 		//if (GUI.changed)
 		//	Undo.RecordObject(t, "modified by inspector");
