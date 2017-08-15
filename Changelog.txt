@@ -1,9 +1,13 @@
 
 TODO:
 	MeshBuilder
-		move mesh builder asset to standalone folder
 		load mesh
 
+
+
+2017.8.15	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilder: register undo data when inspector changed.
 
 
 2017.8.14	K.L.	<k.l.lambda@gmail.com>

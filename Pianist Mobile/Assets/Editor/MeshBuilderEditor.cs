@@ -38,7 +38,14 @@ public class MeshBuilderEditor : Editor
 			for (int i = 0; i < t.PointerCount; ++i)
 			{
 				Transform trans = t.getPointerAt(i);
-				trans.localPosition = EditorGUILayout.Vector3Field(i.ToString(), trans.localPosition);
+
+				EditorGUI.BeginChangeCheck();
+				Vector3 np = EditorGUILayout.Vector3Field(i.ToString(), trans.localPosition);
+				if (EditorGUI.EndChangeCheck())
+				{
+					Undo.RecordObject(t.getPointerAt(i), "Changed Vertex Position");
+					trans.localPosition = np;
+				}
 			}
 			EditorGUI.indentLevel--;
 		}
@@ -59,20 +66,27 @@ public class MeshBuilderEditor : Editor
 			for (int i = 0; i < t.PointerCount; ++i)
 			{
 				Transform trans = t.getPointerAt(i);
-				Vector3 tf = EditorGUILayout.Vector3Field(i.ToString(), trans.TransformVector(Vector3.forward) * normalScales[i]);
-				normalScales[i] = tf.magnitude;
-				tf.Normalize();
 
-				if (tf == -Vector3.forward)
+				EditorGUI.BeginChangeCheck();
+				Vector3 tf = EditorGUILayout.Vector3Field(i.ToString(), trans.TransformVector(Vector3.forward) * normalScales[i]);
+				if (EditorGUI.EndChangeCheck())
 				{
-					trans.rotation = new Quaternion(1, 0, 0, 0);
-				}
-				else
-				{
-					Vector3 cross = Vector3.Cross(Vector3.forward, tf);
-					float dot = Vector3.Dot(Vector3.forward, tf);
-					trans.rotation = new Quaternion(cross.x, cross.y, cross.z, 1 + dot);
-					//trans.rotation.SetFromToRotation(Vector3.forward, tf);
+					Undo.RecordObject(t.getPointerAt(i), "Changed Vertex Normal");
+
+					normalScales[i] = tf.magnitude;
+					tf.Normalize();
+
+					if (tf == -Vector3.forward)
+					{
+						trans.rotation = new Quaternion(1, 0, 0, 0);
+					}
+					else
+					{
+						Vector3 cross = Vector3.Cross(Vector3.forward, tf);
+						float dot = Vector3.Dot(Vector3.forward, tf);
+						trans.rotation = new Quaternion(cross.x, cross.y, cross.z, 1 + dot);
+						//trans.rotation.SetFromToRotation(Vector3.forward, tf);
+					}
 				}
 			}
 			EditorGUI.indentLevel--;
@@ -92,7 +106,10 @@ public class MeshBuilderEditor : Editor
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("Faces"), true);
 
 			if (EditorGUI.EndChangeCheck())
+			{
 				serializedObject.ApplyModifiedProperties();
+				Undo.RecordObject(target, "Changed Face");
+			}
 		}
 
 		bool showMesh_ = EditorGUILayout.Toggle("Preview Mesh", showMesh);
@@ -120,6 +137,9 @@ public class MeshBuilderEditor : Editor
 
 			Debug.Log("Mesh export completed: " + path);
 		}
+
+		//if (GUI.changed)
+		//	Undo.RecordObject(t, "modified by inspector");
 	}
 
 	public void OnSceneGUI()
