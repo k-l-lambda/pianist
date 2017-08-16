@@ -1,6 +1,14 @@
 
 TODO:
+	MeshBuilder
+		material color config
+		normal length config
 
+
+
+2017.8.16	K.L.	<k.l.lambda@gmail.com>
+
+	+	Mesh of key0 added.
 
 
 2017.8.15	K.L.	<k.l.lambda@gmail.com>
