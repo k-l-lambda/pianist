@@ -72,7 +72,8 @@ public class MeshBuilder : MonoBehaviour
 		}
 	};
 
-	public Material PreviewMaterial;
+	public Material PreviewMaterialHighlight;
+	public Material PreviewMaterialDim;
 
 	private List<GameObject> Pointers = new List<GameObject>();
 
@@ -131,8 +132,6 @@ public class MeshBuilder : MonoBehaviour
 	{
 		if (Name == "")
 			Name = gameObject.name;
-
-		PreviewMaterial = UnityEditor.EditorGUIUtility.Load("Assets/Editor/Resources/MeshPreview.mat") as Material;
 
 		loadPointers();
 	}

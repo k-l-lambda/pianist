@@ -17,6 +17,8 @@ public class MeshBuilderEditor : Editor
 
 	Mesh meshToImport;
 
+	Color meshPreviewColor = new Color(0.7f, 0.7f, 0.7f, 0.8f);
+
 	public override void OnInspectorGUI()
 	{
 		MeshBuilder t = target as MeshBuilder;
@@ -128,15 +130,40 @@ public class MeshBuilderEditor : Editor
 			showMesh = showMesh_;
 		}
 
-		/*if (showMesh)
+		if (!t.PreviewMaterialHighlight || !t.PreviewMaterialDim)
+		{
+			Material previwMat = UnityEditor.EditorGUIUtility.Load("Assets/Editor/Resources/MeshPreview.mat") as Material;
+			if (previwMat)
+			{
+				t.PreviewMaterialHighlight = new Material(previwMat);
+				t.PreviewMaterialHighlight.SetColor("_Color", new Color(0.7f, 0.7f, 0.7f, 0.8f));
+
+				t.PreviewMaterialDim = new Material(previwMat);
+				t.PreviewMaterialDim.SetColor("_Color", new Color(0.7f, 0.7f, 0.7f, 0.2f));
+			}
+			else
+				Debug.LogWarning("Mesh preview material is missing.");
+		}
+
+		if (showMesh)
 		{
 			EditorGUI.BeginChangeCheck();
+			EditorGUI.indentLevel++;
 
-			EditorGUILayout.PropertyField(serializedObject.FindProperty("PreviewMaterial"), true);
+			meshPreviewColor = EditorGUILayout.ColorField("Mesh Color", t.PreviewMaterialHighlight.GetColor("_Color"));
 
+			EditorGUI.indentLevel--;
 			if (EditorGUI.EndChangeCheck())
+			{
+				t.PreviewMaterialHighlight.SetColor("_Color", meshPreviewColor);
+
+				meshPreviewColor.a *= 0.25f;
+				t.PreviewMaterialDim.SetColor("_Color", meshPreviewColor);
+
 				serializedObject.ApplyModifiedProperties();
-		}*/
+				Undo.RecordObject(target, "Changed Face");
+			}
+		}
 
 		EditorGUILayout.Space();
 
@@ -231,23 +258,17 @@ public class MeshBuilderEditor : Editor
 
 	static void drawMeshGizmo(MeshBuilder mb, GizmoType gizmoType)
 	{
-		if (mb.PreviewMaterial)
-		{
-			mb.PreviewMaterial.SetColor("_Color", new Color(0.7f, 0.7f, 0.7f, gizmoType == GizmoType.Selected ? 0.8f : 0.2f));
-		}
+		Material mat = gizmoType == GizmoType.Selected ? mb.PreviewMaterialHighlight : mb.PreviewMaterialDim;
 
 		if (gizmoType == GizmoType.Selected)
 		{
-			//MaterialPropertyBlock block = new MaterialPropertyBlock();
-			//block.SetColor("_Color", new Color(0.7f, 0.7f, 0.7f, gizmoType == GizmoType.Selected ? 0.6f : 0.1f));
-
 			for (int i = 0; i < mb.Faces.Length; ++i)
-				Graphics.DrawMesh(mb.ResultMesh, mb.transform.localToWorldMatrix, mb.PreviewMaterial, 0, null, i);
+				Graphics.DrawMesh(mb.ResultMesh, mb.transform.localToWorldMatrix, mat, 0, null, i);
 		}
 		else
 		{
-			if (mb.PreviewMaterial)
-				mb.PreviewMaterial.SetPass(0);
+			if (mat)
+				mat.SetPass(0);
 
 			Graphics.DrawMeshNow(mb.ResultMesh, mb.transform.localToWorldMatrix);
 		}

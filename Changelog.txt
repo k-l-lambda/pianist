@@ -1,12 +1,14 @@
 
 TODO:
 	MeshBuilder
-		material color config
 		normal length config
+		highlight chosen point
 
 
 
 2017.8.16	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilder: added preview color config.
 
 	+	Mesh of key_b added.
 	+	Mesh of key0 added.
