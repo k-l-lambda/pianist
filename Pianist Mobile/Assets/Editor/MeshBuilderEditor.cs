@@ -26,6 +26,9 @@ public class MeshBuilderEditor : Editor
 	{
 		MeshBuilder t = target as MeshBuilder;
 
+		if (t.Name == "")
+			t.Name = t.gameObject.name;
+
 		{
 			EditorGUI.BeginChangeCheck();
 
