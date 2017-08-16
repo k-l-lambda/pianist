@@ -85,7 +85,7 @@ GameObject:
   - 4: {fileID: 465900}
   - 114: {fileID: 11457926}
   m_Layer: 0
-  m_Name: box-MeshSource
+  m_Name: roundbox
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -736,7 +736,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1ea238b67a4e4dc478943d6db321480b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  PreviewMaterial: {fileID: 2100000, guid: b6227602098a96f49a319969f0b08a85, type: 2}
+  PreviewMaterialHighlight: {fileID: 0}
+  PreviewMaterialDim: {fileID: 0}
   Faces:
   - topology: 2
     indicesSource: '0,2,3,1

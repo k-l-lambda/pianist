@@ -37,6 +37,40 @@ public class MeshBuilderEditor : Editor
 
 		EditorGUILayout.Space();
 
+		{
+			EditorGUI.BeginChangeCheck();
+
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("AssetFolder"), true);
+
+			if (EditorGUI.EndChangeCheck())
+				serializedObject.ApplyModifiedProperties();
+		}
+
+		if (GUILayout.Button("Export Mesh"))
+		{
+			string path = t.AssetFolder + t.Name + ".prefab";
+			UnityEditor.AssetDatabase.CreateAsset(t.ResultMesh, path);
+			UnityEditor.AssetDatabase.SaveAssets();
+
+			Debug.Log("Mesh export completed: " + path);
+		}
+
+		EditorGUILayout.Space();
+
+		GUILayout.BeginHorizontal();
+
+		meshToImport = EditorGUILayout.ObjectField(meshToImport, typeof(Mesh)) as Mesh;
+
+		if (GUILayout.Button("Import Mesh"))
+		{
+			t.importMesh(meshToImport);
+			Debug.Log("Mesh import completed.");
+		}
+
+		GUILayout.EndHorizontal();
+
+		EditorGUILayout.Space();
+
 		t.PointerCount = EditorGUILayout.IntField("Pointers Count", t.PointerCount);
 
 		showVertecies = EditorGUILayout.Foldout(showVertecies, "Vertecies");
@@ -182,40 +216,6 @@ public class MeshBuilderEditor : Editor
 			}
 		}
 
-		EditorGUILayout.Space();
-
-		{
-			EditorGUI.BeginChangeCheck();
-
-			EditorGUILayout.PropertyField(serializedObject.FindProperty("AssetFolder"), true);
-
-			if (EditorGUI.EndChangeCheck())
-				serializedObject.ApplyModifiedProperties();
-		}
-
-		if (GUILayout.Button("Export Mesh"))
-		{
-			string path = t.AssetFolder + t.Name + ".prefab";
-			UnityEditor.AssetDatabase.CreateAsset(t.ResultMesh, path);
-			UnityEditor.AssetDatabase.SaveAssets();
-
-			Debug.Log("Mesh export completed: " + path);
-		}
-
-		EditorGUILayout.Space();
-
-		GUILayout.BeginHorizontal();
-
-		meshToImport = EditorGUILayout.ObjectField(meshToImport, typeof(Mesh)) as Mesh;
-
-		if (GUILayout.Button("Import Mesh"))
-		{
-			t.importMesh(meshToImport);
-			Debug.Log("Mesh import completed.");
-		}
-
-		GUILayout.EndHorizontal();
-
 		//if (GUI.changed)
 		//	Undo.RecordObject(t, "modified by inspector");
 	}
@@ -249,7 +249,9 @@ public class MeshBuilderEditor : Editor
 			bool highlight = gizmoType == GizmoType.Selected || chosen;
 
 			GUIStyle style = new GUIStyle();
-			style.normal.textColor = highlight ? Color.white : new Color(1, 1, 1, 0.4f);
+			style.normal.textColor = highlight ? Color.white : new Color(1, 1, 1, 0.3f);
+			style.fontSize = chosen ? 14 : 10;
+			style.fontStyle = chosen ? FontStyle.Bold : FontStyle.Normal;
 
 			Handles.Label(trans.position, i.ToString(), style);
 
