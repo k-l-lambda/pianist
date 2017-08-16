@@ -1,12 +1,13 @@
 
 TODO:
 	MeshBuilder
-		normal length config
 		highlight chosen point
 
 
 
 2017.8.16	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilder: added normal gizmo length config.
 
 	+	MeshBuilder: added preview color config.
 

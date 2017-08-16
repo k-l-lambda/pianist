@@ -19,6 +19,9 @@ public class MeshBuilderEditor : Editor
 
 	Color meshPreviewColor = new Color(0.7f, 0.7f, 0.7f, 0.8f);
 
+	float normalGizmoLengh = 0.4f;
+
+
 	public override void OnInspectorGUI()
 	{
 		MeshBuilder t = target as MeshBuilder;
@@ -106,6 +109,20 @@ public class MeshBuilderEditor : Editor
 			showNormalGizmos = showNormalGizmos_;
 		}
 		//showNormalGizmos = GUILayout.Toggle(showNormalGizmos, "Show Normals");
+
+		if (showNormalGizmos)
+		{
+			EditorGUI.BeginChangeCheck();
+			EditorGUI.indentLevel++;
+
+			normalGizmoLengh = EditorGUILayout.FloatField("Normal Length", normalGizmoLengh);
+
+			EditorGUI.indentLevel--;
+			if (EditorGUI.EndChangeCheck())
+			{
+				SceneView.RepaintAll();
+			}
+		}
 
 		EditorGUILayout.Space();
 
@@ -207,7 +224,7 @@ public class MeshBuilderEditor : Editor
 	{
 		MeshBuilder t = target as MeshBuilder;
 
-		drawPointerGizmos(t, GizmoType.Selected, showNormalGizmos);
+		drawPointerGizmos(t, GizmoType.Selected, showNormalGizmos, normalGizmoLengh);
 
 		if (showMesh)
 		{
@@ -219,11 +236,11 @@ public class MeshBuilderEditor : Editor
 	[DrawGizmo(GizmoType.NonSelected)]
 	static void DrawGizmos(MeshBuilder mb, GizmoType gizmoType)
 	{
-		drawPointerGizmos(mb, gizmoType, true);
+		drawPointerGizmos(mb, gizmoType, true, 0.6f);
 		drawMeshGizmo(mb, gizmoType);
 	}
 
-	static void drawPointerGizmos(MeshBuilder mb, GizmoType gizmoType, bool withNormals)
+	static void drawPointerGizmos(MeshBuilder mb, GizmoType gizmoType, bool withNormals, float normalLength)
 	{
 		Color dotColor = gizmoType == GizmoType.Selected ? new Color(0.3f, 1, 0.3f) : new Color(0.3f, 1, 0.3f, 0.4f);
 
@@ -248,9 +265,9 @@ public class MeshBuilderEditor : Editor
 			{
 				Handles.color = gizmoType == GizmoType.Selected ? new Color(1, 0.6f, 0) : new Color(1, 0.6f, 0, 0.4f);
 #if UNITY_2017
-				Handles.ArrowHandleCap(0, trans.position, trans.rotation, 0.4f, EventType.Repaint);
+				Handles.ArrowHandleCap(0, trans.position, trans.rotation, normalLength, EventType.Repaint);
 #else
-				Handles.ArrowCap(0, trans.position, trans.rotation, 0.4f);
+				Handles.ArrowCap(0, trans.position, trans.rotation, normalLength);
 #endif
 			}
 		}
