@@ -10,7 +10,7 @@ public class MeshBuilderEditor : Editor
 {
 	bool showVertecies = true;
 	bool showNormals = true;
-	bool showNormalGizmos = true;
+	static bool showNormalGizmos = true;
 	bool showMesh = true;
 
 	float[] normalScales = new float[0];
@@ -19,7 +19,7 @@ public class MeshBuilderEditor : Editor
 
 	Color meshPreviewColor = new Color(0.7f, 0.7f, 0.7f, 0.8f);
 
-	float normalGizmoLengh = 0.4f;
+	static float normalGizmoLengh = 0.4f;
 
 
 	public override void OnInspectorGUI()
@@ -224,7 +224,7 @@ public class MeshBuilderEditor : Editor
 	{
 		MeshBuilder t = target as MeshBuilder;
 
-		drawPointerGizmos(t, GizmoType.Selected, showNormalGizmos, normalGizmoLengh);
+		drawPointerGizmos(t, GizmoType.Selected, true);
 
 		if (showMesh)
 		{
@@ -236,38 +236,39 @@ public class MeshBuilderEditor : Editor
 	[DrawGizmo(GizmoType.NonSelected)]
 	static void DrawGizmos(MeshBuilder mb, GizmoType gizmoType)
 	{
-		drawPointerGizmos(mb, gizmoType, true, 0.6f);
+		drawPointerGizmos(mb, gizmoType, false);
 		drawMeshGizmo(mb, gizmoType);
 	}
 
-	static void drawPointerGizmos(MeshBuilder mb, GizmoType gizmoType, bool withNormals, float normalLength)
+	static void drawPointerGizmos(MeshBuilder mb, GizmoType gizmoType, bool withNormals)
 	{
-		Color dotColor = gizmoType == GizmoType.Selected ? new Color(0.3f, 1, 0.3f) : new Color(0.3f, 1, 0.3f, 0.4f);
-
-		GUIStyle style = new GUIStyle();
-		style.normal.textColor = gizmoType == GizmoType.Selected ? Color.white : new Color(1, 1, 1, 0.4f);
-
-		float dotScale = gizmoType == GizmoType.Selected ? 0.02f : 0.01f;
-
 		for (int i = 0; i < mb.PointerCount; ++i)
 		{
 			Transform trans = mb.getPointerAt(i);
+			bool chosen = System.Array.IndexOf(Selection.objects, trans.gameObject) >= 0;
+			bool highlight = gizmoType == GizmoType.Selected || chosen;
+
+			GUIStyle style = new GUIStyle();
+			style.normal.textColor = highlight ? Color.white : new Color(1, 1, 1, 0.4f);
+
 			Handles.Label(trans.position, i.ToString(), style);
 
-			Handles.color = dotColor;
+			float dotScale = highlight ? 0.02f : 0.01f;
+
+			Handles.color = highlight ? new Color(0.3f, 1, 0.3f) : new Color(0.3f, 1, 0.3f, 0.4f);
 #if UNITY_2017
 			Handles.DotHandleCap(0, trans.position, trans.rotation, HandleUtility.GetHandleSize(trans.position) * dotScale, EventType.Repaint);
 #else
 			Handles.DotCap(0, trans.position, trans.rotation, HandleUtility.GetHandleSize(trans.position) * dotScale);
 #endif
 
-			if (withNormals)
+			if (showNormalGizmos && (withNormals || chosen))
 			{
-				Handles.color = gizmoType == GizmoType.Selected ? new Color(1, 0.6f, 0) : new Color(1, 0.6f, 0, 0.4f);
+				Handles.color = highlight ? new Color(1, 0.6f, 0) : new Color(1, 0.6f, 0, 0.4f);
 #if UNITY_2017
-				Handles.ArrowHandleCap(0, trans.position, trans.rotation, normalLength, EventType.Repaint);
+				Handles.ArrowHandleCap(0, trans.position, trans.rotation, normalGizmoLengh, EventType.Repaint);
 #else
-				Handles.ArrowCap(0, trans.position, trans.rotation, normalLength);
+				Handles.ArrowCap(0, trans.position, trans.rotation, normalGizmoLengh);
 #endif
 			}
 		}

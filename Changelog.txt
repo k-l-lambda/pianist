@@ -1,11 +1,11 @@
 
 TODO:
-	MeshBuilder
-		highlight chosen point
 
 
 
 2017.8.16	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilderEditor: highlight chosen pointer.
 
 	+	MeshBuilder: added normal gizmo length config.
 
