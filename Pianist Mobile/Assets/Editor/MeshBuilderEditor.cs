@@ -139,30 +139,6 @@ public class MeshBuilderEditor : Editor
 
 		EditorGUILayout.Space();
 
-		bool showNormalGizmos_ = EditorGUILayout.Toggle("Show Normals", showNormalGizmos);
-		if (showNormalGizmos_ != showNormalGizmos)
-		{
-			SceneView.RepaintAll();
-			showNormalGizmos = showNormalGizmos_;
-		}
-		//showNormalGizmos = GUILayout.Toggle(showNormalGizmos, "Show Normals");
-
-		if (showNormalGizmos)
-		{
-			EditorGUI.BeginChangeCheck();
-			EditorGUI.indentLevel++;
-
-			normalGizmoLengh = EditorGUILayout.FloatField("Normal Length", normalGizmoLengh);
-
-			EditorGUI.indentLevel--;
-			if (EditorGUI.EndChangeCheck())
-			{
-				SceneView.RepaintAll();
-			}
-		}
-
-		EditorGUILayout.Space();
-
 		{
 			EditorGUI.BeginChangeCheck();
 
@@ -216,6 +192,30 @@ public class MeshBuilderEditor : Editor
 
 				serializedObject.ApplyModifiedProperties();
 				Undo.RecordObject(target, "Changed Face");
+			}
+		}
+
+		EditorGUILayout.Space();
+
+		bool showNormalGizmos_ = EditorGUILayout.Toggle("Show Normals", showNormalGizmos);
+		if (showNormalGizmos_ != showNormalGizmos)
+		{
+			SceneView.RepaintAll();
+			showNormalGizmos = showNormalGizmos_;
+		}
+		//showNormalGizmos = GUILayout.Toggle(showNormalGizmos, "Show Normals");
+
+		if (showNormalGizmos)
+		{
+			EditorGUI.BeginChangeCheck();
+			EditorGUI.indentLevel++;
+
+			normalGizmoLengh = EditorGUILayout.FloatField("Normal Length", normalGizmoLengh);
+
+			EditorGUI.indentLevel--;
+			if (EditorGUI.EndChangeCheck())
+			{
+				SceneView.RepaintAll();
 			}
 		}
 
