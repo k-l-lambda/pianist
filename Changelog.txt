@@ -3,6 +3,11 @@ TODO:
 
 
 
+2017.8.18	K.L.	<k.l.lambda@gmail.com>
+
+	>	MeshBuilderEditor: keep guid when export mesh.
+
+
 2017.8.16	K.L.	<k.l.lambda@gmail.com>
 
 	+	MeshBuilderEditor: set the default name when empty.

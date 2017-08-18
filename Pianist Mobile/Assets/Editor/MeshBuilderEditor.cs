@@ -52,7 +52,16 @@ public class MeshBuilderEditor : Editor
 		if (GUILayout.Button("Export Mesh"))
 		{
 			string path = t.AssetFolder + t.Name + ".prefab";
-			UnityEditor.AssetDatabase.CreateAsset(t.ResultMesh, path);
+
+			Mesh resultMesh = t.ResultMesh;
+
+			Mesh oldMesh = AssetDatabase.LoadAssetAtPath(path, typeof(Mesh)) as Mesh;
+
+			if (oldMesh)
+				EditorUtility.CopySerialized(resultMesh, oldMesh);
+			else
+				UnityEditor.AssetDatabase.CreateAsset(resultMesh, path);
+
 			UnityEditor.AssetDatabase.SaveAssets();
 
 			Debug.Log("Mesh export completed: " + path);
