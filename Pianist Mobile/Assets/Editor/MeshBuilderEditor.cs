@@ -2,8 +2,6 @@
 using UnityEngine;
 using UnityEditor;
 
-using Pianist;
-
 
 [CustomEditor(typeof(MeshBuilder))]
 public class MeshBuilderEditor : Editor
@@ -46,7 +44,13 @@ public class MeshBuilderEditor : Editor
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("AssetFolder"), true);
 
 			if (EditorGUI.EndChangeCheck())
+			{
 				serializedObject.ApplyModifiedProperties();
+
+				string tail = t.AssetFolder.Substring(t.AssetFolder.Length - 1);
+				if (tail != "/")
+					t.AssetFolder += "/";
+			}
 		}
 
 		if (GUILayout.Button("Export Mesh"))
