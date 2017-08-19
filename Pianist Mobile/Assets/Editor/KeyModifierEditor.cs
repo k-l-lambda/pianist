@@ -16,6 +16,8 @@ public class KeyModifierEditor : Editor
 
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionOutXIndex"), true);
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionInnerXIndex"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionTailLeftIndex"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionTailRightIndex"), true);
 
 			if (EditorGUI.EndChangeCheck())
 				serializedObject.ApplyModifiedProperties();
