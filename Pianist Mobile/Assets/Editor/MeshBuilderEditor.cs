@@ -162,6 +162,15 @@ public class MeshBuilderEditor : Editor
 
 		EditorGUILayout.Space();
 
+		if (GUILayout.Button("Inverse Faces"))
+		{
+			Undo.RecordObject(target, "Inverse Faces");
+			t.inverseFaces();
+			SceneView.RepaintAll();
+		}
+
+		EditorGUILayout.Space();
+
 		bool showMesh_ = EditorGUILayout.Toggle("Preview Mesh", showMesh);
 		if (showMesh_ != showMesh)
 		{

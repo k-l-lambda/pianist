@@ -222,4 +222,26 @@ public class MeshBuilder : MonoBehaviour
 			Faces[i].indices = mesh.GetIndices(i);
 		}
 	}
+
+	public void inverseFaces()
+	{
+		foreach (Face face in Faces)
+		{
+			string newSource = "";
+
+			string[] lines = face.indicesSource.Split('\n');
+			foreach (string line in lines)
+			{
+				string[] indices = line.Split(',');
+				System.Array.Reverse(indices);
+
+				newSource += string.Join(",", indices) + "\n";
+			}
+
+			while (newSource.Substring(newSource.Length - 2) == "\n\n")
+				newSource = newSource.Substring(0, newSource.Length - 1);
+
+			face.indicesSource = newSource;
+		}
+	}
 }
