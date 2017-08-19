@@ -14,8 +14,10 @@ public class KeyModifierEditor : Editor
 		{
 			EditorGUI.BeginChangeCheck();
 
-			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionOutXIndex"), true);
-			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionInnerXIndex"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionLeftOutXIndex"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionRightOutXIndex"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionLeftInnerXIndex"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionRightInnerXIndex"), true);
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionTailLeftIndex"), true);
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("CriterionTailRightIndex"), true);
 
@@ -26,18 +28,38 @@ public class KeyModifierEditor : Editor
 		{
 			EditorGUI.BeginChangeCheck();
 
-			string line = string.Join(",", new List<int>(t.HollowIndices).ConvertAll(ii => ii.ToString()).ToArray());
-			line = EditorGUILayout.TextField("Hollow Indices", line);
+			string line = string.Join(",", new List<int>(t.LeftHollowIndices).ConvertAll(ii => ii.ToString()).ToArray());
+			line = EditorGUILayout.TextField("Left Hollow Indices", line);
 
 			if (EditorGUI.EndChangeCheck())
 			{
-				Undo.RecordObject(target, "Changed Hollow Indices");
+				Undo.RecordObject(target, "Changed Left Hollow Indices");
 
 				try
 				{
-					t.HollowIndices = System.Array.ConvertAll<string, int>(line.Split(','), int.Parse);
+					t.LeftHollowIndices = System.Array.ConvertAll<string, int>(line.Split(','), int.Parse);
 				}
 				catch(System.FormatException)
+				{
+				}
+			}
+		}
+
+		{
+			EditorGUI.BeginChangeCheck();
+
+			string line = string.Join(",", new List<int>(t.RightHollowIndices).ConvertAll(ii => ii.ToString()).ToArray());
+			line = EditorGUILayout.TextField("Right Hollow Indices", line);
+
+			if (EditorGUI.EndChangeCheck())
+			{
+				Undo.RecordObject(target, "Changed Right Hollow Indices");
+
+				try
+				{
+					t.RightHollowIndices = System.Array.ConvertAll<string, int>(line.Split(','), int.Parse);
+				}
+				catch (System.FormatException)
 				{
 				}
 			}
@@ -59,6 +81,38 @@ public class KeyModifierEditor : Editor
 				}
 				catch (System.FormatException)
 				{
+				}
+			}
+		}
+
+		EditorGUILayout.Space();
+
+		{
+			if (t.CriterionLeftInnerXIndex >= 0)
+			{
+				EditorGUI.BeginChangeCheck();
+
+				float x = EditorGUILayout.FloatField("Left Hollow X", t.LeftHollowX);
+
+				if (EditorGUI.EndChangeCheck())
+				{
+					Undo.RecordObject(target, "Changed Left Hollow X");
+
+					t.LeftHollowX = x;
+				}
+			}
+
+			if (t.CriterionRightInnerXIndex >= 0)
+			{
+				EditorGUI.BeginChangeCheck();
+
+				float x = EditorGUILayout.FloatField("Right Hollow X", t.RightHollowX);
+
+				if (EditorGUI.EndChangeCheck())
+				{
+					Undo.RecordObject(target, "Changed Right Hollow X");
+
+					t.RightHollowX = x;
 				}
 			}
 		}

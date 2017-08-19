@@ -54,6 +54,7 @@
      <Compile Include="Assets\Editor\HandControllerEditor.cs" />
      <Compile Include="Assets\Editor\HandRigDrawer.cs" />
      <Compile Include="Assets\Editor\HandRigEditor.cs" />
+     <Compile Include="Assets\Editor\KeyModifierEditor.cs" />
      <Compile Include="Assets\Editor\MeshBuilderEditor.cs" />
      <None Include="Assets\Editor\Resources\MeshPreview.shader" />
      <None Include="Assets\Resources\Materials\Color.shader" />

@@ -7,22 +7,45 @@ using System.Collections.Generic;
 [RequireComponent(typeof(MeshBuilder))]
 public class KeyModifier : MonoBehaviour
 {
-	public int CriterionOutXIndex;
-	public int CriterionInnerXIndex;
+	public int CriterionLeftOutXIndex;
+	public int CriterionRightOutXIndex;
+	public int CriterionLeftInnerXIndex;
+	public int CriterionRightInnerXIndex;
 
 	public int CriterionTailLeftIndex;
 	public int CriterionTailRightIndex;
 
-	public int[] HollowIndices = new int[0];
+	public int[] LeftHollowIndices = new int[0];
+	public int[] RightHollowIndices = new int[0];
 	public int[] TailIndices = new int[0];
 
-	public float HollowX
+	public float LeftHollowX
 	{
-		get {
-			return getX(CriterionInnerXIndex);
+		get
+		{
+			if (CriterionLeftInnerXIndex < 0)
+				return 0;
+
+			return getX(CriterionLeftInnerXIndex);
 		}
-		set {
-			// TODO:
+		set
+		{
+			setHollowX(value, RightHollowX);
+		}
+	}
+
+	public float RightHollowX
+	{
+		get
+		{
+			if (CriterionRightInnerXIndex < 0)
+				return 0;
+
+			return getX(CriterionRightInnerXIndex);
+		}
+		set
+		{
+			setHollowX(LeftHollowX, value);
 		}
 	}
 
@@ -43,5 +66,34 @@ public class KeyModifier : MonoBehaviour
 	void Start()
 	{
 		meshBuilder = GetComponent<MeshBuilder>();
+	}
+
+	public void setHollowX(float leftX, float rightX)
+	{
+		if (CriterionLeftInnerXIndex >= 0)
+		{
+			float delta = leftX - LeftHollowX;
+
+			foreach (int i in LeftHollowIndices)
+				setX(i, getX(i) + delta);
+		}
+
+		if (CriterionRightInnerXIndex >= 0)
+		{
+			float delta = rightX - RightHollowX;
+
+			foreach (int i in RightHollowIndices)
+				setX(i, getX(i) + delta);
+		}
+
+		{
+			float left = CriterionLeftInnerXIndex >= 0 ? getX(CriterionLeftInnerXIndex) : getX(CriterionLeftOutXIndex);
+			float right = CriterionRightInnerXIndex >= 0 ? getX(CriterionRightInnerXIndex) : getX(CriterionRightOutXIndex);
+			float center = (left + right) / 2f;
+
+			float delta = center - (getX(CriterionTailLeftIndex) + getX(CriterionTailRightIndex)) / 2f;
+			foreach(int i in TailIndices)
+				setX(i, getX(i) + delta);
+		}
 	}
 }

@@ -5,6 +5,8 @@ TODO:
 
 2017.8.19	K.L.	<k.l.lambda@gmail.com>
 
+	+	KeyModifier: setHollowX implemented.
+
 	+	KeyModifier: script created.
 
 	+	MeshBuilder: added inverse faces.
