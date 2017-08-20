@@ -96,4 +96,16 @@ public class KeyModifier : MonoBehaviour
 				setX(i, getX(i) + delta);
 		}
 	}
+
+	public void mirrorX()
+	{
+		for (int i = 0; i < meshBuilder.PointerCount; ++i)
+		{
+			Transform pointer = meshBuilder.getPointerAt(i);
+			pointer.localPosition = new Vector3(-pointer.localPosition.x, pointer.localPosition.y, pointer.localPosition.z);
+			pointer.localRotation = new Quaternion(-pointer.localRotation.x, pointer.localRotation.y, pointer.localRotation.z, -pointer.localRotation.w);
+		}
+
+		meshBuilder.inverseFaces();
+	}
 }

@@ -115,6 +115,14 @@ public class KeyModifierEditor : Editor
 					t.RightHollowX = x;
 				}
 			}
+
+			if (GUILayout.Button("Mirror"))
+			{
+				Undo.RecordObject(target, "Mirror");
+
+				t.mirrorX();
+				SceneView.RepaintAll();
+			}
 		}
 	}
 }

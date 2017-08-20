@@ -335,6 +335,7 @@ GameObject:
   m_Component:
   - component: {fileID: 4151587194635096}
   - component: {fileID: 114801975090007776}
+  - component: {fileID: 114491166416635746}
   m_Layer: 0
   m_Name: key2
   m_TagString: Untagged
@@ -1302,7 +1303,7 @@ Transform:
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1441547430635746}
   m_LocalRotation: {x: -0, y: -0.7071068, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: -2.732, y: 0, z: 18.75}
+  m_LocalPosition: {x: -2.732, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 4151587194635096}
@@ -1380,7 +1381,7 @@ Transform:
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1302702932444776}
   m_LocalRotation: {x: -0.7071066, y: -0, z: -0, w: 0.707107}
-  m_LocalPosition: {x: -2.7270002, y: 0, z: 18.75}
+  m_LocalPosition: {x: -2.7270002, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 4151587194635096}
@@ -1666,7 +1667,7 @@ Transform:
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1073568889627076}
   m_LocalRotation: {x: -0, y: -0.7071068, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: -0.48, y: -4, z: 18.75}
+  m_LocalPosition: {x: -2.58, y: -4, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 4151587194635096}
@@ -1867,6 +1868,26 @@ Transform:
   m_Father: {fileID: 4151587194635096}
   m_RootOrder: 48
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &114491166416635746
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 100100000}
+  m_GameObject: {fileID: 1269521509467354}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ce9cf41b2395cc4f9723e35e38d308f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  CriterionLeftOutXIndex: -1
+  CriterionRightOutXIndex: -1
+  CriterionLeftInnerXIndex: 50
+  CriterionRightInnerXIndex: 41
+  CriterionTailLeftIndex: 3
+  CriterionTailRightIndex: 8
+  LeftHollowIndices: 3200000033000000340000003500000036000000020000001400000016000000
+  RightHollowIndices: 290000002b0000002e0000002d0000002f000000070000001500000017000000
+  TailIndices: 03000000080000001e000000200000001a0000001b0000001c0000001d00000004000000090000001f00000021000000
 --- !u!114 &114801975090007776
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -1884,4 +1905,4 @@ MonoBehaviour:
   - topology: 2
     indicesSource: "1,58,40,6\n50,2,7,41\n3,4,9,8\n27,32,33,29\n28,31,30,26\n61,59,38,36\n37,39,42,44\n24,34,35,25\n11,0,5,13\r\n14,1,0,11\r\n13,5,6,15\r\n18,16,1,14\r\n15,6,17,19\r\n0,1,6,5\n10,38,16,18\n19,17,39,12\n36,10,34,24\n25,35,12,37\n38,59,58,1\n38,1,16,38\n39,6,40,42\n17,6,39,17\n31,4,3,30\n32,8,9,33\n47,46,21,23\n46,41,7,21\n43,41,46,43\n49,48,43,45\n44,42,48,49\n45,43,46,47\n42,40,48,42\n48,40,41,43\n51,50,58,60\n52,50,51,52\n20,2,50,52\n60,58,59,60\n53,51,60,62\n62,60,59,61\n54,52,51,53\n22,20,52,54"
   Name: key2
-  AssetFolder: Assets/Resources/
+  AssetFolder: Assets/Resources/Meshes/
