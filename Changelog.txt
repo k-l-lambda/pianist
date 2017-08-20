@@ -5,6 +5,11 @@ TODO:
 
 2017.8.20	K.L.	<k.l.lambda@gmail.com>
 
+	+	Prefab of Piano added.
+	+	Mesh of Shell added.
+
+	+	Prefab of Keyboard added.
+
 	+	Prefab of KeyGroup added.
 
 	+	KeyModifier: mirror added.
