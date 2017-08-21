@@ -20,6 +20,33 @@ public class MeshBuilderEditor : Editor
 	static float normalGizmoLengh = 0.4f;
 
 
+	static float snapToNumber(float input, float snap)
+	{
+		if (Mathf.Abs(input - snap) < 1e-6f)
+			return snap;
+
+		return input;
+	}
+
+	static float snapToInteger(float input)
+	{
+		float x= snapToNumber(input, 0);
+		x = snapToNumber(x, -1);
+		x = snapToNumber(x, 1);
+		x = snapToNumber(x, 0.5f);
+		x = snapToNumber(x, -0.5f);
+		x = snapToNumber(x, 2);
+		x = snapToNumber(x, -2);
+
+		return x;
+	}
+
+	static Vector3 snapToInteger(Vector3 input)
+	{
+		return new Vector3(snapToInteger(input.x), snapToInteger(input.y), snapToInteger(input.z));
+	}
+
+
 	public override void OnInspectorGUI()
 	{
 		MeshBuilder t = target as MeshBuilder;
@@ -126,7 +153,7 @@ public class MeshBuilderEditor : Editor
 				Transform trans = t.getPointerAt(i);
 
 				EditorGUI.BeginChangeCheck();
-				Vector3 tf = EditorGUILayout.Vector3Field(i.ToString(), trans.TransformVector(Vector3.forward) * normalScales[i]);
+				Vector3 tf = EditorGUILayout.Vector3Field(i.ToString(), snapToInteger(trans.TransformVector(Vector3.forward) * normalScales[i]));
 				if (EditorGUI.EndChangeCheck())
 				{
 					Undo.RecordObject(t.getPointerAt(i), "Changed Vertex Normal");

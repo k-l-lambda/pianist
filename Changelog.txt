@@ -3,6 +3,11 @@ TODO:
 
 
 
+2017.8.21	K.L.	<k.l.lambda@gmail.com>
+
+	+	MeshBuilder: added snap to integer for normal vector.
+
+
 2017.8.20	K.L.	<k.l.lambda@gmail.com>
 
 	+	Prefab of Piano added.
