@@ -71,6 +71,7 @@
     <Compile Include="Assets\Scripts\HandRig.cs" />
     <Compile Include="Assets\Scripts\HandSkeleton.cs" />
     <Compile Include="Assets\Scripts\KeyModifier.cs" />
+    <Compile Include="Assets\Scripts\MIDIPlayer.cs" />
     <Compile Include="Assets\Scripts\MeshBuilder.cs" />
   </ItemGroup>
   <ItemGroup>

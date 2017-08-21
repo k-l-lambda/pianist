@@ -5,6 +5,8 @@ TODO:
 
 2017.8.21	K.L.	<k.l.lambda@gmail.com>
 
+	+	UI prefab MIDIPlayer created.
+
 	+	MeshBuilder: added snap to integer for normal vector.
 
 
