@@ -1,5 +1,6 @@
 
 TODO:
+	show MIDI length in seconds.
 
 
 

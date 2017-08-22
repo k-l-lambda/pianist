@@ -8,6 +8,7 @@ public class MIDIPlayer : MonoBehaviour {
 
 	Dropdown FileList;
 	InputField MediaFolder;
+	Text Timer;
 
 	Sanford.Multimedia.Midi.Sequence sequence = new Sanford.Multimedia.Midi.Sequence();
 	Sanford.Multimedia.Midi.Sequencer sequencer = new Sanford.Multimedia.Midi.Sequencer();
@@ -36,12 +37,20 @@ public class MIDIPlayer : MonoBehaviour {
 
 		MediaFolder = Player.Find("MediaFolder").GetComponent<InputField>();
 
+		Timer = Player.Find("Timer").GetComponent<Text>();
+
 		sequence.Format = 1;
 
 		sequencer.Position = 0;
 		sequencer.Sequence = sequence;
 
-		sequencer.ChannelMessagePlayed += new System.EventHandler<Sanford.Multimedia.Midi.ChannelMessageEventArgs> (onChannelMessagePlayed);
+		//sequence.LoadCompleted += HandleLoadCompleted;
+		sequencer.ChannelMessagePlayed += onChannelMessagePlayed;
+	}
+
+	void Update()
+	{
+		Timer.text = sequence.GetLength().ToString();
 	}
 
 	void searchFiles()
@@ -69,13 +78,23 @@ public class MIDIPlayer : MonoBehaviour {
 
 		string fileName = Files[FileList.value].FullName;
 		if (fileName != null)
-			sequence.Load(fileName);
+			sequence.LoadAsync(fileName);
 	}
 
 	public void onPlay()
 	{
 		sequencer.Start();
 	}
+
+	public void onStop()
+	{
+		sequencer.Stop();
+	}
+
+	/*private void HandleLoadCompleted(object sender, System.ComponentModel.AsyncCompletedEventArgs e)
+	{
+		Timer.text = sequence.GetLength().ToString();
+	}*/
 
 	private void onChannelMessagePlayed(object sender, Sanford.Multimedia.Midi.ChannelMessageEventArgs arg)
 	{
