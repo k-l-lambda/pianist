@@ -146,7 +146,7 @@ public class MeshBuilder : MonoBehaviour
 		int count = 0;
 		while (true)
 		{
-			if (!transform.FindChild(count.ToString()))
+			if (!transform.Find(count.ToString()))
 				break;
 
 			++count;

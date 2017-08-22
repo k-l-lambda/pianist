@@ -56,6 +56,7 @@
      <Compile Include="Assets\Editor\HandRigEditor.cs" />
      <Compile Include="Assets\Editor\KeyModifierEditor.cs" />
      <Compile Include="Assets\Editor\MeshBuilderEditor.cs" />
+     <Compile Include="Assets\Editor\PianoControllerEditor.cs" />
      <None Include="Assets\Editor\Resources\MeshPreview.shader" />
      <None Include="Assets\Resources\Materials\Color.shader" />
  <Reference Include="UnityEditor.Advertisements">
