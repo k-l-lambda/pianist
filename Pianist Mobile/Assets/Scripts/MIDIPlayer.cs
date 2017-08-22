@@ -13,6 +13,10 @@ public class MIDIPlayer : MonoBehaviour {
 	Sanford.Multimedia.Midi.Sequence sequence = new Sanford.Multimedia.Midi.Sequence();
 	Sanford.Multimedia.Midi.Sequencer sequencer = new Sanford.Multimedia.Midi.Sequencer();
 
+	public bool OutputToDevice = true;
+
+	Sanford.Multimedia.Midi.OutputDevice outDevice;
+
 	public event System.EventHandler<Sanford.Multimedia.Midi.ChannelMessageEventArgs> ChannelMessagePlayed
 	{
 		add
@@ -46,6 +50,16 @@ public class MIDIPlayer : MonoBehaviour {
 
 		//sequence.LoadCompleted += HandleLoadCompleted;
 		sequencer.ChannelMessagePlayed += onChannelMessagePlayed;
+		sequencer.Stopped += onStopped;
+
+		if (OutputToDevice)
+			outDevice = new Sanford.Multimedia.Midi.OutputDevice(0);
+	}
+
+	void OnDestroy()
+	{
+		if (outDevice != null)
+			outDevice.Dispose();
 	}
 
 	void Update()
@@ -64,6 +78,7 @@ public class MIDIPlayer : MonoBehaviour {
 			options.Add(new Dropdown.OptionData(file.Name));
 		}
 
+		FileList.ClearOptions();
 		FileList.AddOptions(options);
 	}
 
@@ -98,6 +113,15 @@ public class MIDIPlayer : MonoBehaviour {
 
 	private void onChannelMessagePlayed(object sender, Sanford.Multimedia.Midi.ChannelMessageEventArgs arg)
 	{
-		Debug.Log("ChannelMessagePlayed: " + arg.Message.Command.ToString());
+		//Debug.Log("ChannelMessagePlayed: " + arg.Message.Command.ToString());
+
+		if(OutputToDevice)
+			outDevice.Send(arg.Message);
+	}
+
+	private void onStopped(object sender, Sanford.Multimedia.Midi.StoppedEventArgs arg)
+	{
+		foreach(Sanford.Multimedia.Midi.ChannelMessage message in arg.Messages)
+			Debug.Log("ChannelMessagePlayed: " + message.Command);
 	}
 }
