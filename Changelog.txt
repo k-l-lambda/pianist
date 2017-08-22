@@ -3,6 +3,11 @@ TODO:
 
 
 
+2017.8.22	K.L.	<k.l.lambda@gmail.com>
+
+	+	MIDIPlayer: added MIDI sequence.
+
+
 2017.8.21	K.L.	<k.l.lambda@gmail.com>
 
 	*	Embed fingering information into MIDI stream by meta message of type Text and Marker.

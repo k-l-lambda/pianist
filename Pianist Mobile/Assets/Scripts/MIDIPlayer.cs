@@ -9,6 +9,23 @@ public class MIDIPlayer : MonoBehaviour {
 	Dropdown FileList;
 	InputField MediaFolder;
 
+	Sanford.Multimedia.Midi.Sequence sequence = new Sanford.Multimedia.Midi.Sequence();
+	Sanford.Multimedia.Midi.Sequencer sequencer = new Sanford.Multimedia.Midi.Sequencer();
+
+	public event System.EventHandler<Sanford.Multimedia.Midi.ChannelMessageEventArgs> ChannelMessagePlayed
+	{
+		add
+		{
+			sequencer.ChannelMessagePlayed += value;
+		}
+		remove
+		{
+			sequencer.ChannelMessagePlayed -= value;
+		}
+	}
+
+	FileInfo[] Files;
+
 
 	void Start()
 	{
@@ -18,6 +35,13 @@ public class MIDIPlayer : MonoBehaviour {
 		FileList.ClearOptions();
 
 		MediaFolder = Player.Find("MediaFolder").GetComponent<InputField>();
+
+		sequence.Format = 1;
+
+		sequencer.Position = 0;
+		sequencer.Sequence = sequence;
+
+		sequencer.ChannelMessagePlayed += new System.EventHandler<Sanford.Multimedia.Midi.ChannelMessageEventArgs> (onChannelMessagePlayed);
 	}
 
 	void searchFiles()
@@ -25,8 +49,8 @@ public class MIDIPlayer : MonoBehaviour {
 		List<Dropdown.OptionData> options = new List<Dropdown.OptionData>();
 
 		DirectoryInfo dir = new DirectoryInfo(MediaFolder.text);
-		FileInfo[] files = dir.GetFiles("*.mid");
-		foreach (FileInfo file in files)
+		Files = dir.GetFiles("*.mid");
+		foreach (FileInfo file in Files)
 		{
 			options.Add(new Dropdown.OptionData(file.Name));
 		}
@@ -37,5 +61,24 @@ public class MIDIPlayer : MonoBehaviour {
 	public void onMediaPathEditEnd()
 	{
 		searchFiles();
+	}
+
+	public void onFileSelectChanged()
+	{
+		sequencer.Stop();
+
+		string fileName = Files[FileList.value].FullName;
+		if (fileName != null)
+			sequence.Load(fileName);
+	}
+
+	public void onPlay()
+	{
+		sequencer.Start();
+	}
+
+	private void onChannelMessagePlayed(object sender, Sanford.Multimedia.Midi.ChannelMessageEventArgs arg)
+	{
+		Debug.Log("ChannelMessagePlayed: " + arg.Message.Command.ToString());
 	}
 }
