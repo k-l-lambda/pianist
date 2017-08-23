@@ -62,10 +62,17 @@ public class PianoController : MonoBehaviour {
 
 		return -1;
 	}
+
 	public void setKeyPosition(int index, float depth)
 	{
 		Transform key = Keys[index];
 		if(key)
 			key.localRotation = Quaternion.AngleAxis(AngleMax * depth, Vector3.right);
+	}
+
+	public void resetKeys()
+	{
+		for (int index = 21; index <= 108; ++index)
+			setKeyPosition(index, 0);
 	}
 }

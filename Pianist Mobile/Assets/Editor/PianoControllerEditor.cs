@@ -10,6 +10,11 @@ public class PianoControllerEditor : Editor
 	{
 		PianoController t = target as PianoController;
 
+		if (GUILayout.Button("Reset Keys"))
+		{
+			t.resetKeys();
+		}
+
 		for (int index = 21; index <= 108; ++index)
 		{
 			float angle = t.getKeyPosition(index);

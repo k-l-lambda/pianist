@@ -121,7 +121,10 @@ public class MIDIPlayer : MonoBehaviour {
 
 	private void onStopped(object sender, Sanford.Multimedia.Midi.StoppedEventArgs arg)
 	{
-		foreach(Sanford.Multimedia.Midi.ChannelMessage message in arg.Messages)
+		foreach (Sanford.Multimedia.Midi.ChannelMessage message in arg.Messages)
+		{
 			Debug.Log("ChannelMessagePlayed: " + message.Command);
+			outDevice.Send(message);
+		}
 	}
 }
