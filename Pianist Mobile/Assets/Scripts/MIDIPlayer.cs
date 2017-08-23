@@ -41,6 +41,10 @@ public class MIDIPlayer : MonoBehaviour {
 
 		MediaFolder = Player.Find("MediaFolder").GetComponent<InputField>();
 
+		string path = PlayerPrefs.GetString("MediaFolder");
+		if (path != null && path.Length > 0)
+			MediaFolder.text = path;
+
 		Timer = Player.Find("Timer").GetComponent<Text>();
 
 		sequence.Format = 1;
@@ -84,6 +88,9 @@ public class MIDIPlayer : MonoBehaviour {
 
 	public void onMediaPathEditEnd()
 	{
+		PlayerPrefs.SetString("MediaFolder", MediaFolder.text);
+		PlayerPrefs.Save();
+
 		searchFiles();
 	}
 
