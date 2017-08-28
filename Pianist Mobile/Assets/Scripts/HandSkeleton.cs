@@ -1,5 +1,7 @@
 
 using System;
+using System.Collections.Generic;
+
 
 namespace Pianist
 {
@@ -197,6 +199,18 @@ namespace Pianist
 			Vector3.up,			// PINKY3_FY,
 			Vector3.forward,	// PINKY3_FZ,
 			Vector3.zero,		// PINKY_TIP,
+		};
+
+		public static readonly Dictionary<HandBoneIndex, HandBoneIndex> Linkages = new Dictionary<bi, bi>()
+		{
+			{bi.INDEX2_X, bi.INDEX3_X},
+			{bi.INDEX3_X, bi.INDEX2_X},
+			{bi.MIDDLE2_X, bi.MIDDLE3_X},
+			{bi.MIDDLE3_X, bi.MIDDLE2_X},
+			{bi.RING2_X, bi.RING3_X},
+			{bi.RING3_X, bi.RING2_X},
+			{bi.PINKY2_X, bi.PINKY3_X},
+			{bi.PINKY3_X, bi.PINKY2_X},
 		};
 	};
 

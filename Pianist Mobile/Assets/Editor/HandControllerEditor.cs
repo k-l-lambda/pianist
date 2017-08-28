@@ -18,14 +18,11 @@ public class HandControllerEditor : Editor
 		EditorGUILayout.LabelField("Gears:");
 		{
 			EditorGUI.indentLevel++;
-			int i = 0;
 			foreach (var entry in t.Gears)
 			{
 				entry.Value.angle = EditorGUILayout.FloatField(entry.Key.ToString().ToLower(), entry.Value.angle);
 
-				HandRigData.Range range = t.Rig.Data.RangedAngles[i++];
-				entry.Value.angle = Mathf.Max(entry.Value.angle, range.low);
-				entry.Value.angle = Mathf.Min(entry.Value.angle, range.high);
+				entry.Value.angle = entry.Value.angle;
 			}
 			EditorGUI.indentLevel--;
 		}
