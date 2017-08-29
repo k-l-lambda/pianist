@@ -21,8 +21,6 @@ public class HandControllerEditor : Editor
 			foreach (var entry in t.Gears)
 			{
 				entry.Value.angle = EditorGUILayout.FloatField(entry.Key.ToString().ToLower(), entry.Value.angle);
-
-				entry.Value.angle = entry.Value.angle;
 			}
 			EditorGUI.indentLevel--;
 		}

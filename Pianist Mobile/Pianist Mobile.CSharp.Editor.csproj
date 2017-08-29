@@ -116,6 +116,7 @@
     <Compile Include="Assets\Editor\HandRigEditor.cs" />
     <Compile Include="Assets\Editor\KeyModifierEditor.cs" />
     <Compile Include="Assets\Editor\MeshBuilderEditor.cs" />
+    <Compile Include="Assets\Editor\PianoControllerEditor.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Editor\Resources\MeshPreview.shader" />
