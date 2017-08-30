@@ -1,9 +1,13 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Midi = Sanford.Multimedia.Midi;
+
+
 
 [RequireComponent(typeof(PianoController))]
-public class MIDIPiano : MonoBehaviour {
+public class MIDIPiano : MonoBehaviour
+{
 	PianoController Controller;
 	MIDIPlayer Player;
 
@@ -25,13 +29,13 @@ public class MIDIPiano : MonoBehaviour {
 		Actions.Clear();
 	}
 
-	private void onChannelMessagePlayed(object sender, Sanford.Multimedia.Midi.ChannelMessageEventArgs arg)
+	private void onChannelMessagePlayed(object sender, Midi.ChannelMessageEventArgs arg)
 	{
-		if (arg.Message.Command == Sanford.Multimedia.Midi.ChannelCommand.NoteOn)
+		if (arg.Message.Command == Midi.ChannelCommand.NoteOn)
 			Actions.Add(delegate {
 				Controller.setKeyPosition(arg.Message.Data1, 1);
 			});
-		else if (arg.Message.Command == Sanford.Multimedia.Midi.ChannelCommand.NoteOff)
+		else if (arg.Message.Command == Midi.ChannelCommand.NoteOff)
 			Actions.Add(delegate {
 				Controller.setKeyPosition(arg.Message.Data1, 0);
 			});

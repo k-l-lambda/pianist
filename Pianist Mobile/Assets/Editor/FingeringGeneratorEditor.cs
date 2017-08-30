@@ -6,6 +6,9 @@ using UnityEditor;
 [CustomEditor(typeof(FingeringGenerator))]
 public class FingeringGeneratorEditor : Editor
 {
+	string TargetName;
+
+
 	public override void OnInspectorGUI()
 	{
 		FingeringGenerator t = target as FingeringGenerator;
@@ -17,6 +20,8 @@ public class FingeringGeneratorEditor : Editor
 
 			if (EditorGUI.EndChangeCheck())
 			{
+				TargetName = string.Format("fingering {0}", t.SourceAsset.name);
+
 				t.load();
 			}
 		}
@@ -33,6 +38,17 @@ public class FingeringGeneratorEditor : Editor
 			EditorGUILayout.LabelField(string.Format("Format: {0}", t.MidiSeq.Format));
 			EditorGUILayout.LabelField(string.Format("Tracks: {0}", t.MidiSeq.Count));
 			EditorGUILayout.LabelField(string.Format("Division: {0}", t.MidiSeq.Division));
+		}
+
+		EditorGUILayout.Space();
+
+		TargetName = EditorGUILayout.TextField("Target File Name", TargetName);
+		if(TargetName == "" && t.SourceAsset)
+			TargetName = string.Format("fingering {0}", t.SourceAsset.name);
+
+		if (GUILayout.Button("Generate"))
+		{
+			t.generate(string.Format("{0}/Editor/Resources/MIDI/Fingerings/{1}", Application.dataPath, TargetName));
 		}
 	}
 }

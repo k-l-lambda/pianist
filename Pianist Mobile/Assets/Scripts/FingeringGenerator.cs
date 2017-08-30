@@ -12,6 +12,8 @@ public class FingeringGenerator : MonoBehaviour
 
 	void Start ()
 	{
+		if (SourceAsset)
+			load();
 	}
 
 	public void load()
@@ -28,5 +30,23 @@ public class FingeringGenerator : MonoBehaviour
 
 		MidiSeq = new Midi.Sequence();
 		MidiSeq.Load(stream);
+	}
+
+	public void generate(string fileName)
+	{
+		if (MidiSeq == null)
+			load();
+
+		run(MidiSeq);
+
+		FileStream file = new FileStream(fileName, FileMode.OpenOrCreate);
+		MidiSeq.Save(file);
+
+		Debug.Log("MIDI file saved: " + fileName);
+	}
+
+	public static void run(Midi.Sequence seq)
+	{
+		// TODO:
 	}
 }
