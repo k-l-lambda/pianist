@@ -102,7 +102,7 @@ public class MeshBuilderEditor : Editor
 
 		GUILayout.BeginHorizontal();
 
-		meshToImport = EditorGUILayout.ObjectField(meshToImport, typeof(Mesh)) as Mesh;
+		meshToImport = EditorGUILayout.ObjectField(meshToImport, typeof(Mesh), false) as Mesh;
 
 		if (GUILayout.Button("Import Mesh"))
 		{

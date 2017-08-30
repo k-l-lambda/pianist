@@ -1,7 +1,13 @@
 
 TODO:
 	show MIDI length in seconds.
+	TextTrackWriter
 
+
+
+2017.8.30	K.L.	<k.l.lambda@gmail.com>
+
+	+	FingeringGenerator: created.
 
 
 2017.8.29	K.L.	<k.l.lambda@gmail.com>

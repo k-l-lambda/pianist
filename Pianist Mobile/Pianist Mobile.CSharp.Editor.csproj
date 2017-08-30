@@ -111,6 +111,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\Editor\FingeringGeneratorEditor.cs" />
     <Compile Include="Assets\Editor\HandControllerEditor.cs" />
     <Compile Include="Assets\Editor\HandRigDrawer.cs" />
     <Compile Include="Assets\Editor\HandRigEditor.cs" />
