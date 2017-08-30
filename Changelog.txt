@@ -7,6 +7,9 @@ TODO:
 
 2017.8.30	K.L.	<k.l.lambda@gmail.com>
 
+	+	FingeringGenerator: added method of clear.
+	+	FingeringGenerator: added note field in marker.
+
 	+	FingeringGenerator: added random marker sample.
 
 	+	FingeringGeneratorEditor: generate pipeline added.
