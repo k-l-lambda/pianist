@@ -1,18 +1,32 @@
 ﻿using UnityEngine;
-using System.Collections;
+using System.IO;
+using Midi = Sanford.Multimedia.Midi;
 
 
-public class FingeringGenerator : MonoBehaviour {
+[ExecuteInEditMode]
+public class FingeringGenerator : MonoBehaviour
+{
 	public TextAsset SourceAsset;
+	public Midi.Sequence MidiSeq;
 
 
-	// Use this for initialization
-	void Start () {
-	
+	void Start ()
+	{
 	}
-	
-	// Update is called once per frame
-	void Update () {
-	
+
+	public void load()
+	{
+		if (!SourceAsset)
+		{
+			Debug.LogError("SourceAsset is null.");
+			return;
+		}
+
+		MemoryStream stream = new MemoryStream();
+		stream.Write(SourceAsset.bytes, 0, SourceAsset.bytes.Length);
+		stream.Position = 0;
+
+		MidiSeq = new Midi.Sequence();
+		MidiSeq.Load(stream);
 	}
 }

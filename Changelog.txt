@@ -7,6 +7,7 @@ TODO:
 
 2017.8.30	K.L.	<k.l.lambda@gmail.com>
 
+	+	FingeringGenerator: MIDI load implemented.
 	+	FingeringGenerator: created.
 
 

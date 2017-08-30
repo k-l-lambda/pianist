@@ -2,6 +2,9 @@
 using UnityEngine.UI;
 using System.Collections.Generic;
 using System.IO;
+using Midi = Sanford.Multimedia.Midi;
+
+
 
 public class MIDIPlayer : MonoBehaviour {
 	Transform Player;
@@ -10,14 +13,14 @@ public class MIDIPlayer : MonoBehaviour {
 	InputField MediaFolder;
 	Text Timer;
 
-	Sanford.Multimedia.Midi.Sequence sequence = new Sanford.Multimedia.Midi.Sequence();
-	Sanford.Multimedia.Midi.Sequencer sequencer = new Sanford.Multimedia.Midi.Sequencer();
+	Midi.Sequence sequence = new Midi.Sequence();
+	Midi.Sequencer sequencer = new Midi.Sequencer();
 
 	public bool OutputToDevice = true;
 
-	Sanford.Multimedia.Midi.OutputDevice outDevice;
+	Midi.OutputDevice outDevice;
 
-	public event System.EventHandler<Sanford.Multimedia.Midi.ChannelMessageEventArgs> ChannelMessagePlayed
+	public event System.EventHandler<Midi.ChannelMessageEventArgs> ChannelMessagePlayed
 	{
 		add
 		{
@@ -57,7 +60,7 @@ public class MIDIPlayer : MonoBehaviour {
 		sequencer.Stopped += onStopped;
 
 		if (OutputToDevice)
-			outDevice = new Sanford.Multimedia.Midi.OutputDevice(0);
+			outDevice = new Midi.OutputDevice(0);
 	}
 
 	void OnDestroy()
@@ -118,7 +121,7 @@ public class MIDIPlayer : MonoBehaviour {
 		Timer.text = sequence.GetLength().ToString();
 	}*/
 
-	private void onChannelMessagePlayed(object sender, Sanford.Multimedia.Midi.ChannelMessageEventArgs arg)
+	private void onChannelMessagePlayed(object sender, Midi.ChannelMessageEventArgs arg)
 	{
 		//Debug.Log("ChannelMessagePlayed: " + arg.Message.Command.ToString());
 
@@ -126,9 +129,9 @@ public class MIDIPlayer : MonoBehaviour {
 			outDevice.Send(arg.Message);
 	}
 
-	private void onStopped(object sender, Sanford.Multimedia.Midi.StoppedEventArgs arg)
+	private void onStopped(object sender, Midi.StoppedEventArgs arg)
 	{
-		foreach (Sanford.Multimedia.Midi.ChannelMessage message in arg.Messages)
+		foreach (Midi.ChannelMessage message in arg.Messages)
 		{
 			Debug.Log("ChannelMessagePlayed: " + message.Command);
 			outDevice.Send(message);
