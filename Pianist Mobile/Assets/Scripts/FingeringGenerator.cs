@@ -41,12 +41,40 @@ public class FingeringGenerator : MonoBehaviour
 
 		FileStream file = new FileStream(fileName, FileMode.OpenOrCreate);
 		MidiSeq.Save(file);
+		file.Close();
 
 		Debug.Log("MIDI file saved: " + fileName);
 	}
 
 	public static void run(Midi.Sequence seq)
 	{
-		// TODO:
+		if (seq.Count == 0)
+		{
+			Debug.LogWarning("MIDI no track found.");
+			return;
+		}
+
+		seq[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, System.Text.Encoding.Default.GetBytes("Fingering by K.L.Pianist, fingering-marker-pattern:finger:([\\d,]+)")));
+
+		foreach (Midi.Track track in seq)
+		{
+			foreach(Midi.MidiEvent e in track.Iterator())
+			{
+				if (e.MidiMessage.MessageType == Midi.MessageType.Channel)
+				{
+					Midi.ChannelMessage cm = e.MidiMessage as Midi.ChannelMessage;
+					if (cm.Command == Midi.ChannelCommand.NoteOn)
+					{
+						int f = Random.Range(-5, 5);
+						if (f >= 0)
+							f += 1;
+
+						string marker = string.Format("finger:{0}", f);
+
+						track.Insert(e.AbsoluteTicks, new Midi.MetaMessage(Midi.MetaType.Marker, System.Text.Encoding.Default.GetBytes(marker)));
+					}
+				}
+			}
+		}
 	}
 }
