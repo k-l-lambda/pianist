@@ -9,6 +9,8 @@ public class FingeringGenerator : MonoBehaviour
 	public TextAsset SourceAsset;
 	public Midi.Sequence MidiSeq;
 
+	static readonly string MidiSignatureText = "Fingering by K.L.Pianist, fingering-marker-pattern:finger:(\\d+)\\|([\\d,-]+)";
+
 
 	void Start ()
 	{
@@ -90,7 +92,7 @@ public class FingeringGenerator : MonoBehaviour
 
 		clear(seq);
 
-		seq[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, System.Text.Encoding.Default.GetBytes("Fingering by K.L.Pianist, fingering-marker-pattern:finger:(\\d+)\\|([\\d,]+)")));
+		seq[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, System.Text.Encoding.Default.GetBytes(MidiSignatureText)));
 
 		foreach (Midi.Track track in seq)
 		{

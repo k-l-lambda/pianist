@@ -5,6 +5,11 @@ TODO:
 
 
 
+2017.8.31	K.L.	<k.l.lambda@gmail.com>
+
+	>	FingeringGenerator: fixed signature text.
+
+
 2017.8.30	K.L.	<k.l.lambda@gmail.com>
 
 	+	FingeringGenerator: added method of clear.
