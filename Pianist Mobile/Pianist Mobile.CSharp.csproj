@@ -74,6 +74,7 @@
     <Compile Include="Assets\Scripts\MIDIPiano.cs" />
     <Compile Include="Assets\Scripts\MIDIPlayer.cs" />
     <Compile Include="Assets\Scripts\MeshBuilder.cs" />
+    <Compile Include="Assets\Scripts\NotationUtils.cs" />
     <Compile Include="Assets\Scripts\Pianist\Fingering.cs" />
     <Compile Include="Assets\Scripts\Pianist\FingeringNavigator.cs" />
     <Compile Include="Assets\Scripts\Pianist\HandSkeleton.cs" />

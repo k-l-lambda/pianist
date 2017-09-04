@@ -7,6 +7,10 @@ TODO:
 
 2017.9.4	K.L.	<k.l.lambda@gmail.com>
 
+	+	NotationUtils.cs created.
+
+	*	Fingering Navigator: heuristic breadth first search.
+
 	+	Pianist/FingeringNavigator.cs: created.
 
 	+	Pianist/Fingering.cs: created.

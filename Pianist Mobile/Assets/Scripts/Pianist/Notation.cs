@@ -7,6 +7,7 @@ namespace Pianist
 	public class Note
 	{
 		public int pitch;
+		public int velocity;
 
 		public int tick;
 
@@ -18,7 +19,7 @@ namespace Pianist
 
 	public class NotationTrack
 	{
-		Note[] notes;
+		public Note[] notes;
 
 		public static NotationTrack merge(NotationTrack[] tracks)
 		{
