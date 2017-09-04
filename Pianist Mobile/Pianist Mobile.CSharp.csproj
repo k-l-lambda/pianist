@@ -70,11 +70,11 @@
     <Compile Include="Assets\Scripts\FingeringGenerator.cs" />
     <Compile Include="Assets\Scripts\HandController.cs" />
     <Compile Include="Assets\Scripts\HandRig.cs" />
-    <Compile Include="Assets\Scripts\HandSkeleton.cs" />
     <Compile Include="Assets\Scripts\KeyModifier.cs" />
     <Compile Include="Assets\Scripts\MIDIPiano.cs" />
     <Compile Include="Assets\Scripts\MIDIPlayer.cs" />
     <Compile Include="Assets\Scripts\MeshBuilder.cs" />
+    <Compile Include="Assets\Scripts\Pianist\HandSkeleton.cs" />
     <Compile Include="Assets\Scripts\PianoController.cs" />
     <Compile Include="Assets\Scripts\Sanford\Collections\Deque.cs" />
     <Compile Include="Assets\Scripts\Sanford\Collections\Generic\Deque\GenericDeque.Enumerator.cs" />
