@@ -2,7 +2,7 @@
 
 namespace Pianist
 {
-	enum Finger
+	public enum Finger
 	{
 		EMPTY					= 0,
 
@@ -51,5 +51,25 @@ namespace Pianist
 		RIGHT_MIDDLE_INDEX		= 32,
 		RIGHT_RING_MIDDLE		= 43,
 		RIGHT_PINKY_RING		= 54,
+	};
+
+
+	public class FingerSequence
+	{
+		public Finger[] seq;
+	};
+
+
+	public class Fingering
+	{
+		public class FingerMarker
+		{
+			public int tick;
+			public float time;
+			public int pitch;
+			public Finger finger;
+		};
+
+		public FingerMarker[] markers;
 	};
 }
