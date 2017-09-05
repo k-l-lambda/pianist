@@ -99,4 +99,9 @@ public class NotationUtils
 
 		return tracks;
 	}
+
+	public static void appendFingeringToMidiFile(Midi.Sequence file, Fingering[] fingerings)
+	{
+		// TODO:
+	}
 };

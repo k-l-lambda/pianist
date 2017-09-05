@@ -4,9 +4,12 @@ namespace Pianist
 {
 	public class FingeringNavigator
 	{
-		NotationTrack Track;
+		public NotationTrack Track;
 
-		Fingering run()
+		public HandConfig Config;
+		public SolveHandType HandType;
+
+		public Fingering run()
 		{
 			// TODO:
 			return new Fingering();

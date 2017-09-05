@@ -7,6 +7,8 @@ TODO:
 
 2017.9.5	K.L.	<k.l.lambda@gmail.com>
 
+	+	FingeringGenerator: added hand and track configs.
+
 	+	HandConfigLibrary.cs created.
 
 

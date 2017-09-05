@@ -81,4 +81,12 @@ namespace Pianist
 
 		public float Span15 = 7.5f;
 	};
+
+
+	public enum SolveHandType
+	{
+		MIX,
+		LEFT,
+		RIGHT,
+	}
 }
