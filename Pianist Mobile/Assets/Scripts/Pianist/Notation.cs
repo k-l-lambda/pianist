@@ -41,4 +41,45 @@ namespace Pianist
 			return new NotationTrack{notes = notes};
 		}
 	};
+
+
+	public class NoteChord
+	{
+		public int tick;
+		public Dictionary<int, Note> notes = new Dictionary<int, Note>();
+	};
+
+
+	public class NoteSequence
+	{
+		public NoteChord[] chords;
+
+
+		public static NoteSequence fromNotationTrack(NotationTrack track)
+		{
+			var chords = new List<NoteChord>();
+
+			NoteChord lastChord = null;
+
+			foreach (var note in track.notes)
+			{
+				var chord = lastChord;
+				if (chord == null || chord.tick < note.tick)
+				{
+					chord = new NoteChord { tick = note.tick, notes = new Dictionary<int,Note>() };
+					chords.Add(chord);
+
+					lastChord = chord;
+				}
+
+				chord.notes[note.pitch] = note;
+			}
+
+			var seq = new NoteSequence();
+			seq.chords = new NoteChord[chords.Count];
+			chords.CopyTo(seq.chords);
+
+			return seq;
+		}
+	};
 }

@@ -99,43 +99,6 @@ public class FingeringGenerator : MonoBehaviour
 		Debug.Log("MIDI file saved: " + fileName);
 	}
 
-	/*public void clear()
-	{
-		Regex signaturePattern = new Regex("^Fingering");
-		Regex fingerPattern = new Regex("^finger:");
-
-		foreach (Midi.Track track in MidiSeq)
-		{
-			System.Collections.Generic.List<int> toRemove = new System.Collections.Generic.List<int>();
-
-			for (int i = track.Count - 1; i >= 0; --i)
-			{
-				Midi.MidiEvent e = track.GetMidiEvent(i);
-
-				if (e.MidiMessage.MessageType == Midi.MessageType.Meta)
-				{
-					Midi.MetaMessage msg = e.MidiMessage as Midi.MetaMessage;
-					switch (msg.MetaType)
-					{
-						case Midi.MetaType.Text:
-							if (signaturePattern.Match(System.Text.Encoding.Default.GetString(msg.GetBytes())).Length > 0)
-								toRemove.Add(i);
-
-							break;
-						case Midi.MetaType.Marker:
-							if (fingerPattern.Match(System.Text.Encoding.Default.GetString(msg.GetBytes())).Length > 0)
-								toRemove.Add(i);
-
-							break;
-					}
-				}
-			}
-
-			foreach (int i in toRemove)
-				track.RemoveAt(i);
-		}
-	}*/
-
 	public void run()
 	{
 		if (MidiSeq.Count == 0)
@@ -149,10 +112,6 @@ public class FingeringGenerator : MonoBehaviour
 
 		if (!HandConfigLib)
 			Debug.LogError("HandConfigLibrary is null.");
-
-		//clear();
-
-		//MidiSeq[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, System.Text.Encoding.Default.GetBytes(MidiSignatureText)));
 
 		NotationTrack[] notation = NotationUtils.parseMidiFile(MidiSeq);
 

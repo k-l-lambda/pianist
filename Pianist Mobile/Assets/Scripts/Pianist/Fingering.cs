@@ -1,7 +1,12 @@
 
+using System.Collections.Generic;
+
 
 namespace Pianist
 {
+	using FingerChord = Dictionary<int, Finger>;
+
+
 	public enum Finger
 	{
 		EMPTY					= 0,
@@ -56,7 +61,7 @@ namespace Pianist
 
 	public class FingerSequence
 	{
-		public Finger[] seq;
+		public FingerChord[] seq;
 	};
 
 

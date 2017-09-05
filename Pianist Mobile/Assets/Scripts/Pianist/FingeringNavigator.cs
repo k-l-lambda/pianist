@@ -1,10 +1,24 @@
 
 
+using System.Collections.Generic;
+
+
 namespace Pianist
 {
 	public class FingeringNavigator
 	{
-		public NotationTrack Track;
+		private NoteSequence NoteSeq;
+		private NotationTrack SourceTrack;
+
+		public NotationTrack Track
+		{
+			set
+			{
+				SourceTrack = value;
+
+				NoteSeq = NoteSequence.fromNotationTrack(value);
+			}
+		}
 
 		public HandConfig Config;
 		public SolveHandType HandType;
@@ -13,11 +27,11 @@ namespace Pianist
 		{
 			// test
 			Fingering result = new Fingering();
-			result.markers = new Fingering.Marker[Track.notes.Length];
+			result.markers = new Fingering.Marker[SourceTrack.notes.Length];
 
-			for (int i = 0; i < Track.notes.Length; ++i)
+			for (int i = 0; i < SourceTrack.notes.Length; ++i)
 			{
-				var note = Track.notes[i];
+				var note = SourceTrack.notes[i];
 
 				int f = UnityEngine.Random.Range(-5, 5);
 				if (f >= 0)
