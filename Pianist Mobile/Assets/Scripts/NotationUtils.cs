@@ -20,7 +20,6 @@ class PitchStatus
 
 public class NotationUtils
 {
-
 	public static NotationTrack parseMidiTrack(Midi.Track track, int division)
 	{
 		int microsecondsPerBeat = Midi.PpqnClock.DefaultTempo;
@@ -89,5 +88,15 @@ public class NotationUtils
 		notation.notes = notes.ToArray();
 
 		return notation;
+	}
+
+	public static NotationTrack[] parseMidiFile(Midi.Sequence file)
+	{
+		NotationTrack[] tracks = new NotationTrack[file.Count];
+
+		for (int i = 0; i < file.Count; ++i)
+			tracks[i] = parseMidiTrack(file[i], file.Division);
+
+		return tracks;
 	}
 };

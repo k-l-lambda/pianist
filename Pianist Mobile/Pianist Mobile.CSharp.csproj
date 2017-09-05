@@ -68,6 +68,7 @@
   <ItemGroup>
     <Compile Include="Assets\Scripts\BoneMarker.cs" />
     <Compile Include="Assets\Scripts\FingeringGenerator.cs" />
+    <Compile Include="Assets\Scripts\HandConfigLibrary.cs" />
     <Compile Include="Assets\Scripts\HandController.cs" />
     <Compile Include="Assets\Scripts\HandRig.cs" />
     <Compile Include="Assets\Scripts\KeyModifier.cs" />

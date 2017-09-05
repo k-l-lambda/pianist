@@ -72,4 +72,13 @@ namespace Pianist
 
 		public FingerMarker[] markers;
 	};
+
+
+	[System.Serializable]
+	public class HandConfig
+	{
+		public string Name;
+
+		public float Span15 = 7.5f;
+	};
 }

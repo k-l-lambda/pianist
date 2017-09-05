@@ -4,6 +4,7 @@ using Midi = Sanford.Multimedia.Midi;
 
 
 [ExecuteInEditMode]
+[RequireComponent(typeof(HandConfigLibrary))]
 public class FingeringGenerator : MonoBehaviour
 {
 	public TextAsset SourceAsset;
