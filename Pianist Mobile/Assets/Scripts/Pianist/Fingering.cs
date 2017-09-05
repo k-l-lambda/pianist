@@ -62,7 +62,7 @@ namespace Pianist
 
 	public class Fingering
 	{
-		public class FingerMarker
+		public class Marker
 		{
 			public int tick;
 			public float time;
@@ -70,7 +70,7 @@ namespace Pianist
 			public Finger finger;
 		};
 
-		public FingerMarker[] markers;
+		public Marker[] markers;
 	};
 
 

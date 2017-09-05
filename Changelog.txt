@@ -7,6 +7,8 @@ TODO:
 
 2017.9.5	K.L.	<k.l.lambda@gmail.com>
 
+	+	NotationUtils: appendFingeringToMidiFile implemented.
+
 	+	FingeringGenerator: added hand and track configs.
 
 	+	HandConfigLibrary.cs created.

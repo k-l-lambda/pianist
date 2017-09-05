@@ -128,7 +128,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   SourceAsset: {fileID: 4900000, guid: f294e6d8eac06d24f81a229fca3fbf22, type: 3}
   Hands:
-  - Config: Config
+  - Config: Default
     Type: 0
   TrackHandIndices: ffffffff0000000000000000
 --- !u!114 &836143163

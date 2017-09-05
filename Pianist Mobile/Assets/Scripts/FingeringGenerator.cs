@@ -3,7 +3,6 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 
-using Regex = System.Text.RegularExpressions.Regex;
 using Random = UnityEngine.Random;
 using Midi = Sanford.Multimedia.Midi;
 using Pianist;
@@ -17,8 +16,6 @@ public class FingeringGenerator : MonoBehaviour
 
 	public TextAsset SourceAsset;
 	public Midi.Sequence MidiSeq;
-
-	static readonly string MidiSignatureText = "Fingering by K.L.Pianist, fingering-marker-pattern:finger:(\\d+)\\|([\\d,-]+)";
 
 
 	[System.Serializable]
@@ -102,7 +99,7 @@ public class FingeringGenerator : MonoBehaviour
 		Debug.Log("MIDI file saved: " + fileName);
 	}
 
-	public void clear()
+	/*public void clear()
 	{
 		Regex signaturePattern = new Regex("^Fingering");
 		Regex fingerPattern = new Regex("^finger:");
@@ -137,7 +134,7 @@ public class FingeringGenerator : MonoBehaviour
 			foreach (int i in toRemove)
 				track.RemoveAt(i);
 		}
-	}
+	}*/
 
 	public void run()
 	{
@@ -147,9 +144,15 @@ public class FingeringGenerator : MonoBehaviour
 			return;
 		}
 
-		clear();
+		if(!HandConfigLib)
+			HandConfigLib = GetComponent<HandConfigLibrary>();
 
-		MidiSeq[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, System.Text.Encoding.Default.GetBytes(MidiSignatureText)));
+		if (!HandConfigLib)
+			Debug.LogError("HandConfigLibrary is null.");
+
+		//clear();
+
+		//MidiSeq[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, System.Text.Encoding.Default.GetBytes(MidiSignatureText)));
 
 		NotationTrack[] notation = NotationUtils.parseMidiFile(MidiSeq);
 
@@ -188,25 +191,5 @@ public class FingeringGenerator : MonoBehaviour
 		}
 
 		NotationUtils.appendFingeringToMidiFile(MidiSeq, results);
-		/*foreach (Midi.Track track in MidiSeq)
-		{
-			foreach(Midi.MidiEvent e in track.Iterator())
-			{
-				if (e.MidiMessage.MessageType == Midi.MessageType.Channel)
-				{
-					Midi.ChannelMessage cm = e.MidiMessage as Midi.ChannelMessage;
-					if (cm.Command == Midi.ChannelCommand.NoteOn)
-					{
-						int f = Random.Range(-5, 5);
-						if (f >= 0)
-							f += 1;
-
-						string marker = string.Format("finger:{0}|{1}", cm.Data1, f);
-
-						track.Insert(e.AbsoluteTicks, new Midi.MetaMessage(Midi.MetaType.Marker, System.Text.Encoding.Default.GetBytes(marker)));
-					}
-				}
-			}
-		}*/
 	}
 }

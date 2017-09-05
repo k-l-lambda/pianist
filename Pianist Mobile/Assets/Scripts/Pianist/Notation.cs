@@ -23,19 +23,20 @@ namespace Pianist
 
 		public static NotationTrack merge(NotationTrack[] tracks)
 		{
-			Dictionary<int, Note> noteMap = new Dictionary<int, Note>();
+			var noteList = new List<Note>();
 
 			foreach(NotationTrack track in tracks)
 			{
 				foreach(Note note in track.notes)
 				{
-					if(!noteMap.ContainsKey(note.tick) || note.duration < noteMap[note.tick].duration)
-						noteMap[note.tick] = note;
+					noteList.Add(note);
 				}
 			}
 
-			Note[] notes = new Note[noteMap.Count];
-			noteMap.Values.CopyTo(notes, noteMap.Count);
+			noteList.Sort((n1, n2) => n1.tick - n2.tick);
+
+			Note[] notes = new Note[noteList.Count];
+			noteList.CopyTo(notes);
 
 			return new NotationTrack{notes = notes};
 		}
