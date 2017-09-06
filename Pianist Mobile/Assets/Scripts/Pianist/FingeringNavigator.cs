@@ -18,7 +18,7 @@ namespace Pianist
 
 			int depth = -1;
 
-			int Index
+			public int Index
 			{
 				get
 				{
@@ -170,6 +170,15 @@ namespace Pianist
 
 			TreeNode currentLeave = TreeLeaves[0];
 			TreeLeaves.RemoveAt(0);
+
+			if (currentLeave.Index >= NoteSeq.chords.Length - 1)
+			{
+				// TODO: completed path
+				return;
+			}
+
+			NoteChord currentNode = NoteSeq.chords[currentLeave.Index];
+			NoteChord nextNode = NoteSeq.chords[currentLeave.Index + 1];
 
 			// TODO:
 		}
