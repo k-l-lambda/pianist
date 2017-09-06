@@ -5,6 +5,11 @@ TODO:
 
 
 
+2017.9.6	K.L.	<k.l.lambda@gmail.com>
+
+	+	Pianist/FingeringNavigator: TreeNode class added.
+
+
 2017.9.5	K.L.	<k.l.lambda@gmail.com>
 
 	+	Pianist/Notation: NoteSequence added.
