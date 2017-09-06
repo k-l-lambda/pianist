@@ -7,6 +7,8 @@ TODO:
 
 2017.9.6	K.L.	<k.l.lambda@gmail.com>
 
+	+	Pianist/Fingering: FingerConstants added.
+
 	+	Pianist/FingeringNavigator: TreeNode class added.
 
 
