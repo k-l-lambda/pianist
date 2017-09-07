@@ -102,8 +102,30 @@ namespace Pianist
 			}
 		}
 
+		class CostEstimation
+		{
+			double accumulation = 0;
+			int count = 0;
+
+			public double Value
+			{
+				get
+				{
+					return accumulation;
+				}
+			}
+
+			public void append(double value, int times = 1)
+			{
+				count++;
+				accumulation = accumulation * (count - 1) / count + value / count;
+			}
+		};
+
 		public HandConfig Config;
 		public SolveHandType HandType;
+
+		CostEstimation[] EstimatedCosts;
 
 		FingerChord[][] ChoiceSequence;
 
@@ -170,9 +192,17 @@ namespace Pianist
 
 		void step()
 		{
+			double[] accumulatedEstimatedCosts = new double[NoteSeq.Length + 1];
+			accumulatedEstimatedCosts[NoteSeq.Length] = 0;
+			for (int i = NoteSeq.Length - 1; i >= 0; ++i)
+				accumulatedEstimatedCosts[i] = EstimatedCosts[i].Value + accumulatedEstimatedCosts[i + 1];
+
 			TreeLeaves.Sort(delegate(TreeNode node1, TreeNode node2)
 			{
-				return node1.CommittedCost.CompareTo(node2.CommittedCost);
+				double cost1 = node1.CommittedCost + accumulatedEstimatedCosts[node1.Index + 1];
+				double cost2 = node2.CommittedCost + accumulatedEstimatedCosts[node2.Index + 1];
+
+				return cost1.CompareTo(cost2);
 			});
 
 			TreeNode currentLeave = TreeLeaves[0];
@@ -200,9 +230,15 @@ namespace Pianist
 		void generateChoiceSequence()
 		{
 			ChoiceSequence = new FingerChord[NoteSeq.Length][];
+			EstimatedCosts = new CostEstimation[NoteSeq.Length];
 
 			for (int i = 0; i < ChoiceSequence.Length; ++i)
+			{
 				ChoiceSequence[i] = getFingerChoices(NoteSeq[i]);
+
+				EstimatedCosts[i] = new CostEstimation();
+				// TODO: initialize estimated costs with minimized static note cost
+			}
 		}
 
 		FingerChord[] getFingerChoices(NoteChord nc)
