@@ -54,6 +54,22 @@ namespace Pianist
 	{
 		public NoteChord[] chords;
 
+		public NoteChord this[int index]
+		{
+			get
+			{
+				return chords[index];
+			}
+		}
+
+		public int Length
+		{
+			get
+			{
+				return chords.Length;
+			}
+		}
+
 
 		public static NoteSequence fromNotationTrack(NotationTrack track)
 		{

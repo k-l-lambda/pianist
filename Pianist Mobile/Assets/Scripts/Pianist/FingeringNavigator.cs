@@ -36,12 +36,12 @@ namespace Pianist
 				}
 			}
 
-			FingerChord data;
-			public FingerChord Data
+			int choice;
+			public int Choice
 			{
 				get
 				{
-					return data;
+					return choice;
 				}
 			}
 
@@ -66,10 +66,10 @@ namespace Pianist
 			}
 
 
-			public TreeNode(FingerChord chord = null, double diff = 0)
+			public TreeNode(int choice_ = -1, double cost_ = 0)
 			{
-				data = chord;
-				cost = diff;
+				choice = choice_;
+				cost = cost_;
 			}
 
 			public void appendChild(TreeNode child)
@@ -79,9 +79,12 @@ namespace Pianist
 				child.parent = this;
 			}
 
-			public void appendChild(FingerChord chord)
+			public TreeNode appendChild(int choice_ = -1, double cost_ = 0)
 			{
-				appendChild(new TreeNode(chord));
+				TreeNode child = new TreeNode(choice_, cost_);
+				appendChild(child);
+
+				return child;
 			}
 		};
 
@@ -102,11 +105,15 @@ namespace Pianist
 		public HandConfig Config;
 		public SolveHandType HandType;
 
+		FingerChord[][] ChoiceSequence;
+
 		TreeNode TreeRoot;
 		List<TreeNode> TreeLeaves;
 
 		public Fingering run()
 		{
+			generateChoiceSequence();
+
 			TreeRoot = new TreeNode();
 			TreeLeaves = new List<TreeNode>();
 			TreeLeaves.Add(TreeRoot);
@@ -171,16 +178,41 @@ namespace Pianist
 			TreeNode currentLeave = TreeLeaves[0];
 			TreeLeaves.RemoveAt(0);
 
-			if (currentLeave.Index >= NoteSeq.chords.Length - 1)
+			if (currentLeave.Index >= NoteSeq.Length - 1)
 			{
 				// TODO: completed path
 				return;
 			}
 
-			NoteChord currentNode = NoteSeq.chords[currentLeave.Index];
-			NoteChord nextNode = NoteSeq.chords[currentLeave.Index + 1];
+			NoteChord currentNode = NoteSeq[currentLeave.Index];
+			NoteChord nextNode = NoteSeq[currentLeave.Index + 1];
 
+			FingerChord[] choices = ChoiceSequence[currentLeave.Index + 1];
+			for (int i = 0; i < choices.Length; ++i)
+			{
+				double cost = evaluateNodeCost(currentLeave, choices[i]);
+				TreeNode leaf = currentLeave.appendChild(i, cost);
+
+				TreeLeaves.Add(leaf);
+			}
+		}
+
+		void generateChoiceSequence()
+		{
+			ChoiceSequence = new FingerChord[NoteSeq.Length][];
+
+			for (int i = 0; i < ChoiceSequence.Length; ++i)
+				ChoiceSequence[i] = getFingerChoices(NoteSeq[i]);
+		}
+
+		FingerChord[] getFingerChoices(NoteChord nc)
+		{
 			// TODO:
+			FingerChord empty = new FingerChord();
+			foreach(var pair in nc.notes)
+				empty[pair.Key] = Finger.EMPTY;
+
+			return new FingerChord[]{empty};
 		}
 	};
 }
