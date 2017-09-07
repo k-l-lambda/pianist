@@ -1,5 +1,6 @@
 
 using System.Collections.Generic;
+using Math = System.Math;
 
 
 namespace Pianist
@@ -116,8 +117,11 @@ namespace Pianist
 					bool minus = value < 0;
 					value = System.Math.Abs(value);
 
-					left = (int)System.Math.Floor(value / 10f);
-					right = value % 10;
+					int first = (int)Math.Floor(value / 10f);
+					int second = value % 10;
+
+					left = Math.Min(first, second);
+					right = Math.Max(first, second);
 				}
 			}
 		};

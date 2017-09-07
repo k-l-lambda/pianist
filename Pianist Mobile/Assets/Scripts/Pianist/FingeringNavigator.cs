@@ -45,23 +45,23 @@ namespace Pianist
 				}
 			}
 
-			double difficulty;
+			double cost;
 
-			public double SelfDifficulty
+			public double SelfCost
 			{
 				get
 				{
-					return difficulty;
+					return cost;
 				}
 			}
 
-			public double CommittedDifficulty
+			public double CommittedCost
 			{
 				get
 				{
-					double parentDiff = parent != null ? parent.CommittedDifficulty : 0;
+					double parentDiff = parent != null ? parent.CommittedCost : 0;
 
-					return parentDiff + difficulty;
+					return parentDiff + cost;
 				}
 			}
 
@@ -69,7 +69,7 @@ namespace Pianist
 			public TreeNode(FingerChord chord = null, double diff = 0)
 			{
 				data = chord;
-				difficulty = diff;
+				cost = diff;
 			}
 
 			public void appendChild(TreeNode child)
@@ -137,25 +137,25 @@ namespace Pianist
 			return result;
 		}
 
-		double evaluateNodeDifficulty(TreeNode leaf, FingerChord chord)
+		double evaluateNodeCost(TreeNode leaf, FingerChord chord)
 		{
-			double chordPrior = evaluateChordPriorDifficulty(chord);
+			double chordPrior = evaluateChordPriorCost(chord);
 
 			// TODO:
 			return chordPrior;
 		}
 
-		double evaluateChordPriorDifficulty(FingerChord chord)
+		double evaluateChordPriorCost(FingerChord chord)
 		{
 			// TODO:
-			double difficulty = 0;
+			double cost = 0;
 			foreach(var pair in chord)
-				difficulty += evaluateFingerPriorDifficulty(pair.Key, pair.Value);
+				cost += evaluateFingerPriorCost(pair.Key, pair.Value);
 
-			return difficulty;
+			return cost;
 		}
 
-		double evaluateFingerPriorDifficulty(int pitch, Finger finger)
+		double evaluateFingerPriorCost(int pitch, Finger finger)
 		{
 			// TODO:
 			return Math.Abs(pitch - 60);
@@ -165,7 +165,7 @@ namespace Pianist
 		{
 			TreeLeaves.Sort(delegate(TreeNode node1, TreeNode node2)
 			{
-				return node1.CommittedDifficulty.CompareTo(node2.CommittedDifficulty);
+				return node1.CommittedCost.CompareTo(node2.CommittedCost);
 			});
 
 			TreeNode currentLeave = TreeLeaves[0];
