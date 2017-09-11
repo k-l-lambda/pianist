@@ -85,7 +85,19 @@ namespace Pianist
 	{
 		public string Name;
 
-		public float Span15 = 7.5f;
+		public float Span12 = 5.2f;
+		public float Span13 = 6.4f;
+		public float Span14 = 7.3f;
+		public float Span15 = 7.7f;
+
+		public float Span23 = 3.3f;
+		public float Span24 = 4.6f;
+		public float Span25 = 6.1f;
+
+		public float Span34 = 3.2f;
+		public float Span35 = 4.8f;
+
+		public float Span45 = 3.3f;
 	};
 
 
