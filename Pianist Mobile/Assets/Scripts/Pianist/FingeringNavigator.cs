@@ -125,6 +125,8 @@ namespace Pianist
 		public HandConfig Config;
 		public SolveHandType HandType;
 
+		public FingerChord[] Constraints;
+
 		CostEstimation[] EstimatedCosts;
 
 		FingerChord[][] ChoiceSequence;
