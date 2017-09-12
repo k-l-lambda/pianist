@@ -80,6 +80,7 @@
     <Compile Include="Assets\Scripts\Pianist\FingeringNavigator.cs" />
     <Compile Include="Assets\Scripts\Pianist\HandSkeleton.cs" />
     <Compile Include="Assets\Scripts\Pianist\Notation.cs" />
+    <Compile Include="Assets\Scripts\Pianist\Piano.cs" />
     <Compile Include="Assets\Scripts\PianoController.cs" />
     <Compile Include="Assets\Scripts\Sanford\Collections\Deque.cs" />
     <Compile Include="Assets\Scripts\Sanford\Collections\Generic\Deque\GenericDeque.Enumerator.cs" />

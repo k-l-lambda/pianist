@@ -7,6 +7,11 @@ TODO:
 
 
 
+2017.9.12	K.L.	<k.l.lambda@gmail.com>
+
+	+	Pianist/Piano.cs: created.
+
+
 2017.9.7	K.L.	<k.l.lambda@gmail.com>
 
 	+	Pianist/FingeringNavigator: added estimated costs.

@@ -98,6 +98,40 @@ namespace Pianist
 		public float Span35 = 4.8f;
 
 		public float Span45 = 3.3f;
+
+		float[,] spans;
+
+		public float[,] getSpans()
+		{
+			if (spans == null)
+			{
+				spans = new float[6, 6];
+
+				spans[1, 2] = Span12;
+				spans[1, 3] = Span13;
+				spans[1, 4] = Span14;
+				spans[1, 5] = Span15;
+				spans[2, 3] = Span23;
+				spans[2, 4] = Span24;
+				spans[2, 5] = Span25;
+				spans[3, 4] = Span34;
+				spans[3, 5] = Span35;
+				spans[4, 5] = Span45;
+
+				spans[2, 1] = Span12;
+				spans[3, 1] = Span13;
+				spans[4, 1] = Span14;
+				spans[5, 1] = Span15;
+				spans[3, 2] = Span23;
+				spans[4, 2] = Span24;
+				spans[5, 2] = Span25;
+				spans[4, 3] = Span34;
+				spans[5, 3] = Span35;
+				spans[5, 4] = Span45;
+			}
+
+			return spans;
+		}
 	};
 
 
