@@ -38,5 +38,10 @@ namespace Pianist
 		}
 
 		public static readonly float[] KeyPositions = Enumerable.Range(0, 120).Select(x => pitchPosition(x)).ToArray();
+
+		public static float pitchPairDistance(int pitch1, int pitch2)
+		{
+			return Math.Abs(KeyPositions[pitch1] - KeyPositions[pitch2]);
+		}
 	};
 }

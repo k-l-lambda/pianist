@@ -6,7 +6,7 @@ using System.Collections.Generic;
 
 namespace Pianist
 {
-	using FingerChord = Dictionary<int, Finger>;
+	using FingerChord = SortedDictionary<int, Finger>;
 
 
 	public class FingeringNavigator
@@ -245,12 +245,64 @@ namespace Pianist
 
 		FingerChord[] getFingerChoices(NoteChord nc)
 		{
-			// TODO:
-			FingerChord empty = new FingerChord();
-			foreach(var pair in nc.notes)
-				empty[pair.Key] = Finger.EMPTY;
+			if(nc.notes.Count == 0)
+				return new FingerChord[0];
 
-			return new FingerChord[]{empty};
+			List<FingerChord> choices = new List<FingerChord>();
+
+			int[] pitches = new int[nc.notes.Count];
+			nc.notes.Keys.CopyTo(pitches, 0);
+
+			int fingerCount = HandType == SolveHandType.MIX ? 10 : 5;
+
+			int emptyQuota = Math.Max(pitches.Length - fingerCount, 0);
+			FingerChord fc = new FingerChord();
+			while (choices.Count == 0)
+				tryFingerChoice(pitches, ref choices, fc, 0, emptyQuota++);
+
+			return choices.ToArray();
+		}
+
+		void tryFingerChoice(int[] pitches, ref List<FingerChord> choices, FingerChord fc, int currentNoteIndex, int emptyQuota)
+		{
+			if (currentNoteIndex >= pitches.Length)
+			{
+				choices.Add(fc);
+
+				UnityEngine.Debug.Log(fc.Values.ToString());
+			}
+			else
+			{
+				int currentPitch = pitches[currentNoteIndex];
+
+				foreach(Finger f in FingerConstants.SolveTypeFingers[HandType])
+				{
+					bool pass = true;
+					for (int index = currentNoteIndex - 1; index >= 0; --index)
+					{
+						int pitch = pitches[index];
+						Finger finger = fc[pitch];
+
+						float distance = Piano.pitchPairDistance(pitch, currentPitch);
+
+						pass = FingerConstants.testFingerDistance(finger, f, Config, distance);
+						if (!pass)
+							break;
+					}
+
+					if (pass)
+					{
+						fc[currentPitch] = f;
+						tryFingerChoice(pitches, ref choices, fc, currentNoteIndex + 1, emptyQuota);
+					}
+				}
+
+				if (emptyQuota > 0)
+				{
+					fc[currentPitch] = Finger.EMPTY;
+					tryFingerChoice(pitches, ref choices, fc, currentNoteIndex + 1, emptyQuota - 1);
+				}
+			}
 		}
 	};
 }

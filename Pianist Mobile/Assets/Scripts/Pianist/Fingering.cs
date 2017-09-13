@@ -5,7 +5,7 @@ using Math = System.Math;
 
 namespace Pianist
 {
-	using FingerChord = Dictionary<int, Finger>;
+	using FingerChord = SortedDictionary<int, Finger>;
 
 
 	public enum Finger
@@ -218,5 +218,37 @@ namespace Pianist
 			{Finger.RIGHT_RING_MIDDLE	,	new Bound(Finger.RIGHT_RING_MIDDLE)},
 			{Finger.RIGHT_PINKY_RING	,	new Bound(Finger.RIGHT_PINKY_RING)},
 		};
+
+		public static readonly Dictionary<SolveHandType, Finger[]> SolveTypeFingers = new Dictionary<SolveHandType, Finger[]>
+		{
+			{SolveHandType.MIX, new Finger[]{
+				Finger.LEFT_PINKY, Finger.LEFT_RING, Finger.LEFT_MIDDLE, Finger.LEFT_INDEX, Finger.LEFT_THUMB, Finger.LEFT_THUMB_INDEX, Finger.LEFT_THUMB_MIDDLE, Finger.LEFT_THUMB_RING, Finger.LEFT_THUMB_PINKY, Finger.LEFT_INDEX_MIDDLE, Finger.LEFT_MIDDLE_RING, Finger.LEFT_RING_PINKY, Finger.LEFT_INDEX_THUMB, Finger.LEFT_MIDDLE_THUMB, Finger.LEFT_RING_THUMB, Finger.LEFT_PINKY_THUMB, Finger.LEFT_MIDDLE_INDEX, Finger.LEFT_RING_MIDDLE, Finger.LEFT_PINKY_RING,
+				Finger.RIGHT_THUMB, Finger.RIGHT_INDEX, Finger.RIGHT_MIDDLE, Finger.RIGHT_RING, Finger.RIGHT_PINKY, Finger.RIGHT_THUMB_INDEX, Finger.RIGHT_THUMB_MIDDLE, Finger.RIGHT_THUMB_RING, Finger.RIGHT_THUMB_PINKY, Finger.RIGHT_INDEX_MIDDLE, Finger.RIGHT_MIDDLE_RING, Finger.RIGHT_RING_PINKY, Finger.RIGHT_INDEX_THUMB, Finger.RIGHT_MIDDLE_THUMB, Finger.RIGHT_RING_THUMB, Finger.RIGHT_PINKY_THUMB, Finger.RIGHT_MIDDLE_INDEX, Finger.RIGHT_RING_MIDDLE, Finger.RIGHT_PINKY_RING,
+			}},
+
+			{SolveHandType.LEFT, new Finger[]{
+				Finger.LEFT_PINKY, Finger.LEFT_RING, Finger.LEFT_MIDDLE, Finger.LEFT_INDEX, Finger.LEFT_THUMB, Finger.LEFT_THUMB_INDEX, Finger.LEFT_THUMB_MIDDLE, Finger.LEFT_THUMB_RING, Finger.LEFT_THUMB_PINKY, Finger.LEFT_INDEX_MIDDLE, Finger.LEFT_MIDDLE_RING, Finger.LEFT_RING_PINKY, Finger.LEFT_INDEX_THUMB, Finger.LEFT_MIDDLE_THUMB, Finger.LEFT_RING_THUMB, Finger.LEFT_PINKY_THUMB, Finger.LEFT_MIDDLE_INDEX, Finger.LEFT_RING_MIDDLE, Finger.LEFT_PINKY_RING,
+			}},
+
+			{SolveHandType.RIGHT, new Finger[]{
+				Finger.RIGHT_THUMB, Finger.RIGHT_INDEX, Finger.RIGHT_MIDDLE, Finger.RIGHT_RING, Finger.RIGHT_PINKY, Finger.RIGHT_THUMB_INDEX, Finger.RIGHT_THUMB_MIDDLE, Finger.RIGHT_THUMB_RING, Finger.RIGHT_THUMB_PINKY, Finger.RIGHT_INDEX_MIDDLE, Finger.RIGHT_MIDDLE_RING, Finger.RIGHT_RING_PINKY, Finger.RIGHT_INDEX_THUMB, Finger.RIGHT_MIDDLE_THUMB, Finger.RIGHT_RING_THUMB, Finger.RIGHT_PINKY_THUMB, Finger.RIGHT_MIDDLE_INDEX, Finger.RIGHT_RING_MIDDLE, Finger.RIGHT_PINKY_RING,
+			}},
+		};
+
+		public static bool testFingerDistance(Finger left, Finger right, HandConfig hand, float distance)
+		{
+			int product = (int)left * (int)right;
+			if (product <= 0)
+				return true;
+
+			int left_bound = Bounds[left].right;
+			int right_bound = Bounds[right].left;
+			if (right_bound <= left_bound)
+				return false;
+
+			float span = hand.getSpans()[Math.Abs(left_bound), Math.Abs(right_bound)];
+
+			return span >= distance;
+		}
 	};
 }
