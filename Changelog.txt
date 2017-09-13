@@ -9,6 +9,11 @@ TODO:
 
 2017.9.12	K.L.	<k.l.lambda@gmail.com>
 
+	+	Pianist/Piano: KeyPositions added.
+
+
+2017.9.12	K.L.	<k.l.lambda@gmail.com>
+
 	+	Pianist/Piano.cs: created.
 
 
