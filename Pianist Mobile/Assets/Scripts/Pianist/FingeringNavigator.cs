@@ -7,6 +7,7 @@ using System.Collections.Generic;
 namespace Pianist
 {
 	using FingerChord = SortedDictionary<int, Finger>;
+	using FingerMap = SortedDictionary<int, SortedDictionary<int, Finger>>;
 
 
 	public class FingeringNavigator
@@ -133,6 +134,7 @@ namespace Pianist
 
 		TreeNode TreeRoot;
 		List<TreeNode> TreeLeaves;
+		List<TreeNode> ResultNodes;
 
 		public Fingering run()
 		{
@@ -142,6 +144,8 @@ namespace Pianist
 			TreeLeaves = new List<TreeNode>();
 			TreeLeaves.Add(TreeRoot);
 
+			ResultNodes = new List<TreeNode>();
+
 			for (int i = 0; i < 100; ++i)
 			{
 				if (TreeLeaves.Count == 0)
@@ -150,10 +154,20 @@ namespace Pianist
 				step();
 			}
 
-			// test
+			ResultNodes.Sort(delegate(TreeNode node1, TreeNode node2)
+			{
+				double cost1 = node1.CommittedCost;
+				double cost2 = node2.CommittedCost;
+
+				return cost1.CompareTo(cost2);
+			});
+
+			TreeNode resultNode = ResultNodes.Count > 0 ? ResultNodes[0] : TreeLeaves[0];
+
 			Fingering result = new Fingering();
 			result.markers = new Fingering.Marker[SourceTrack.notes.Length];
 
+			/*// test
 			for (int i = 0; i < SourceTrack.notes.Length; ++i)
 			{
 				var note = SourceTrack.notes[i];
@@ -163,6 +177,15 @@ namespace Pianist
 					f += 1;
 
 				result.markers[i] = new Fingering.Marker { tick = note.tick, time = note.start, pitch = note.pitch, finger = (Finger)f };
+			}*/
+			FingerMap map = getTreeNodeFingerMap(resultNode);
+			for (int i = 0; i < SourceTrack.notes.Length; ++i)
+			{
+				var note = SourceTrack.notes[i];
+
+				Finger finger = map.ContainsKey(note.tick) && map[note.tick].ContainsKey(note.pitch) ? map[note.tick][note.pitch] : Finger.EMPTY;
+
+				result.markers[i] = new Fingering.Marker { tick = note.tick, time = note.start, pitch = note.pitch, finger = finger };
 			}
 
 			return result;
@@ -170,33 +193,46 @@ namespace Pianist
 
 		double evaluateNodeCost(TreeNode leaf, FingerChord chord)
 		{
-			double chordPrior = evaluateChordPriorCost(chord);
+			double chordStatic = evaluateChordStaticCost(chord);
 
 			// TODO:
-			return chordPrior;
+			return chordStatic;
 		}
 
-		double evaluateChordPriorCost(FingerChord chord)
+		double evaluateChordStaticCost(FingerChord chord)
 		{
 			// TODO:
 			double cost = 0;
 			foreach(var pair in chord)
-				cost += evaluateFingerPriorCost(pair.Key, pair.Value);
+				cost += evaluateFingerStaticCost(pair.Key, pair.Value);
 
 			return cost;
 		}
 
-		double evaluateFingerPriorCost(int pitch, Finger finger)
+		double evaluateFingerStaticCost(int pitch, Finger finger)
 		{
 			// TODO:
 			return Math.Abs(pitch - 60);
+		}
+
+		FingerMap getTreeNodeFingerMap(TreeNode node)
+		{
+			FingerMap map = node.parent != null ? getTreeNodeFingerMap(node.parent) : new FingerMap();
+			if (node.Choice >= 0)
+			{
+				FingerChord fc = ChoiceSequence[node.Index][node.Choice];
+				NoteChord nc = NoteSeq[node.Index];
+				map[nc.tick] = fc;
+			}
+
+			return map;
 		}
 
 		void step()
 		{
 			double[] accumulatedEstimatedCosts = new double[NoteSeq.Length + 1];
 			accumulatedEstimatedCosts[NoteSeq.Length] = 0;
-			for (int i = NoteSeq.Length - 1; i >= 0; ++i)
+			for (int i = NoteSeq.Length - 1; i >= 0; --i)
 				accumulatedEstimatedCosts[i] = EstimatedCosts[i].Value + accumulatedEstimatedCosts[i + 1];
 
 			TreeLeaves.Sort(delegate(TreeNode node1, TreeNode node2)
@@ -212,7 +248,8 @@ namespace Pianist
 
 			if (currentLeave.Index >= NoteSeq.Length - 1)
 			{
-				// TODO: completed path
+				ResultNodes.Add(currentLeave);
+
 				return;
 			}
 
@@ -239,7 +276,13 @@ namespace Pianist
 				ChoiceSequence[i] = getFingerChoices(NoteSeq[i]);
 
 				EstimatedCosts[i] = new CostEstimation();
-				// TODO: initialize estimated costs with minimized static note cost
+
+				// initialize estimated costs with minimized static note cost
+				double minCost = 1000;
+				foreach (FingerChord fc in ChoiceSequence[i])
+					minCost = Math.Min(minCost, evaluateChordStaticCost(fc));
+
+				EstimatedCosts[i].append(minCost);
 			}
 		}
 
