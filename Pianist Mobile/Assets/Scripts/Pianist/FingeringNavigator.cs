@@ -102,6 +102,8 @@ namespace Pianist
 		};
 
 
+		public int MaxStepCount = 1000;
+
 		private NoteSequence NoteSeq;
 		private NotationTrack SourceTrack;
 
@@ -158,12 +160,16 @@ namespace Pianist
 
 			ResultNodes = new List<TreeNode>();
 
-			for (int i = 0; i < 100; ++i)
+			for (int i = 0; i < MaxStepCount; ++i)
 			{
 				if (TreeLeaves.Count == 0)
 					break;
 
 				step();
+
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.DisplayProgressBar("FingeringNavigator running", string.Format("Analyzing: {0}, {1}", TreeLeaves[0].CommittedCost, TreeLeaves[0].ChoicePathDescription), (float)i / MaxStepCount);
+#endif
 			}
 
 			ResultNodes.Sort(delegate(TreeNode node1, TreeNode node2)
@@ -251,10 +257,6 @@ namespace Pianist
 
 			TreeNode currentLeave = TreeLeaves[0];
 			TreeLeaves.RemoveAt(0);
-
-#if UNITY_EDITOR
-			UnityEditor.EditorUtility.DisplayProgressBar("FingeringNavigator running", string.Format("Analyzing: {0}, {1}", currentLeave.CommittedCost, currentLeave.ChoicePathDescription), 0);
-#endif
 
 			if (currentLeave.Index >= NoteSeq.Length - 1)
 			{
