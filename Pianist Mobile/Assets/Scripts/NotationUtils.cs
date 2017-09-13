@@ -62,7 +62,8 @@ public class NotationUtils
 								int pitch = cm.Data1;
 								int velocity = cm.Data2;
 
-								trackStatus[cm.MidiChannel][pitch] = new PitchStatus { tick = e.AbsoluteTicks, startTime = time, velocity = velocity };
+								if (pitch >= Piano.PitchMin && pitch <= Piano.PitchMax)
+									trackStatus[cm.MidiChannel][pitch] = new PitchStatus { tick = e.AbsoluteTicks, startTime = time, velocity = velocity };
 							}
 
 							break;

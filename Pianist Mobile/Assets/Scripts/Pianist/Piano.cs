@@ -10,6 +10,9 @@ namespace Pianist
 		public static readonly int GroupLength = 12;
 		public static readonly int GroupSize = 7;
 
+		public static readonly int PitchMin = 21;
+		public static readonly int PitchMax = 108;
+
 
 		public static readonly float[] GroupKeyPositions =
 		{
