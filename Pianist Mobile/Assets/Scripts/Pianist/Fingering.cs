@@ -160,11 +160,11 @@ namespace Pianist
 				}
 				else
 				{
-					bool minus = value < 0;
+					int minus = value < 0 ? -1 : 1;
 					value = System.Math.Abs(value);
 
-					int first = (int)Math.Floor(value / 10f);
-					int second = value % 10;
+					int first = (int)Math.Floor(value / 10f) * minus;
+					int second = value % 10 * minus;
 
 					left = Math.Min(first, second);
 					right = Math.Max(first, second);

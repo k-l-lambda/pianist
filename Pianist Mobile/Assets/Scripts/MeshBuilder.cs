@@ -206,7 +206,7 @@ public class MeshBuilder : MonoBehaviour
 			Transform trans = getPointerAt(i);
 			trans.localPosition = vertices[i];
 
-			if (normals != null && normals[i] != null)
+			if (normals != null)
 			{
 				Quaternion q = new Quaternion();
 				q.SetFromToRotation(Vector3.forward, normals[i].normalized);

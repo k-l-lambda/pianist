@@ -133,7 +133,7 @@ public class FingeringGenerator : MonoBehaviour
 
 			NotationTrack[] tracks = new NotationTrack[trackList.Length];
 			for(int track = 0; track < trackList.Length; ++track)
-				tracks[track] = notation[track];
+				tracks[track] = notation[trackList[track]];
 
 			Navigator.Track = NotationTrack.merge(tracks);
 			Navigator.Config = HandConfigLib.getConfig(hand.Config);

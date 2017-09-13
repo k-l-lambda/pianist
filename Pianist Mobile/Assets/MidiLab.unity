@@ -129,8 +129,10 @@ MonoBehaviour:
   SourceAsset: {fileID: 4900000, guid: f294e6d8eac06d24f81a229fca3fbf22, type: 3}
   Hands:
   - Config: Default
-    Type: 0
-  TrackHandIndices: ffffffff0000000000000000
+    Type: 2
+  - Config: Default
+    Type: 1
+  TrackHandIndices: ffffffff0000000001000000
 --- !u!114 &836143163
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -144,4 +146,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   HandConfigs:
   - Name: Default
+    Span12: 5.2
+    Span13: 6.4
+    Span14: 7.3
     Span15: 7.5
+    Span23: 3.3
+    Span24: 4.6
+    Span25: 6.1
+    Span34: 3.2
+    Span35: 4.8
+    Span45: 3.3

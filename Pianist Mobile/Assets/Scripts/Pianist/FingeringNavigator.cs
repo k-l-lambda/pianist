@@ -216,8 +216,8 @@ namespace Pianist
 				return;
 			}
 
-			NoteChord currentNode = NoteSeq[currentLeave.Index];
-			NoteChord nextNode = NoteSeq[currentLeave.Index + 1];
+			//NoteChord currentNode = NoteSeq[currentLeave.Index];
+			//NoteChord nextNode = NoteSeq[currentLeave.Index + 1];
 
 			FingerChord[] choices = ChoiceSequence[currentLeave.Index + 1];
 			for (int i = 0; i < choices.Length; ++i)
@@ -269,7 +269,9 @@ namespace Pianist
 			{
 				choices.Add(fc);
 
-				UnityEngine.Debug.Log(fc.Values.ToString());
+				/*Finger[] fa = new Finger[fc.Values.Count];
+				fc.Values.CopyTo(fa, 0);
+				UnityEngine.Debug.Log("fc: " + String.Join(",", Array.ConvertAll(fa, x => ((int)x).ToString())));*/
 			}
 			else
 			{
