@@ -46,6 +46,18 @@ namespace Pianist
 				}
 			}
 
+			public string ChoicePathDescription
+			{
+				get
+				{
+					string prefix = parent != null ? parent.ChoicePathDescription : "";
+
+					string desc = choice >= 0 ? (prefix.Length > 0 ? " -> " : "") + choice.ToString() : "";
+
+					return prefix + desc;
+				}
+			}
+
 			double cost;
 
 			public double SelfCost
@@ -167,17 +179,7 @@ namespace Pianist
 			Fingering result = new Fingering();
 			result.markers = new Fingering.Marker[SourceTrack.notes.Length];
 
-			/*// test
-			for (int i = 0; i < SourceTrack.notes.Length; ++i)
-			{
-				var note = SourceTrack.notes[i];
-
-				int f = UnityEngine.Random.Range(-5, 5);
-				if (f >= 0)
-					f += 1;
-
-				result.markers[i] = new Fingering.Marker { tick = note.tick, time = note.start, pitch = note.pitch, finger = (Finger)f };
-			}*/
+			// generate markers
 			FingerMap map = getTreeNodeFingerMap(resultNode);
 			for (int i = 0; i < SourceTrack.notes.Length; ++i)
 			{
@@ -187,6 +189,10 @@ namespace Pianist
 
 				result.markers[i] = new Fingering.Marker { tick = note.tick, time = note.start, pitch = note.pitch, finger = finger };
 			}
+
+#if UNITY_EDITOR
+			UnityEditor.EditorUtility.ClearProgressBar();
+#endif
 
 			return result;
 		}
@@ -246,6 +252,10 @@ namespace Pianist
 			TreeNode currentLeave = TreeLeaves[0];
 			TreeLeaves.RemoveAt(0);
 
+#if UNITY_EDITOR
+			UnityEditor.EditorUtility.DisplayProgressBar("FingeringNavigator running", string.Format("Analyzing: {0}, {1}", currentLeave.CommittedCost, currentLeave.ChoicePathDescription), 0);
+#endif
+
 			if (currentLeave.Index >= NoteSeq.Length - 1)
 			{
 				ResultNodes.Add(currentLeave);
@@ -283,6 +293,10 @@ namespace Pianist
 					minCost = Math.Min(minCost, evaluateChordStaticCost(fc));
 
 				EstimatedCosts[i].append(minCost);
+
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.DisplayProgressBar("FingeringNavigator running", string.Format("Generating Choice Sequence {0}/{1}", i, ChoiceSequence.Length), (float)i / ChoiceSequence.Length);
+#endif
 			}
 		}
 
