@@ -132,6 +132,80 @@ namespace Pianist
 
 			return spans;
 		}
+
+		public struct Range
+		{
+			public float low;
+			public float high;
+
+			public float middle
+			{
+				get
+				{
+					return (low + high) / 2f;
+				}
+			}
+		};
+
+		Range[] WristRangePerFinger;
+
+		public Range[] getWristRangePerFinger()
+		{
+			if (WristRangePerFinger == null)
+			{
+				const float FINGER1 = -2;
+				const float FINGER2 = -1;
+				const float FINGER3 = 0;
+				const float FINGER4 = 1;
+				const float FINGER5 = 2;
+
+				float scope1 = Span15 * 0.6f - 2;
+				float scope2 = Span24 * 0.5f - 1;
+				float scope4 = Span24 * 0.5f - 1;
+				float scope5 = Span15 * 0.4f - 2;
+				float scope3 = Span35 - scope5 - 2;
+
+				WristRangePerFinger = new Range[6];
+
+				WristRangePerFinger[1] = new Range { low = -FINGER1 - scope1, high = -FINGER1 + scope1 };
+				WristRangePerFinger[2] = new Range { low = -FINGER2 - scope2, high = -FINGER2 + scope2 };
+				WristRangePerFinger[3] = new Range { low = -FINGER3 - scope3, high = -FINGER3 + scope3 };
+				WristRangePerFinger[4] = new Range { low = -FINGER4 - scope4, high = -FINGER4 + scope4 };
+				WristRangePerFinger[5] = new Range { low = -FINGER5 - scope5, high = -FINGER5 + scope5 };
+			}
+
+			return WristRangePerFinger;
+		}
+
+		public Range getFingerRange(Finger f)
+		{
+			Range range = getWristRangePerFinger()[FingerConstants.getFingerNumber(f)];
+
+			if (f < Finger.EMPTY)
+				range = new Range { low = -range.high, high = -range.low };
+
+			return range;
+		}
+
+		public Range getFingerChordWristRange(FingerChord fc)
+		{
+			float low = 0;
+			float high = 120;
+
+			foreach (var pair in fc)
+			{
+				if(pair.Value != Finger.EMPTY)
+				{
+					float keyPosition = Piano.KeyPositions[pair.Key];
+					Range range = getFingerRange(pair.Value);
+
+					low = Math.Max(low, keyPosition + range.low);
+					high = Math.Min(high, keyPosition + range.high);
+				}
+			}
+
+			return new Range { low = low, high = high };
+		}
 	};
 
 
@@ -249,6 +323,13 @@ namespace Pianist
 			float span = hand.getSpans()[Math.Abs(left_bound), Math.Abs(right_bound)];
 
 			return span >= distance;
+		}
+
+		public static int getFingerNumber(Finger f)
+		{
+			int tail = (int)f % 10;
+
+			return Math.Abs(tail);
 		}
 	};
 }
