@@ -133,7 +133,7 @@ namespace Pianist
 			return spans;
 		}
 
-		public struct Range
+		public class Range
 		{
 			public float low;
 			public float high;
@@ -146,6 +146,13 @@ namespace Pianist
 				}
 			}
 		};
+
+		public struct RangePair
+		{
+			public Range left;
+			public Range right;
+		};
+
 
 		Range[] WristRangePerFinger;
 
@@ -187,10 +194,9 @@ namespace Pianist
 			return range;
 		}
 
-		public Range getFingerChordWristRange(FingerChord fc)
+		public RangePair getFingerChordWristRange(FingerChord fc)
 		{
-			float low = 0;
-			float high = 120;
+			RangePair rp = new RangePair();
 
 			foreach (var pair in fc)
 			{
@@ -198,13 +204,32 @@ namespace Pianist
 				{
 					float keyPosition = Piano.KeyPositions[pair.Key];
 					Range range = getFingerRange(pair.Value);
+					range = new Range { low = range.low, high = range.high };
 
-					low = Math.Max(low, keyPosition + range.low);
-					high = Math.Min(high, keyPosition + range.high);
+					if(pair.Value > Finger.EMPTY)
+					{
+						if (rp.right == null)
+							rp.right = range;
+						else
+						{
+							rp.right.low = Math.Max(rp.right.low, keyPosition + range.low);
+							rp.right.high = Math.Min(rp.right.high, keyPosition + range.high);
+						}
+					}
+					else
+					{
+						if (rp.left == null)
+							rp.left = range;
+						else
+						{
+							rp.left.low = Math.Max(rp.left.low, keyPosition + range.low);
+							rp.left.high = Math.Min(rp.left.high, keyPosition + range.high);
+						}
+					}
 				}
 			}
 
-			return new Range { low = low, high = high };
+			return rp;
 		}
 	};
 
