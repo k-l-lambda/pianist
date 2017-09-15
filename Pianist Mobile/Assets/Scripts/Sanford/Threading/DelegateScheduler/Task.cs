@@ -60,7 +60,7 @@ namespace Sanford.Threading
         private DateTime nextTimeout;
 
         // For locking.
-        private readonly object lockObject = new object();
+        //private readonly object lockObject = new object();
 
         #endregion
 

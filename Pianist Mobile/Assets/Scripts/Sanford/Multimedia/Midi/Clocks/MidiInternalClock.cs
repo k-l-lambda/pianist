@@ -52,7 +52,7 @@ namespace Sanford.Multimedia.Midi
         private ITimer timer;
 
         // Parses meta message tempo change messages.
-        private TempoChangeBuilder builder = new TempoChangeBuilder();
+        //private TempoChangeBuilder builder = new TempoChangeBuilder();
 
         // Tick accumulator.
         private int ticks = 0;

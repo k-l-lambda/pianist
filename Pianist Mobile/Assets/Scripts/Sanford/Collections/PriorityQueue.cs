@@ -276,7 +276,7 @@ namespace Sanford.Collections
 
             Node x = header;
             Node[] update = new Node[LevelMaxValue];
-            int nextLevel = NextLevel();
+            //int nextLevel = NextLevel();
 
             // Find the specified element.
             for(int i = currentLevel - 1; i >= 0; i--)

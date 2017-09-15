@@ -263,14 +263,6 @@ namespace Pianist
 			return result;
 		}
 
-		/*double evaluateNodeCost(TreeNode leaf, FingerChord chord)
-		{
-			double chordStatic = evaluateChordStaticCost(chord);
-
-			// TODO:
-			return chordStatic;
-		}*/
-
 		Choice evaluateChordChoice(FingerChord chord)
 		{
 			HandConfig.RangePair wrists = Config.getFingerChordWristRange(chord);
