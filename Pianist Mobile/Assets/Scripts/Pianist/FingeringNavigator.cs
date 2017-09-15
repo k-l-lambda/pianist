@@ -213,18 +213,29 @@ namespace Pianist
 
 		double evaluateChordStaticCost(FingerChord chord)
 		{
-			// TODO:
+			/*// TODO:
 			double cost = 0;
 			foreach(var pair in chord)
 				cost += evaluateFingerStaticCost(pair.Key, pair.Value);
 
-			return cost;
-		}
+			return cost;*/
+			HandConfig.RangePair wrists = Config.getFingerChordWristRange(chord);
 
-		double evaluateFingerStaticCost(int pitch, Finger finger)
-		{
-			// TODO:
-			return Math.Abs(pitch - 60);
+			double cost = 0;
+
+			if (wrists.left != null)
+			{
+				float distance = Math.Abs(wrists.left.middle - -HandConfig.WristNaturePosition);
+				cost = Math.Pow(distance / 14, 4);
+			}
+
+			if (wrists.right != null)
+			{
+				float distance = Math.Abs(wrists.right.middle - HandConfig.WristNaturePosition);
+				cost = Math.Pow(distance / 14, 4);
+			}
+
+			return cost;
 		}
 
 		FingerMap getTreeNodeFingerMap(TreeNode node)

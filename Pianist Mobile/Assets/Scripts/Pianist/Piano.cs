@@ -34,7 +34,7 @@ namespace Pianist
 			int step = pitchStep(pitch);
 			int group = pitchGroup(pitch);
 
-			return group * GroupSize + GroupKeyPositions[step];
+			return group * GroupSize + GroupKeyPositions[step] - 37.5f;		// use the boundary between E4, F4 as keyboard median
 		}
 
 		public static readonly float[] KeyPositions = Enumerable.Range(0, 120).Select(x => pitchPosition(x)).ToArray();

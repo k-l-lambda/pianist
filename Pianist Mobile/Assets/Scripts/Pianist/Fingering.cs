@@ -231,6 +231,9 @@ namespace Pianist
 
 			return rp;
 		}
+
+
+		public static readonly float WristNaturePosition = 11;
 	};
 
 
