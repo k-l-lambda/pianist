@@ -137,8 +137,6 @@ namespace Pianist
 				staticCost = choice.staticCost;
 				wrists = choice.wrists;
 				timeUnit = choice.deltaTime / benchmarkDuration;
-
-				dynamicCost = evaluateDynamicCost();
 			}
 
 			public void appendChild(TreeNode child)
@@ -153,6 +151,8 @@ namespace Pianist
 				TreeNode child = new TreeNode(choices, config, benchmarkDuration, choiceIndex_);
 				appendChild(child);
 
+				child.dynamicCost = child.evaluateDynamicCost();
+
 				return child;
 			}
 
@@ -163,7 +163,7 @@ namespace Pianist
 				cost += Math.Abs(currentWrist.middle - lastWrist.middle) / timeUnit;
 
 				if (!(lastWrist.low < currentWrist.high && lastWrist.high > currentWrist.low))
-					cost += Math.Min(currentWrist.low - lastWrist.high, lastWrist.low - currentWrist.high) * 10 / timeUnit;
+					cost += Math.Min(Math.Abs(currentWrist.low - lastWrist.high), Math.Abs(lastWrist.low - currentWrist.high)) * 10 / timeUnit;
 
 				// TODO:
 

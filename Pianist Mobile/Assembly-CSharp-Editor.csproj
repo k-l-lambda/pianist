@@ -60,6 +60,8 @@
      <Compile Include="Assets\Editor\PianoControllerEditor.cs" />
      <None Include="Assets\Editor\Resources\MeshPreview.shader" />
      <None Include="Assets\Resources\Materials\Color.shader" />
+     <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump1.txt" />
+     <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump0.txt" />
  <Reference Include="UnityEditor.Advertisements">
  <HintPath>E:/Program Files/Unity/Editor/Data/UnityExtensions/Unity/Advertisements/Editor/UnityEditor.Advertisements.dll</HintPath>
  </Reference>

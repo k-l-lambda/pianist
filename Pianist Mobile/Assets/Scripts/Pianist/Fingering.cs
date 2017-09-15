@@ -204,7 +204,7 @@ namespace Pianist
 				{
 					float keyPosition = Piano.KeyPositions[pair.Key];
 					Range range = getFingerRange(pair.Value);
-					range = new Range { low = range.low, high = range.high };
+					range = new Range { low = keyPosition + range.low, high = keyPosition + range.high };
 
 					if(pair.Value > Finger.EMPTY)
 					{
