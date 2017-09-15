@@ -56,6 +56,10 @@ public class FingeringGenerator : MonoBehaviour
 		}
 	}
 
+	public int StepCount = 1000;
+
+	public bool DumpTree = true;
+
 	FingeringNavigator Navigator = new FingeringNavigator();
 
 
@@ -92,7 +96,7 @@ public class FingeringGenerator : MonoBehaviour
 
 		run();
 
-		FileStream file = new FileStream(fileName, FileMode.OpenOrCreate);
+		FileStream file = new FileStream(fileName, FileMode.Create);
 		MidiSeq.Save(file);
 		file.Close();
 
@@ -137,6 +141,7 @@ public class FingeringGenerator : MonoBehaviour
 
 			Navigator.Track = NotationTrack.merge(tracks);
 			Navigator.Config = HandConfigLib.getConfig(hand.Config);
+			Navigator.MaxStepCount = StepCount;
 
 			if (Navigator.Config == null)
 			{
@@ -147,6 +152,16 @@ public class FingeringGenerator : MonoBehaviour
 			Navigator.HandType = hand.Type;
 
 			results[resultIndex++] = Navigator.run();
+
+			if (DumpTree)
+			{
+				FileStream file = new FileStream(Application.dataPath + "/Editor/Log/FingeringNavigatorTreeDump" + pair.Key.ToString() + ".txt", FileMode.Create);
+
+				byte[] bytes = System.Text.Encoding.Default.GetBytes(Navigator.getTreeJsonDump());
+				file.Write(bytes, 0, bytes.Length);
+
+				file.Close();
+			}
 		}
 
 		NotationUtils.appendFingeringToMidiFile(MidiSeq, results);

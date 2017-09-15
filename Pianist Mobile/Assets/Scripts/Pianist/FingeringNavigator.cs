@@ -213,16 +213,11 @@ namespace Pianist
 
 		double evaluateChordStaticCost(FingerChord chord)
 		{
-			/*// TODO:
-			double cost = 0;
-			foreach(var pair in chord)
-				cost += evaluateFingerStaticCost(pair.Key, pair.Value);
-
-			return cost;*/
 			HandConfig.RangePair wrists = Config.getFingerChordWristRange(chord);
 
 			double cost = 0;
 
+			// wrist position naturality reward
 			if (wrists.left != null)
 			{
 				float distance = Math.Abs(wrists.left.middle - -HandConfig.WristNaturePosition);
@@ -233,6 +228,13 @@ namespace Pianist
 			{
 				float distance = Math.Abs(wrists.right.middle - HandConfig.WristNaturePosition);
 				cost = Math.Pow(distance / 14, 4);
+			}
+
+			// shift fingers punish
+			foreach (Finger f in chord.Values)
+			{
+				if (Math.Abs((int)f) > 10)
+					cost += 100;
 			}
 
 			return cost;
@@ -337,7 +339,7 @@ namespace Pianist
 		{
 			if (currentNoteIndex >= pitches.Length)
 			{
-				choices.Add(fc);
+				choices.Add(new FingerChord(fc));
 
 				/*Finger[] fa = new Finger[fc.Values.Count];
 				fc.Values.CopyTo(fa, 0);
@@ -375,6 +377,38 @@ namespace Pianist
 					tryFingerChoice(pitches, ref choices, fc, currentNoteIndex + 1, emptyQuota - 1);
 				}
 			}
+		}
+
+		string getNodeJsonDump(TreeNode node)
+		{
+			string result = "{";
+
+			if (node.Choice >= 0)
+			{
+				FingerChord fc = ChoiceSequence[node.Index][node.Choice];
+
+				result += "\"choice\":" + FingerConstants.getFingerChordJsonDump(fc) + ",";
+				result += "\"cost\":" + node.SelfCost.ToString() + ",";
+			}
+
+			result += "\"children\":[";
+
+			foreach (TreeNode child in node.children)
+				result += getNodeJsonDump(child) + ",";
+
+			if (result[result.Length - 1] == ',')
+				result = result.Remove(result.Length - 1, 1);
+
+			result += "]";
+
+			result += "}";
+
+			return result;
+		}
+
+		public string getTreeJsonDump()
+		{
+			return getNodeJsonDump(TreeRoot);
 		}
 	};
 }

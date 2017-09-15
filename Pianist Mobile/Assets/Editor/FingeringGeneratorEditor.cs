@@ -68,6 +68,16 @@ public class FingeringGeneratorEditor : Editor
 
 		EditorGUILayout.Space();
 
+		{
+			EditorGUI.BeginChangeCheck();
+
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("StepCount"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("DumpTree"), true);
+
+			if (EditorGUI.EndChangeCheck())
+				serializedObject.ApplyModifiedProperties();
+		}
+
 		TargetName = EditorGUILayout.TextField("Target File Name", TargetName);
 		if (TargetName == "" && t.SourceAsset)
 			TargetName = string.Format("fingering {0}", t.SourceAsset.name);

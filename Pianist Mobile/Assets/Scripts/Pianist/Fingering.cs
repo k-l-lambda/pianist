@@ -359,5 +359,14 @@ namespace Pianist
 
 			return Math.Abs(tail);
 		}
+
+		public static string getFingerChordJsonDump(FingerChord fc)
+		{
+			string list = "";
+			foreach (Finger f in fc.Values)
+				list += (list.Length > 0 ? "," : "") + ((int)f).ToString();
+
+			return "[" + list + "]";
+		}
 	};
 }
