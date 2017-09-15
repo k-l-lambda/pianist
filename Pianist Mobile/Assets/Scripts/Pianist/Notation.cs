@@ -46,6 +46,7 @@ namespace Pianist
 	public class NoteChord
 	{
 		public int tick;
+		public float start;
 		public SortedDictionary<int, Note> notes = new SortedDictionary<int, Note>();
 	};
 
@@ -82,7 +83,7 @@ namespace Pianist
 				var chord = lastChord;
 				if (chord == null || chord.tick < note.tick)
 				{
-					chord = new NoteChord { tick = note.tick, notes = new SortedDictionary<int, Note>() };
+					chord = new NoteChord { tick = note.tick, start = note.start, notes = new SortedDictionary<int, Note>() };
 					chords.Add(chord);
 
 					lastChord = chord;

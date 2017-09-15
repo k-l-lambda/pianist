@@ -23,6 +23,7 @@ public class FingeringGenerator : MonoBehaviour
 	{
 		public string Config;
 		public SolveHandType Type;
+		public float AdaptionSpeed = 1;
 	}
 
 	public Hand[] Hands;
@@ -150,6 +151,7 @@ public class FingeringGenerator : MonoBehaviour
 			}
 
 			Navigator.HandType = hand.Type;
+			Navigator.AdaptionSpeed = hand.AdaptionSpeed;
 
 			results[resultIndex++] = Navigator.run();
 

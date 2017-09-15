@@ -234,6 +234,7 @@ namespace Pianist
 
 
 		public static readonly float WristNaturePosition = 11;
+		public static readonly float BenchmarkDuration = 800;	// in milliseconds
 	};
 
 

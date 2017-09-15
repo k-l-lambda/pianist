@@ -58,9 +58,13 @@ namespace Pianist
 				}
 			}
 
+			HandConfig handConfig;
+
 			FingerChord fingerChord;
 
 			HandConfig.RangePair wrists;
+
+			float timeUnit;
 
 			double staticCost;
 			double dynamicCost;
@@ -93,6 +97,8 @@ namespace Pianist
 					{
 						result += "\"choice\":" + FingerConstants.getFingerChordJsonDump(fingerChord) + ",";
 						result += "\"cost\":" + SelfCost.ToString() + ",";
+						//if (wrists.right != null)
+						//	result += "\"middle\":" + wrists.right.middle.ToString() + ",";
 					}
 
 					result += "\"children\":[";
@@ -119,8 +125,10 @@ namespace Pianist
 				dynamicCost = 0;
 			}
 
-			public TreeNode(Choice[] choices, HandConfig config, int choiceIndex_)
+			public TreeNode(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_)
 			{
+				handConfig = config;
+
 				choiceIndex = choiceIndex_;
 
 				Choice choice = choices[choiceIndex];
@@ -128,6 +136,7 @@ namespace Pianist
 				fingerChord = choice.chord;
 				staticCost = choice.staticCost;
 				wrists = choice.wrists;
+				timeUnit = choice.deltaTime / benchmarkDuration;
 
 				dynamicCost = evaluateDynamicCost();
 			}
@@ -139,18 +148,42 @@ namespace Pianist
 				child.parent = this;
 			}
 
-			public TreeNode appendChild(Choice[] choices, HandConfig config, int choiceIndex_)
+			public TreeNode appendChild(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_)
 			{
-				TreeNode child = new TreeNode(choices, config, choiceIndex_);
+				TreeNode child = new TreeNode(choices, config, benchmarkDuration, choiceIndex_);
 				appendChild(child);
 
 				return child;
 			}
 
+			double evaluateSingleArmCost(HandConfig.Range lastWrist, HandConfig.Range currentWrist)
+			{
+				double cost = 0;
+
+				cost += Math.Abs(currentWrist.middle - lastWrist.middle) / timeUnit;
+
+				if (!(lastWrist.low < currentWrist.high && lastWrist.high > currentWrist.low))
+					cost += Math.Min(currentWrist.low - lastWrist.high, lastWrist.low - currentWrist.high) * 10 / timeUnit;
+
+				// TODO:
+
+				return cost;
+			}
+
 			double evaluateDynamicCost()
 			{
-				// TODO:
-				return 0;
+				double cost = 0;
+
+				if (parent != null)
+				{
+					if (wrists.left != null && parent.wrists.left != null)
+						cost += evaluateSingleArmCost(parent.wrists.left, wrists.left);
+
+					if (wrists.right != null && parent.wrists.right != null)
+						cost += evaluateSingleArmCost(parent.wrists.right, wrists.right);
+				}
+
+				return cost;
 			}
 		};
 
@@ -193,6 +226,15 @@ namespace Pianist
 		public HandConfig Config;
 		public SolveHandType HandType;
 
+		float benchmarkDuration = HandConfig.BenchmarkDuration;
+		public float AdaptionSpeed
+		{
+			set
+			{
+				benchmarkDuration = HandConfig.BenchmarkDuration * value;
+			}
+		}
+
 		public FingerChord[] Constraints;
 
 		CostEstimation[] EstimatedCosts;
@@ -202,6 +244,7 @@ namespace Pianist
 			public FingerChord chord;
 			public double staticCost;
 			public HandConfig.RangePair wrists;
+			public float deltaTime;
 		};
 
 		Choice[][] ChoiceSequence;
@@ -263,7 +306,7 @@ namespace Pianist
 			return result;
 		}
 
-		Choice evaluateChordChoice(FingerChord chord)
+		Choice evaluateChordChoice(FingerChord chord, float deltaTime)
 		{
 			HandConfig.RangePair wrists = Config.getFingerChordWristRange(chord);
 
@@ -289,7 +332,7 @@ namespace Pianist
 					cost += 100;
 			}
 
-			return new Choice { chord = chord, staticCost = cost, wrists = wrists };
+			return new Choice { chord = chord, staticCost = cost, wrists = wrists, deltaTime = deltaTime };
 		}
 
 		FingerMap getTreeNodeFingerMap(TreeNode node)
@@ -337,7 +380,7 @@ namespace Pianist
 			for (int i = 0; i < choices.Length; ++i)
 			{
 				//double cost = evaluateNodeCost(currentLeave, choices[i].chord);
-				TreeNode leaf = currentLeave.appendChild(choices, Config, i);
+				TreeNode leaf = currentLeave.appendChild(choices, Config, benchmarkDuration, i);
 
 				TreeLeaves.Add(leaf);
 			}
@@ -348,9 +391,11 @@ namespace Pianist
 			ChoiceSequence = new Choice[NoteSeq.Length][];
 			EstimatedCosts = new CostEstimation[NoteSeq.Length];
 
+			float lastTime = 0;
 			for (int i = 0; i < ChoiceSequence.Length; ++i)
 			{
-				ChoiceSequence[i] = getFingerChoices(NoteSeq[i]);
+				ChoiceSequence[i] = getFingerChoices(NoteSeq[i], NoteSeq[i].start - lastTime);
+				lastTime = NoteSeq[i].start;
 
 				EstimatedCosts[i] = new CostEstimation();
 
@@ -367,7 +412,7 @@ namespace Pianist
 			}
 		}
 
-		Choice[] getFingerChoices(NoteChord nc)
+		Choice[] getFingerChoices(NoteChord nc, float deltaTime)
 		{
 			if(nc.notes.Count == 0)
 				return new Choice[0];
@@ -388,7 +433,7 @@ namespace Pianist
 			for (int i = 0; i < choices.Count; ++i)
 			{
 				FingerChord chord = choices[i];
-				choiceArray[i] = evaluateChordChoice(chord);
+				choiceArray[i] = evaluateChordChoice(chord, deltaTime);
 			}
 
 			return choiceArray;
