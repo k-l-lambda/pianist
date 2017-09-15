@@ -37,12 +37,12 @@ namespace Pianist
 				}
 			}
 
-			int choice;
+			int choiceIndex;
 			public int Choice
 			{
 				get
 				{
-					return choice;
+					return choiceIndex;
 				}
 			}
 
@@ -52,19 +52,24 @@ namespace Pianist
 				{
 					string prefix = parent != null ? parent.ChoicePathDescription : "";
 
-					string desc = choice >= 0 ? (prefix.Length > 0 ? " -> " : "") + choice.ToString() : "";
+					string desc = choiceIndex >= 0 ? (prefix.Length > 0 ? " -> " : "") + choiceIndex.ToString() : "";
 
 					return prefix + desc;
 				}
 			}
 
-			double cost;
+			FingerChord fingerChord;
+
+			HandConfig.RangePair wrists;
+
+			double staticCost;
+			double dynamicCost;
 
 			public double SelfCost
 			{
 				get
 				{
-					return cost;
+					return staticCost + dynamicCost;
 				}
 			}
 
@@ -72,17 +77,59 @@ namespace Pianist
 			{
 				get
 				{
-					double parentDiff = parent != null ? parent.CommittedCost : 0;
+					double parentCost = parent != null ? parent.CommittedCost : 0;
 
-					return parentDiff + cost;
+					return parentCost + SelfCost;
+				}
+			}
+
+			public string JsonDump
+			{
+				get
+				{
+					string result = "{";
+
+					if (choiceIndex >= 0)
+					{
+						result += "\"choice\":" + FingerConstants.getFingerChordJsonDump(fingerChord) + ",";
+						result += "\"cost\":" + SelfCost.ToString() + ",";
+					}
+
+					result += "\"children\":[";
+
+					foreach (TreeNode child in children)
+						result += child.JsonDump + ",";
+
+					if (result[result.Length - 1] == ',')
+						result = result.Remove(result.Length - 1, 1);
+
+					result += "]";
+
+					result += "}";
+
+					return result;
 				}
 			}
 
 
-			public TreeNode(int choice_ = -1, double cost_ = 0)
+			public TreeNode()
 			{
-				choice = choice_;
-				cost = cost_;
+				choiceIndex = -1;
+				staticCost = 0;
+				dynamicCost = 0;
+			}
+
+			public TreeNode(Choice[] choices, HandConfig config, int choiceIndex_)
+			{
+				choiceIndex = choiceIndex_;
+
+				Choice choice = choices[choiceIndex];
+
+				fingerChord = choice.chord;
+				staticCost = choice.staticCost;
+				wrists = choice.wrists;
+
+				dynamicCost = evaluateDynamicCost();
 			}
 
 			public void appendChild(TreeNode child)
@@ -92,12 +139,18 @@ namespace Pianist
 				child.parent = this;
 			}
 
-			public TreeNode appendChild(int choice_ = -1, double cost_ = 0)
+			public TreeNode appendChild(Choice[] choices, HandConfig config, int choiceIndex_)
 			{
-				TreeNode child = new TreeNode(choice_, cost_);
+				TreeNode child = new TreeNode(choices, config, choiceIndex_);
 				appendChild(child);
 
 				return child;
+			}
+
+			double evaluateDynamicCost()
+			{
+				// TODO:
+				return 0;
 			}
 		};
 
@@ -144,7 +197,14 @@ namespace Pianist
 
 		CostEstimation[] EstimatedCosts;
 
-		FingerChord[][] ChoiceSequence;
+		struct Choice
+		{
+			public FingerChord chord;
+			public double staticCost;
+			public HandConfig.RangePair wrists;
+		};
+
+		Choice[][] ChoiceSequence;
 
 		TreeNode TreeRoot;
 		List<TreeNode> TreeLeaves;
@@ -203,15 +263,15 @@ namespace Pianist
 			return result;
 		}
 
-		double evaluateNodeCost(TreeNode leaf, FingerChord chord)
+		/*double evaluateNodeCost(TreeNode leaf, FingerChord chord)
 		{
 			double chordStatic = evaluateChordStaticCost(chord);
 
 			// TODO:
 			return chordStatic;
-		}
+		}*/
 
-		double evaluateChordStaticCost(FingerChord chord)
+		Choice evaluateChordChoice(FingerChord chord)
 		{
 			HandConfig.RangePair wrists = Config.getFingerChordWristRange(chord);
 
@@ -237,7 +297,7 @@ namespace Pianist
 					cost += 100;
 			}
 
-			return cost;
+			return new Choice { chord = chord, staticCost = cost, wrists = wrists };
 		}
 
 		FingerMap getTreeNodeFingerMap(TreeNode node)
@@ -245,7 +305,7 @@ namespace Pianist
 			FingerMap map = node.parent != null ? getTreeNodeFingerMap(node.parent) : new FingerMap();
 			if (node.Choice >= 0)
 			{
-				FingerChord fc = ChoiceSequence[node.Index][node.Choice];
+				FingerChord fc = ChoiceSequence[node.Index][node.Choice].chord;
 				NoteChord nc = NoteSeq[node.Index];
 				map[nc.tick] = fc;
 			}
@@ -281,11 +341,11 @@ namespace Pianist
 			//NoteChord currentNode = NoteSeq[currentLeave.Index];
 			//NoteChord nextNode = NoteSeq[currentLeave.Index + 1];
 
-			FingerChord[] choices = ChoiceSequence[currentLeave.Index + 1];
+			Choice[] choices = ChoiceSequence[currentLeave.Index + 1];
 			for (int i = 0; i < choices.Length; ++i)
 			{
-				double cost = evaluateNodeCost(currentLeave, choices[i]);
-				TreeNode leaf = currentLeave.appendChild(i, cost);
+				//double cost = evaluateNodeCost(currentLeave, choices[i].chord);
+				TreeNode leaf = currentLeave.appendChild(choices, Config, i);
 
 				TreeLeaves.Add(leaf);
 			}
@@ -293,7 +353,7 @@ namespace Pianist
 
 		void generateChoiceSequence()
 		{
-			ChoiceSequence = new FingerChord[NoteSeq.Length][];
+			ChoiceSequence = new Choice[NoteSeq.Length][];
 			EstimatedCosts = new CostEstimation[NoteSeq.Length];
 
 			for (int i = 0; i < ChoiceSequence.Length; ++i)
@@ -304,8 +364,8 @@ namespace Pianist
 
 				// initialize estimated costs with minimized static note cost
 				double minCost = 1000;
-				foreach (FingerChord fc in ChoiceSequence[i])
-					minCost = Math.Min(minCost, evaluateChordStaticCost(fc));
+				foreach (var choice in ChoiceSequence[i])
+					minCost = Math.Min(minCost, choice.staticCost);
 
 				EstimatedCosts[i].append(minCost);
 
@@ -315,10 +375,10 @@ namespace Pianist
 			}
 		}
 
-		FingerChord[] getFingerChoices(NoteChord nc)
+		Choice[] getFingerChoices(NoteChord nc)
 		{
 			if(nc.notes.Count == 0)
-				return new FingerChord[0];
+				return new Choice[0];
 
 			List<FingerChord> choices = new List<FingerChord>();
 
@@ -332,7 +392,14 @@ namespace Pianist
 			while (choices.Count == 0)
 				tryFingerChoice(pitches, ref choices, fc, 0, emptyQuota++);
 
-			return choices.ToArray();
+			Choice[] choiceArray = new Choice[choices.Count];
+			for (int i = 0; i < choices.Count; ++i)
+			{
+				FingerChord chord = choices[i];
+				choiceArray[i] = evaluateChordChoice(chord);
+			}
+
+			return choiceArray;
 		}
 
 		void tryFingerChoice(int[] pitches, ref List<FingerChord> choices, FingerChord fc, int currentNoteIndex, int emptyQuota)
@@ -379,36 +446,9 @@ namespace Pianist
 			}
 		}
 
-		string getNodeJsonDump(TreeNode node)
-		{
-			string result = "{";
-
-			if (node.Choice >= 0)
-			{
-				FingerChord fc = ChoiceSequence[node.Index][node.Choice];
-
-				result += "\"choice\":" + FingerConstants.getFingerChordJsonDump(fc) + ",";
-				result += "\"cost\":" + node.SelfCost.ToString() + ",";
-			}
-
-			result += "\"children\":[";
-
-			foreach (TreeNode child in node.children)
-				result += getNodeJsonDump(child) + ",";
-
-			if (result[result.Length - 1] == ',')
-				result = result.Remove(result.Length - 1, 1);
-
-			result += "]";
-
-			result += "}";
-
-			return result;
-		}
-
 		public string getTreeJsonDump()
 		{
-			return getNodeJsonDump(TreeRoot);
+			return TreeRoot.JsonDump;
 		}
 	};
 }

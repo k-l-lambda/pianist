@@ -366,7 +366,7 @@ namespace Pianist
 			foreach (Finger f in fc.Values)
 				list += (list.Length > 0 ? "," : "") + ((int)f).ToString();
 
-			return "[" + list + "]";
+			return "\"" + list + "\"";
 		}
 	};
 }
