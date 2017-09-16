@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Fingering Navigator Viewer</title>
+		<style type="text/css">
+			table
+			{
+				border-collapse: collapse;
+			}
+
+			.node-children > tbody > tr > td
+			{
+				border: 1px solid #ccc;
+				vertical-align: top;
+			}
+
+			.node-head
+			{
+				display: inline-block;
+				width: 100px;
+				height: 150px;
+			}
+		</style>
+		<script src="jquery.js" type="text/javascript"></script>
+		<script type="text/javascript">
+			var renderNode = function (node) {
+				var code = "<table class='node'>";
+
+				code += "<tr><th>";
+
+				code += "	<div class='node-head'>";
+
+				code += "		<span class='step-index'>" + node.stepIndex + "</span>";
+				if (node.choice)
+					code += "		<span class='fingers'>" + node.choice + "</span>";
+				if (node.cost)
+					code += "		<span class='cost'>" + node.cost.toPrecision(4) + "</span>";
+
+				code += "	</div>";
+
+				code += "</th></tr>";
+
+				code += "<tr><td>";
+
+				code += "	<table class='node-children'><tr>";
+
+				for (var i in node.children) {
+					var child = node.children[i];
+					if (child.stepIndex >= 0) {
+						code += "	<td>";
+						code += renderNode(node.children[i]);
+						code += "	</td>";
+					}
+				}
+
+				code += "	</tr></table>";
+
+				code += "</td></tr>";
+
+				code += "</table>";
+
+				return code;
+			};
+
+
+			$(function () {
+				$("#paint").click(function () {
+					var data = JSON.parse($("#source").val());
+					//console.log(data);
+
+					//console.log(renderNode(data));
+					$("#viewer").html(renderNode(data));
+				});
+			});
+		</script>
+	</head>
+	<body>
+		<div id="controller">
+			<textarea id="source"></textarea>
+			<button id="paint">Paint</button>
+		</div>
+		<div id="viewer"></div>
+	</body>
+</html>

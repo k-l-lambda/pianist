@@ -9,6 +9,8 @@ TODO:
 
 2017.9.16	K.L.	<k.l.lambda@gmail.com>
 
+	+	FingeringNavigatorViewer: created.
+
 	+	Pianist/FingeringNavigator: added step index for tree node.
 
 
