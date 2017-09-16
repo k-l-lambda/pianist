@@ -3,9 +3,29 @@
 	<head>
 		<title>Fingering Navigator Viewer</title>
 		<style type="text/css">
+			body
+			{
+				font-family: Verdana, Arial, Helvetica, sans-serif;
+			}
+
 			table
 			{
 				border-collapse: collapse;
+			}
+
+			td, th
+			{
+				padding: 0;
+			}
+
+			#controller
+			{
+				background: #eee;
+			}
+
+			#step
+			{
+				text-align: center;
 			}
 
 			.node-children > tbody > tr > td
@@ -17,13 +37,43 @@
 			.node-head
 			{
 				display: inline-block;
-				width: 100px;
-				height: 150px;
+				position: relative;
+				width: 60px;
+				height: 30px;
+				padding: 1em;
+			}
+
+			.step-index
+			{
+				position: absolute;
+				top: 2px;
+				left: 2px;
+				font-size: 10px;
+			}
+
+			.fingers
+			{
+				display: block;
+				font-size: 15px;
+				color: #6f8;
+				text-shadow: 1px 1px 1px #000;
+				text-decoration: underline;
+			}
+
+			.cost
+			{
+				font-size: 12px;
+				color: #aaa;
 			}
 		</style>
 		<script src="jquery.js" type="text/javascript"></script>
 		<script type="text/javascript">
+			var maxStep = 0;
+			var currentStep = 0;
+
 			var renderNode = function (node) {
+				maxStep = Math.max(maxStep, node.stepIndex);
+
 				var code = "<table class='node'>";
 
 				code += "<tr><th>";
@@ -47,8 +97,8 @@
 				for (var i in node.children) {
 					var child = node.children[i];
 					if (child.stepIndex >= 0) {
-						code += "	<td>";
-						code += renderNode(node.children[i]);
+						code += "	<td class='node-child' data-step='" + child.stepIndex + "'>";
+						code += renderNode(child);
 						code += "	</td>";
 					}
 				}
@@ -62,14 +112,54 @@
 				return code;
 			};
 
+			var setStep = function (step) {
+				if (step > currentStep) {
+					for (var i = currentStep + 1; i <= step; ++i)
+						$(".node-child[data-step=" + i + "]").show();
+				}
+				else if (step < currentStep) {
+					for (var i = currentStep; i > step; --i)
+						$(".node-child[data-step=" + i + "]").hide();
+				}
+
+				currentStep = step;
+
+				$("#step").val(currentStep);
+				$("#step-slider").val(currentStep);
+			};
+
 
 			$(function () {
 				$("#paint").click(function () {
 					var data = JSON.parse($("#source").val());
 					//console.log(data);
 
+					maxStep = 0;
+
 					//console.log(renderNode(data));
 					$("#viewer").html(renderNode(data));
+
+					$("#step-slider").attr("max", maxStep);
+
+					setStep(maxStep);
+				});
+
+				$("#step-slider").change(function () {
+					setStep(Number($("#step-slider").val()));
+				});
+
+				$("#step").change(function () {
+					setStep(Number($("#step").val()));
+				});
+
+				$("#step-backward").click(function () {
+					if (currentStep > 0)
+						setStep(currentStep - 1);
+				});
+
+				$("#step-forward").click(function () {
+					if (currentStep < maxStep)
+						setStep(currentStep + 1);
 				});
 			});
 		</script>
@@ -78,6 +168,10 @@
 		<div id="controller">
 			<textarea id="source"></textarea>
 			<button id="paint">Paint</button>
+			<input id="step-slider" type="range" />
+			<input id="step-backward" type="button" value="<" />
+			<input id="step-forward" type="button" value=">" />
+			<input id="step" type="text" size="3" />
 		</div>
 		<div id="viewer"></div>
 	</body>
