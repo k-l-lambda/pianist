@@ -87,7 +87,8 @@ public class FingeringGenerator : MonoBehaviour
 		MidiSeq = new Midi.Sequence();
 		MidiSeq.Load(stream);
 
-		TrackHandIndices = new int[MidiSeq.Count];
+		if (TrackHandIndices == null || TrackHandIndices.Length != MidiSeq.Count)
+			TrackHandIndices = new int[MidiSeq.Count];
 	}
 
 	public void generate(string fileName)
