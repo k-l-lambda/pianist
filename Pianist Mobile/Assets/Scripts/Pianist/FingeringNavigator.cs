@@ -17,6 +17,8 @@ namespace Pianist
 			public TreeNode parent = null;
 			public TreeNode[] children = new TreeNode[0];
 
+			public int StepIndex = -1;
+
 			int depth = -1;
 
 			public int Index
@@ -100,6 +102,8 @@ namespace Pianist
 						//if (wrists.right != null)
 						//	result += "\"middle\":" + wrists.right.middle.ToString() + ",";
 					}
+
+					result += "\"stepIndex\":" + StepIndex.ToString() + ",";
 
 					result += "\"children\":[";
 
@@ -253,6 +257,8 @@ namespace Pianist
 		List<TreeNode> TreeLeaves;
 		List<TreeNode> ResultNodes;
 
+		int currentStep = 0;
+
 		public Fingering run()
 		{
 			generateChoiceSequence();
@@ -267,6 +273,8 @@ namespace Pianist
 			{
 				if (TreeLeaves.Count == 0)
 					break;
+
+				currentStep = i;
 
 				step();
 
@@ -365,6 +373,8 @@ namespace Pianist
 
 			TreeNode currentLeave = TreeLeaves[0];
 			TreeLeaves.RemoveAt(0);
+
+			currentLeave.StepIndex = currentStep;
 
 			if (currentLeave.Index >= NoteSeq.Length - 1)
 			{
