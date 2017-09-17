@@ -108,7 +108,8 @@ namespace Pianist
 					result += "\"children\":[";
 
 					foreach (TreeNode child in children)
-						result += child.JsonDump + ",";
+						if (child.StepIndex > 0)
+							result += child.JsonDump + ",";
 
 					if (result[result.Length - 1] == ',')
 						result = result.Remove(result.Length - 1, 1);
@@ -257,6 +258,8 @@ namespace Pianist
 		List<TreeNode> TreeLeaves;
 		List<TreeNode> ResultNodes;
 
+		TreeNode currentNode;
+
 		int currentStep = 0;
 
 		public Fingering run()
@@ -269,6 +272,8 @@ namespace Pianist
 
 			ResultNodes = new List<TreeNode>();
 
+			currentNode = TreeRoot;
+
 			for (int i = 0; i < MaxStepCount; ++i)
 			{
 				if (TreeLeaves.Count == 0)
@@ -279,7 +284,7 @@ namespace Pianist
 				step();
 
 #if UNITY_EDITOR
-				UnityEditor.EditorUtility.DisplayProgressBar("FingeringNavigator running", string.Format("Analyzing: {0}, {1}", TreeLeaves[0].CommittedCost, TreeLeaves[0].ChoicePathDescription), (float)i / MaxStepCount);
+				UnityEditor.EditorUtility.DisplayProgressBar("FingeringNavigator running", string.Format("Analyzing: {0}, {1}", currentNode.CommittedCost, currentNode.ChoicePathDescription), (float)i / MaxStepCount);
 #endif
 			}
 
@@ -291,7 +296,7 @@ namespace Pianist
 				return cost1.CompareTo(cost2);
 			});
 
-			TreeNode resultNode = ResultNodes.Count > 0 ? ResultNodes[0] : TreeLeaves[0];
+			TreeNode resultNode = ResultNodes.Count > 0 ? ResultNodes[0] : currentNode;
 
 			Fingering result = new Fingering();
 			result.markers = new Fingering.Marker[SourceTrack.notes.Length];
@@ -363,16 +368,30 @@ namespace Pianist
 			for (int i = NoteSeq.Length - 1; i >= 0; --i)
 				accumulatedEstimatedCosts[i] = EstimatedCosts[i].Value + accumulatedEstimatedCosts[i + 1];
 
-			TreeLeaves.Sort(delegate(TreeNode node1, TreeNode node2)
+			/*TreeLeaves.Sort(delegate(TreeNode node1, TreeNode node2)
 			{
 				double cost1 = node1.CommittedCost + accumulatedEstimatedCosts[node1.Index + 1];
 				double cost2 = node2.CommittedCost + accumulatedEstimatedCosts[node2.Index + 1];
 
 				return cost1.CompareTo(cost2);
-			});
+			});*/
+			double minCost = double.MaxValue;
+			int minIndex = 0;
+			for(int i = 0; i < TreeLeaves.Count; ++i)
+			{
+				TreeNode node = TreeLeaves[i];
+				double cost = node.CommittedCost + accumulatedEstimatedCosts[node.Index + 1];
+				if(cost < minCost)
+				{
+					minCost = cost;
+					minIndex = i;
+				}
+			}
 
-			TreeNode currentLeave = TreeLeaves[0];
-			TreeLeaves.RemoveAt(0);
+			TreeNode currentLeave = TreeLeaves[minIndex];
+			TreeLeaves.RemoveAt(minIndex);
+
+			currentNode = currentLeave;
 
 			currentLeave.StepIndex = currentStep;
 
