@@ -9,6 +9,8 @@ TODO:
 
 2017.9.17	K.L.	<k.l.lambda@gmail.com>
 
+	>	Pianist/FingeringNavigator: EstimatedCosts update added.
+
 	>	FingeringNavigatorViewer: refined styles.
 
 	>	Pianist/FingeringNavigator: optimized current node searching.

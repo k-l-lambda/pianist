@@ -395,6 +395,10 @@ namespace Pianist
 
 			currentLeave.StepIndex = currentStep;
 
+			// update EstimatedCosts
+			for (TreeNode node = currentLeave; node.Index >= 0; node = node.parent)
+				EstimatedCosts[node.Index].append(node.SelfCost);
+
 			if (currentLeave.Index >= NoteSeq.Length - 1)
 			{
 				ResultNodes.Add(currentLeave);
