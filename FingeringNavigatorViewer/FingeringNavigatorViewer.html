@@ -161,6 +161,40 @@
 					if (currentStep < maxStep)
 						setStep(currentStep + 1);
 				});
+
+				$(document).keydown(function () {
+					//console.log("event.keyCode:", event.keyCode);
+					switch (event.keyCode) {
+						case 37:	// left
+							if (currentStep > 0)
+								setStep(currentStep - 1);
+
+							break;
+						case 39:	// right
+							if (currentStep < maxStep)
+								setStep(currentStep + 1);
+
+							break;
+						case 36:	// home
+							setStep(0);
+
+							break;
+						case 35:	// end
+							setStep(maxStep);
+
+							break;
+						case 33:	// page up
+							var step = Math.max(0, currentStep - Math.floor(maxStep / 10));
+							setStep(step);
+
+							break;
+						case 34:	// page down
+							var step = Math.min(maxStep, currentStep + Math.floor(maxStep / 10));
+							setStep(step);
+
+							break;
+					}
+				});
 			});
 		</script>
 	</head>
