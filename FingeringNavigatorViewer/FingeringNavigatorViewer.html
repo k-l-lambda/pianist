@@ -20,7 +20,16 @@
 
 			#controller
 			{
+				position: fixed;
+				top: 0;
+				width: 100%;
+				height: 50px;
 				background: #eee;
+			}
+
+			#viewer
+			{
+				margin-top: 50px;
 			}
 
 			#step
@@ -38,31 +47,37 @@
 			{
 				display: inline-block;
 				position: relative;
-				width: 60px;
+				width: 40px;
 				height: 30px;
-				padding: 1em;
+				padding: 0.4em;
+			}
+
+			.focus .node-head
+			{
+				outline: 2px solid red;
+				background: #fee;
 			}
 
 			.step-index
 			{
 				position: absolute;
-				top: 2px;
-				left: 2px;
-				font-size: 10px;
+				top: 0;
+				left: 0;
+				font-size: 9px;
 			}
 
 			.fingers
 			{
 				display: block;
-				font-size: 15px;
-				color: #6f8;
+				font-size: 12px;
+				color: #4e6;
 				text-shadow: 1px 1px 1px #000;
 				text-decoration: underline;
 			}
 
 			.cost
 			{
-				font-size: 12px;
+				font-size: 10px;
 				color: #aaa;
 			}
 		</style>
@@ -83,8 +98,11 @@
 				code += "		<span class='step-index'>" + node.stepIndex + "</span>";
 				if (node.choice)
 					code += "		<span class='fingers'>" + node.choice + "</span>";
-				if (node.cost)
-					code += "		<span class='cost'>" + node.cost.toPrecision(4) + "</span>";
+				if (node.cost) {
+					var cost = (node.accCost || 0) + node.cost;
+					var title = node.accCost ? (node.accCost + " + " + node.cost + " = " + cost) : node.accCost;
+					code += "		<span class='cost' title='" + title + "'>" + cost.toPrecision(3) + "</span>";
+				}
 
 				code += "	</div>";
 
@@ -94,10 +112,13 @@
 
 				code += "	<table class='node-children'><tr>";
 
+				var accCost = (node.accCost || 0) + node.cost;
+
 				for (var i in node.children) {
 					var child = node.children[i];
 					if (child.stepIndex >= 0) {
 						code += "	<td class='node-child' data-step='" + child.stepIndex + "'>";
+						child.accCost = accCost;
 						code += renderNode(child);
 						code += "	</td>";
 					}
@@ -122,10 +143,17 @@
 						$(".node-child[data-step=" + i + "]").hide();
 				}
 
+				$(".node-child.focus").removeClass("focus");
+				$(".node-child[data-step=" + step + "]").addClass("focus");
+
 				currentStep = step;
 
 				$("#step").val(currentStep);
 				$("#step-slider").val(currentStep);
+
+				//$("body").clearQueue();
+				//$.fn.stop();
+				$("body").scrollTo(".focus", 300, { offset: { top: -$(window).height() / 2, left: -$(window).width() / 2 }, interrupt: true });
 			};
 
 
@@ -144,7 +172,7 @@
 					setStep(maxStep);
 				});
 
-				$("#step-slider").change(function () {
+				$("#step-slider").on("input", function () {
 					setStep(Number($("#step-slider").val()));
 				});
 
@@ -163,6 +191,7 @@
 				});
 
 				$(document).keydown(function () {
+					var preventDefault = true;
 					//console.log("event.keyCode:", event.keyCode);
 					switch (event.keyCode) {
 						case 37:	// left
@@ -193,12 +222,18 @@
 							setStep(step);
 
 							break;
+						default:
+							preventDefault = false;
 					}
+
+					if (preventDefault)
+						event.preventDefault();
 				});
 			});
 		</script>
 	</head>
 	<body>
+		<div id="viewer"></div>
 		<div id="controller">
 			<textarea id="source"></textarea>
 			<button id="paint">Paint</button>
@@ -207,6 +242,5 @@
 			<input id="step-forward" type="button" value=">" />
 			<input id="step" type="text" size="3" />
 		</div>
-		<div id="viewer"></div>
 	</body>
 </html>
