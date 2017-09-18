@@ -130,11 +130,17 @@ MonoBehaviour:
   Hands:
   - Config: Default
     Type: 2
+    AdaptionSpeed: 1
   - Config: Default
     Type: 1
+    AdaptionSpeed: 1
   - Config: Default
     Type: 0
-  TrackHandIndices: ffffffff0200000002000000
+    AdaptionSpeed: 1
+  TrackHandIndices: 000000000200000002000000
+  StepCountMin: 100
+  StepCountMax: 1000
+  DumpTree: 1
 --- !u!114 &836143163
 MonoBehaviour:
   m_ObjectHideFlags: 0

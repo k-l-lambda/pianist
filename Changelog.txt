@@ -10,6 +10,8 @@ TODO:
 
 2017.9.18	K.L.	<k.l.lambda@gmail.com>
 
+	>	Pianist/FingeringNavigator: added MinStepCount.
+
 	>	Pianist/FingeringNavigator: refined progress bar.
 
 	>	FingeringNavigatorViewer: refined focus scroll.

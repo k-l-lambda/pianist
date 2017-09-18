@@ -71,7 +71,8 @@ public class FingeringGeneratorEditor : Editor
 		{
 			EditorGUI.BeginChangeCheck();
 
-			EditorGUILayout.PropertyField(serializedObject.FindProperty("StepCount"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("StepCountMin"), true);
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("StepCountMax"), true);
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("DumpTree"), true);
 
 			if (EditorGUI.EndChangeCheck())
@@ -84,6 +85,9 @@ public class FingeringGeneratorEditor : Editor
 
 		if (GUILayout.Button("Generate"))
 		{
+			if (TargetName == "" && t.SourceAsset)
+				TargetName = string.Format("fingering {0}", t.SourceAsset.name);
+
 			t.generate(string.Format("{0}/Editor/Resources/MIDI/Fingerings/{1}", Application.dataPath, TargetName));
 		}
 	}

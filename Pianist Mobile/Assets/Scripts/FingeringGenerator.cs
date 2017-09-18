@@ -57,7 +57,8 @@ public class FingeringGenerator : MonoBehaviour
 		}
 	}
 
-	public int StepCount = 1000;
+	public int StepCountMin = 100;
+	public int StepCountMax = 1000;
 
 	public bool DumpTree = true;
 
@@ -143,7 +144,8 @@ public class FingeringGenerator : MonoBehaviour
 
 			Navigator.Track = NotationTrack.merge(tracks);
 			Navigator.Config = HandConfigLib.getConfig(hand.Config);
-			Navigator.MaxStepCount = StepCount;
+			Navigator.MaxStepCount = StepCountMin;
+			Navigator.MaxStepCount = StepCountMax;
 
 			if (Navigator.Config == null)
 			{

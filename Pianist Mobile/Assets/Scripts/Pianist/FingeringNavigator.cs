@@ -193,6 +193,7 @@ namespace Pianist
 		};
 
 
+		public int MinStepCount = 100;
 		public int MaxStepCount = 1000;
 
 		private NoteSequence NoteSeq;
@@ -277,6 +278,9 @@ namespace Pianist
 			for (int i = 0; i < MaxStepCount; ++i)
 			{
 				if (TreeLeaves.Count == 0)
+					break;
+
+				if (i >= MinStepCount && ResultNodes.Count > 0)
 					break;
 
 				currentStep = i;
