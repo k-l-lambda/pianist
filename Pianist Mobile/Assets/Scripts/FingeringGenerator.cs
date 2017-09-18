@@ -57,6 +57,8 @@ public class FingeringGenerator : MonoBehaviour
 		}
 	}
 
+	public bool KeepConstraints = true;
+
 	public int StepCountMin = 100;
 	public int StepCountMax = 1000;
 
@@ -144,7 +146,8 @@ public class FingeringGenerator : MonoBehaviour
 
 			Navigator.Track = NotationTrack.merge(tracks);
 			Navigator.Config = HandConfigLib.getConfig(hand.Config);
-			Navigator.MaxStepCount = StepCountMin;
+			Navigator.KeepConstraints = KeepConstraints;
+			Navigator.MinStepCount = StepCountMin;
 			Navigator.MaxStepCount = StepCountMax;
 
 			if (Navigator.Config == null)

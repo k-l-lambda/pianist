@@ -27,7 +27,7 @@ public class NotationUtils
 	static readonly string MidiSignatureText = "Fingering by K.L.Pianist, fingering-marker-pattern:finger:(\\d+)\\|([\\d,-]+)";
 
 
-	public static NotationTrack parseMidiTrack(Midi.Track track, int division)
+	public static NotationTrack parseMidiTrack(Midi.Track track, int division, ref Regex fingerPattern)
 	{
 		int microsecondsPerBeat = Midi.PpqnClock.DefaultTempo;
 
@@ -39,7 +39,6 @@ public class NotationUtils
 		List<Note> notes = new List<Note>();
 
 		Regex fingerMetaPattern = new Regex("fingering-marker-pattern:(.*)");
-		Regex fingerPattern = null;
 
 		foreach (Midi.MidiEvent e in track.Iterator())
 		{
@@ -61,7 +60,10 @@ public class NotationUtils
 								string text = System.Text.Encoding.Default.GetString(mm.GetBytes());
 								var match = fingerMetaPattern.Match(text);
 								if (match.Success)
+								{
 									fingerPattern = new Regex(match.Groups[1].ToString());
+									Debug.LogFormat("Finger Pattern found: {0}", fingerPattern.ToString());
+								}
 							}
 
 							break;
@@ -72,7 +74,9 @@ public class NotationUtils
 								var match = fingerPattern.Match(text);
 								if (match.Success)
 								{
-									try{
+									//Debug.LogFormat("Finger: {0}", text);
+									try
+									{
 										int pitch = int.Parse(match.Groups[1].ToString());
 										Finger finger = (Finger)int.Parse(match.Groups[2].ToString());
 
@@ -81,11 +85,13 @@ public class NotationUtils
 
 										fingerMap[e.AbsoluteTicks][pitch] = finger;
 									}
-									catch(System.Exception except)
+									catch (System.Exception except)
 									{
 										Debug.LogWarningFormat("fingering marker parse failed: {0}, {1}", text, except.Message);
 									}
 								}
+								//else
+								//	Debug.LogWarningFormat("fail marker: {0}", text);
 							}
 
 							break;
@@ -146,8 +152,10 @@ public class NotationUtils
 	{
 		NotationTrack[] tracks = new NotationTrack[file.Count];
 
+		Regex fingerPattern = null;
+
 		for (int i = 0; i < file.Count; ++i)
-			tracks[i] = parseMidiTrack(file[i], file.Division);
+			tracks[i] = parseMidiTrack(file[i], file.Division, ref fingerPattern);
 
 		return tracks;
 	}

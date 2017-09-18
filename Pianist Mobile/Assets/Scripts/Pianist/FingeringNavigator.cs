@@ -241,7 +241,7 @@ namespace Pianist
 			}
 		}
 
-		public FingerChord[] Constraints;
+		public bool KeepConstraints = true;
 
 		CostEstimation[] EstimatedCosts;
 
@@ -470,12 +470,24 @@ namespace Pianist
 			int[] pitches = new int[nc.notes.Count];
 			nc.notes.Keys.CopyTo(pitches, 0);
 
+			FingerChord constrait = null;
+			if (KeepConstraints)
+			{
+				constrait = new FingerChord();
+				foreach (var pair in nc.notes)
+					if (pair.Value.finger != Finger.EMPTY)
+					{
+						constrait[pair.Key] = pair.Value.finger;
+						UnityEngine.Debug.Log("pair.Value.finger: " + pair.Value.finger.ToString());
+					}
+			}
+
 			int fingerCount = HandType == SolveHandType.MIX ? 10 : 5;
 
 			int emptyQuota = Math.Max(pitches.Length - fingerCount, 0);
 			FingerChord fc = new FingerChord();
 			while (choices.Count == 0)
-				tryFingerChoice(pitches, ref choices, fc, 0, emptyQuota++);
+				tryFingerChoice(pitches, ref choices, constrait, fc, 0, emptyQuota++);
 
 			Choice[] choiceArray = new Choice[choices.Count];
 			for (int i = 0; i < choices.Count; ++i)
@@ -487,7 +499,7 @@ namespace Pianist
 			return choiceArray;
 		}
 
-		void tryFingerChoice(int[] pitches, ref List<FingerChord> choices, FingerChord fc, int currentNoteIndex, int emptyQuota)
+		void tryFingerChoice(int[] pitches, ref List<FingerChord> choices, FingerChord constrait, FingerChord fc, int currentNoteIndex, int emptyQuota)
 		{
 			if (currentNoteIndex >= pitches.Length)
 			{
@@ -501,32 +513,40 @@ namespace Pianist
 			{
 				int currentPitch = pitches[currentNoteIndex];
 
-				foreach(Finger f in FingerConstants.SolveTypeFingers[HandType])
+				if (constrait != null && constrait.ContainsKey(currentPitch) && constrait[currentPitch] != Finger.EMPTY)
 				{
-					bool pass = true;
-					for (int index = currentNoteIndex - 1; index >= 0; --index)
-					{
-						int pitch = pitches[index];
-						Finger finger = fc[pitch];
-
-						float distance = Piano.pitchPairDistance(pitch, currentPitch);
-
-						pass = FingerConstants.testFingerDistance(finger, f, Config, distance);
-						if (!pass)
-							break;
-					}
-
-					if (pass)
-					{
-						fc[currentPitch] = f;
-						tryFingerChoice(pitches, ref choices, fc, currentNoteIndex + 1, emptyQuota);
-					}
+					fc[currentPitch] = constrait[currentPitch];
+					tryFingerChoice(pitches, ref choices, constrait, fc, currentNoteIndex + 1, emptyQuota);
 				}
-
-				if (emptyQuota > 0)
+				else
 				{
-					fc[currentPitch] = Finger.EMPTY;
-					tryFingerChoice(pitches, ref choices, fc, currentNoteIndex + 1, emptyQuota - 1);
+					foreach(Finger f in FingerConstants.SolveTypeFingers[HandType])
+					{
+						bool pass = true;
+						for (int index = currentNoteIndex - 1; index >= 0; --index)
+						{
+							int pitch = pitches[index];
+							Finger finger = fc[pitch];
+
+							float distance = Piano.pitchPairDistance(pitch, currentPitch);
+
+							pass = FingerConstants.testFingerDistance(finger, f, Config, distance);
+							if (!pass)
+								break;
+						}
+
+						if (pass)
+						{
+							fc[currentPitch] = f;
+							tryFingerChoice(pitches, ref choices, constrait, fc, currentNoteIndex + 1, emptyQuota);
+						}
+					}
+
+					if (emptyQuota > 0)
+					{
+						fc[currentPitch] = Finger.EMPTY;
+						tryFingerChoice(pitches, ref choices, constrait, fc, currentNoteIndex + 1, emptyQuota - 1);
+					}
 				}
 			}
 		}
