@@ -133,6 +133,8 @@
 				return code;
 			};
 
+			var lastScrollTime = 0;
+
 			var setStep = function (step) {
 				if (step > currentStep) {
 					for (var i = currentStep + 1; i <= step; ++i)
@@ -152,8 +154,12 @@
 				$("#step-slider").val(currentStep);
 
 				//$("body").clearQueue();
-				//$.fn.stop();
-				$("body").scrollTo(".focus", 300, { offset: { top: -$(window).height() / 2, left: -$(window).width() / 2 }, interrupt: true });
+				//$.fn.stop(true);
+				var now = new Date().getTime();
+				if (now - lastScrollTime > 300) {
+					$("body").scrollTo(".focus", 300, { offset: { top: -$(window).height() / 2, left: -$(window).width() / 2 }, interrupt: true });
+					lastScrollTime = now;
+				}
 			};
 
 

@@ -54,7 +54,7 @@ namespace Pianist
 				{
 					string prefix = parent != null ? parent.ChoicePathDescription : "";
 
-					string desc = choiceIndex >= 0 ? (prefix.Length > 0 ? " -> " : "") + choiceIndex.ToString() : "";
+					string desc = choiceIndex >= 0 ? (prefix.Length > 0 ? "-" : "") + choiceIndex.ToString() : "";
 
 					return prefix + desc;
 				}
@@ -284,7 +284,16 @@ namespace Pianist
 				step();
 
 #if UNITY_EDITOR
-				UnityEditor.EditorUtility.DisplayProgressBar("FingeringNavigator running", string.Format("Analyzing: {0}, {1}", currentNode.CommittedCost, currentNode.ChoicePathDescription), (float)i / MaxStepCount);
+				{
+					const int lenMax = 70;
+
+					string info = string.Format("Analyzing: {2}/{3}, {0}, {1}", Math.Round(currentNode.CommittedCost, 4), currentNode.ChoicePathDescription, currentNode.Index, NoteSeq.Length);
+					if (info.Length > lenMax)
+						info = info.Substring(0, lenMax - 9) + "..." + info.Substring(info.Length - 6, 6);
+
+					if (UnityEditor.EditorUtility.DisplayCancelableProgressBar("FingeringNavigator running", info, (float)i / MaxStepCount))
+						break;
+				}
 #endif
 			}
 
@@ -402,6 +411,8 @@ namespace Pianist
 			if (currentLeave.Index >= NoteSeq.Length - 1)
 			{
 				ResultNodes.Add(currentLeave);
+
+				UnityEngine.Debug.LogFormat("Result found: [{0}]	{2}	{1}", currentLeave.StepIndex, currentLeave.ChoicePathDescription, currentLeave.CommittedCost);
 
 				return;
 			}

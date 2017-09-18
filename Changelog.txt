@@ -4,7 +4,15 @@ TODO:
 	TextTrackWriter
 	FingeringNavigator
 		run with constraints
+		save longest node as candidate
 
+
+
+2017.9.18	K.L.	<k.l.lambda@gmail.com>
+
+	>	Pianist/FingeringNavigator: refined progress bar.
+
+	>	FingeringNavigatorViewer: refined focus scroll.
 
 
 2017.9.17	K.L.	<k.l.lambda@gmail.com>
