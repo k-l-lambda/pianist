@@ -10,6 +10,9 @@ using Midi = Sanford.Multimedia.Midi;
 using ChannelStatus = System.Collections.Generic.Dictionary<int, PitchStatus>;
 using TrackStatus = System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, PitchStatus>>;
 
+using FingerChord = System.Collections.Generic.SortedDictionary<int, Pianist.Finger>;
+using FingerChordMap = System.Collections.Generic.Dictionary<int, FingerChord>;
+
 
 class PitchStatus
 {
@@ -31,8 +34,12 @@ public class NotationUtils
 		float time = 0;
 
 		TrackStatus trackStatus = new TrackStatus();
+		FingerChordMap fingerMap = new FingerChordMap();
 
 		List<Note> notes = new List<Note>();
+
+		Regex fingerMetaPattern = new Regex("fingering-marker-pattern:(.*)");
+		Regex fingerPattern = null;
 
 		foreach (Midi.MidiEvent e in track.Iterator())
 		{
@@ -42,10 +49,46 @@ public class NotationUtils
 			{
 				case Midi.MessageType.Meta:
 					Midi.MetaMessage mm = e.MidiMessage as Midi.MetaMessage;
-					if (mm.MetaType == Midi.MetaType.Tempo)
+					switch (mm.MetaType)
 					{
-						Midi.TempoChangeBuilder builder = new Midi.TempoChangeBuilder(mm);
-						microsecondsPerBeat = builder.Tempo;
+						case Midi.MetaType.Tempo:
+							Midi.TempoChangeBuilder builder = new Midi.TempoChangeBuilder(mm);
+							microsecondsPerBeat = builder.Tempo;
+
+							break;
+						case Midi.MetaType.Text:
+							{
+								string text = System.Text.Encoding.Default.GetString(mm.GetBytes());
+								var match = fingerMetaPattern.Match(text);
+								if (match.Success)
+									fingerPattern = new Regex(match.Groups[1].ToString());
+							}
+
+							break;
+						case Midi.MetaType.Marker:
+							if (fingerPattern != null)
+							{
+								string text = System.Text.Encoding.Default.GetString(mm.GetBytes());
+								var match = fingerPattern.Match(text);
+								if (match.Success)
+								{
+									try{
+										int pitch = int.Parse(match.Groups[1].ToString());
+										Finger finger = (Finger)int.Parse(match.Groups[2].ToString());
+
+										if (!fingerMap.ContainsKey(e.AbsoluteTicks))
+											fingerMap[e.AbsoluteTicks] = new FingerChord();
+
+										fingerMap[e.AbsoluteTicks][pitch] = finger;
+									}
+									catch(System.Exception except)
+									{
+										Debug.LogWarningFormat("fingering marker parse failed: {0}, {1}", text, except.Message);
+									}
+								}
+							}
+
+							break;
 					}
 
 					break;
@@ -78,6 +121,10 @@ public class NotationUtils
 									PitchStatus status = trackStatus[cm.MidiChannel][pitch];
 
 									Note note = new Note { tick = status.tick, start = status.startTime, duration = time - status.startTime, pitch = pitch, velocity = status.velocity };
+
+									if (fingerMap.ContainsKey(note.tick) && fingerMap[note.tick].ContainsKey(note.pitch))
+										note.finger = fingerMap[note.tick][note.pitch];
+
 									notes.Add(note);
 								}
 							}
