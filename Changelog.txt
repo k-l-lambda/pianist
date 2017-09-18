@@ -9,6 +9,9 @@ TODO:
 
 2017.9.18	K.L.	<k.l.lambda@gmail.com>
 
+	+	FingeringNavigatorViewer: save source in storage.
+	+	FingeringNavigatorViewer: file drag & drop added.
+
 	+	Pianist/FingeringNavigator: constraits navigation implemented.
 
 	+	NotationUtils: added fingering parsing in parseMidiTrack.

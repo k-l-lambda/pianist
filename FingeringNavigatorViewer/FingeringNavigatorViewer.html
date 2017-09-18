@@ -32,6 +32,11 @@
 				margin-top: 50px;
 			}
 
+			.drag-hover #source
+			{
+				outline: 2px solid #0f0;
+			}
+
 			#step
 			{
 				text-align: center;
@@ -47,7 +52,7 @@
 			{
 				display: inline-block;
 				position: relative;
-				width: 40px;
+				/*width: 40px;*/
 				height: 30px;
 				padding: 0.4em;
 			}
@@ -162,6 +167,20 @@
 				}
 			};
 
+			var pickFile = function(file) {
+				if(file && file.type == "text/plain") {
+					var fr = new FileReader();
+					fr.onloadend = function (e) {
+						console.log("Dump file loaded:", file.name);
+
+						$("#source").val(e.currentTarget.result);
+
+						localStorage.Source = e.currentTarget.result;
+					};
+					fr.readAsText(file);
+				}
+			};
+
 
 			$(function () {
 				$("#paint").click(function () {
@@ -235,6 +254,27 @@
 					if (preventDefault)
 						event.preventDefault();
 				});
+
+				$("body").each(function (i, elem) {
+					elem.ondragover = function (e) {
+						$("body").addClass("drag-hover");
+						e.preventDefault();
+					};
+					elem.ondragleave = function () {
+						$("body").removeClass("drag-hover");
+					};
+					elem.ondrop = function (e) {
+						$("body").removeClass("drag-hover");
+
+						pickFile(e.dataTransfer.files[0]);
+
+						e.preventDefault();
+						return false;
+					};
+				});
+
+				if(localStorage.Source)
+					$("#source").val(localStorage.Source);
 			});
 		</script>
 	</head>
