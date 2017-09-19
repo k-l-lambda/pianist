@@ -17,6 +17,8 @@ public class FingeringGenerator : MonoBehaviour
 	public TextAsset SourceAsset;
 	public Midi.Sequence MidiSeq;
 
+	NotationTrack[] Notation;
+
 
 	[System.Serializable]
 	public class Hand
@@ -92,11 +94,13 @@ public class FingeringGenerator : MonoBehaviour
 
 		if (TrackHandIndices == null || TrackHandIndices.Length != MidiSeq.Count)
 			TrackHandIndices = new int[MidiSeq.Count];
+
+		Notation = NotationUtils.parseMidiFile(MidiSeq);
 	}
 
 	public void generate(string fileName)
 	{
-		if (MidiSeq == null)
+		if (Notation == null)
 			load();
 
 		run();
@@ -122,8 +126,6 @@ public class FingeringGenerator : MonoBehaviour
 		if (!HandConfigLib)
 			Debug.LogError("HandConfigLibrary is null.");
 
-		NotationTrack[] notation = NotationUtils.parseMidiFile(MidiSeq);
-
 		var trackMap = HandTracksMap;
 		Fingering[] results = new Fingering[trackMap.Count];
 		int resultIndex = 0;
@@ -142,7 +144,7 @@ public class FingeringGenerator : MonoBehaviour
 
 			NotationTrack[] tracks = new NotationTrack[trackList.Length];
 			for(int track = 0; track < trackList.Length; ++track)
-				tracks[track] = notation[trackList[track]];
+				tracks[track] = Notation[trackList[track]];
 
 			Navigator.Track = NotationTrack.merge(tracks);
 			Navigator.Config = HandConfigLib.getConfig(hand.Config);

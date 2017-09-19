@@ -7,6 +7,11 @@ TODO:
 
 
 
+2017.9.19	K.L.	<k.l.lambda@gmail.com>
+
+	+	FingeringGenerator: avoid fingering constraints overwrited after saving.
+
+
 2017.9.18	K.L.	<k.l.lambda@gmail.com>
 
 	+	FingeringNavigatorViewer: save source in storage.
