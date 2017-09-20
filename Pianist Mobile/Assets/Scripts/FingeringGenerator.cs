@@ -172,6 +172,32 @@ public class FingeringGenerator : MonoBehaviour
 
 				file.Close();
 			}
+
+			/*// dump leaf nodes
+			{
+				FileStream file = new FileStream(Application.dataPath + "/Editor/Log/leaves.txt", FileMode.Create);
+
+				file.WriteByte((byte)'[');
+				List<FingeringNavigator.TreeNode> leaves = Navigator.TreeLeaves;
+				leaves.Sort(delegate(FingeringNavigator.TreeNode node1, FingeringNavigator.TreeNode node2)
+				{
+					double cost1 = node1.CommittedCost;
+					double cost2 = node2.CommittedCost;
+
+					return cost1.CompareTo(cost2);
+				});
+				foreach(var leaf in leaves)
+				{
+					byte[] bytes = System.Text.Encoding.Default.GetBytes(leaf.JsonDump);
+					file.Write(bytes, 0, bytes.Length);
+					file.WriteByte((byte)',');
+				}
+				file.WriteByte((byte)'{');
+				file.WriteByte((byte)'}');
+				file.WriteByte((byte)']');
+
+				file.Close();
+			}*/
 		}
 
 		NotationUtils.appendFingeringToMidiFile(MidiSeq, results);

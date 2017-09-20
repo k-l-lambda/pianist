@@ -12,7 +12,7 @@ namespace Pianist
 
 	public class FingeringNavigator
 	{
-		class TreeNode
+		public class TreeNode
 		{
 			public TreeNode parent = null;
 			public TreeNode[] children = new TreeNode[0];
@@ -130,7 +130,7 @@ namespace Pianist
 				dynamicCost = 0;
 			}
 
-			public TreeNode(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_)
+			TreeNode(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_)
 			{
 				handConfig = config;
 
@@ -245,7 +245,7 @@ namespace Pianist
 
 		CostEstimation[] EstimatedCosts;
 
-		struct Choice
+		public struct Choice
 		{
 			public FingerChord chord;
 			public double staticCost;
@@ -256,8 +256,8 @@ namespace Pianist
 		Choice[][] ChoiceSequence;
 
 		TreeNode TreeRoot;
-		List<TreeNode> TreeLeaves;
-		List<TreeNode> ResultNodes;
+		public List<TreeNode> TreeLeaves;
+		public List<TreeNode> ResultNodes;
 
 		TreeNode currentNode;
 

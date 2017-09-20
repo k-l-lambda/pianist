@@ -4,6 +4,7 @@ TODO:
 	TextTrackWriter
 	FingeringNavigator
 		save longest node as candidate
+		insert leaves as sorted list, bubble once at front segment once to get best node
 
 
 
