@@ -3,7 +3,6 @@ TODO:
 	show MIDI length in seconds.
 	TextTrackWriter
 	FingeringNavigator
-		save longest node as candidate
 		insert leaves as sorted list, bubble once at front segment once to get best node
 
 
@@ -23,6 +22,8 @@ TODO:
 	+	NotationUtils: added fingering parsing in parseMidiTrack.
 
 	>	Pianist/FingeringNavigator: added MinStepCount.
+
+	+	Pianist/FingeringNavigator: candidate node added.
 
 	>	Pianist/FingeringNavigator: refined progress bar.
 

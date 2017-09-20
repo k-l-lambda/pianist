@@ -261,6 +261,8 @@ namespace Pianist
 
 		TreeNode currentNode;
 
+		TreeNode candidateNode;
+
 		int currentStep = 0;
 
 		public Fingering run()
@@ -274,6 +276,7 @@ namespace Pianist
 			ResultNodes = new List<TreeNode>();
 
 			currentNode = TreeRoot;
+			candidateNode = TreeRoot;
 
 			for (int i = 0; i < MaxStepCount; ++i)
 			{
@@ -309,7 +312,7 @@ namespace Pianist
 				return cost1.CompareTo(cost2);
 			});
 
-			TreeNode resultNode = ResultNodes.Count > 0 ? ResultNodes[0] : currentNode;
+			TreeNode resultNode = ResultNodes.Count > 0 ? ResultNodes[0] : candidateNode;
 
 			Fingering result = new Fingering();
 			result.markers = new Fingering.Marker[SourceTrack.notes.Length];
@@ -411,6 +414,9 @@ namespace Pianist
 			// update EstimatedCosts
 			for (TreeNode node = currentLeave; node.Index >= 0; node = node.parent)
 				EstimatedCosts[node.Index].append(node.SelfCost);
+
+			if (currentLeave.Index > candidateNode.Index)
+				candidateNode = currentLeave;
 
 			if (currentLeave.Index >= NoteSeq.Length - 1)
 			{

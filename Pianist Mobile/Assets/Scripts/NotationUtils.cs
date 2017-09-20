@@ -11,7 +11,7 @@ using ChannelStatus = System.Collections.Generic.Dictionary<int, PitchStatus>;
 using TrackStatus = System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, PitchStatus>>;
 
 using FingerChord = System.Collections.Generic.SortedDictionary<int, Pianist.Finger>;
-using FingerChordMap = System.Collections.Generic.Dictionary<int, FingerChord>;
+using FingerChordMap = System.Collections.Generic.Dictionary<int, System.Collections.Generic.SortedDictionary<int, Pianist.Finger>>;
 
 
 class PitchStatus
