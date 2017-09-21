@@ -31,13 +31,24 @@ public class MIDIPiano : MonoBehaviour
 
 	private void onChannelMessagePlayed(object sender, Midi.ChannelMessageEventArgs arg)
 	{
-		if (arg.Message.Command == Midi.ChannelCommand.NoteOn)
-			Actions.Add(delegate {
-				Controller.setKeyPosition(arg.Message.Data1, 1);
-			});
-		else if (arg.Message.Command == Midi.ChannelCommand.NoteOff)
-			Actions.Add(delegate {
-				Controller.setKeyPosition(arg.Message.Data1, 0);
-			});
+		var command = arg.Message.Command;
+		if (command == Midi.ChannelCommand.NoteOn && arg.Message.Data2 == 0)
+			command = Midi.ChannelCommand.NoteOff;
+
+		switch (command)
+		{
+			case Midi.ChannelCommand.NoteOn:
+				Actions.Add(delegate {
+					Controller.setKeyPosition(arg.Message.Data1, 1);
+				});
+
+				break;
+			case Midi.ChannelCommand.NoteOff:
+				Actions.Add(delegate {
+					Controller.setKeyPosition(arg.Message.Data1, 0);
+				});
+
+				break;
+		}
 	}
 }

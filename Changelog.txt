@@ -9,6 +9,11 @@ TODO:
 
 2017.9.21	K.L.	<k.l.lambda@gmail.com>
 
+	>	MIDIPiano: fixed note off missing issue.
+	>	NotationUtils: fixed note off missing issue.
+
+	*!	MIDI note on event with 0 velocity means note off.
+
 	+	Pianist/FingeringNavigator: added LeafSequence.
 
 

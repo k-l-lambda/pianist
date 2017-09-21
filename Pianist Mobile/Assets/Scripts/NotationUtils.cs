@@ -104,7 +104,11 @@ public class NotationUtils
 					if (!trackStatus.ContainsKey(cm.MidiChannel))
 						trackStatus[cm.MidiChannel] = new ChannelStatus();
 
-					switch (cm.Command)
+					var commandType = cm.Command;
+					if (commandType == Midi.ChannelCommand.NoteOn && cm.Data2 == 0)
+						commandType = Midi.ChannelCommand.NoteOff;
+
+					switch (commandType)
 					{
 						case Midi.ChannelCommand.NoteOn:
 							{
