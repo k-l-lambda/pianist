@@ -193,8 +193,86 @@ namespace Pianist
 		};
 
 
+		public class LeafSequence : List<TreeNode>
+		{
+			public double[] StairCosts;
+
+			void insertRange(TreeNode node, double cost, int low, int high)
+			{
+				if (high <= low + 1)
+				{
+					Insert(high, node);
+					return;
+				}
+
+				int middle = low + (high - low) / 2;
+				double middleCost = getNodeCost(this[middle]);
+
+				if (cost > middleCost)
+					insertRange(node, cost, middle, high);
+				else if (cost < middleCost)
+					insertRange(node, cost, low, middle);
+				else
+					Insert(middle, node);
+			}
+
+			void swap(int i1, int i2)
+			{
+				var temp = this[i1];
+				this[i1] = this[i2];
+				this[i2] = temp;
+			}
+
+			double getNodeCost(TreeNode node)
+			{
+				return node.CommittedCost + StairCosts[node.Index + 1];
+			}
+
+			public void insert(TreeNode node)
+			{
+				insertRange(node, getNodeCost(node), -1, Count);
+			}
+
+			public void bubbleOnce(int tail)
+			{
+				tail = Math.Min(tail, Count - 1);
+
+				//int times = 0;
+
+				double lastCost = getNodeCost(this[tail]);
+				for (int i = tail - 1; i >= 0; --i)
+				{
+					double cost = getNodeCost(this[i]);
+					if (lastCost < cost)
+					{
+						swap(i + 1, i);
+						//UnityEngine.Debug.LogFormat("Swap: [{0}]	{1}	{2}", i, cost, cost - lastCost);
+						//++times;
+					}
+
+					lastCost = cost;
+				}
+
+				//UnityEngine.Debug.LogFormat("Swap times: {0}", times);
+			}
+
+			public TreeNode Top
+			{
+				get
+				{
+					if(Count > 0)
+						return this[0];
+
+					return null;
+				}
+			}
+		};
+
+
 		public int MinStepCount = 100;
 		public int MaxStepCount = 1000;
+
+		public int BubbleLength = 100;
 
 		private NoteSequence NoteSeq;
 		private NotationTrack SourceTrack;
@@ -256,7 +334,8 @@ namespace Pianist
 		Choice[][] ChoiceSequence;
 
 		TreeNode TreeRoot;
-		public List<TreeNode> TreeLeaves;
+		//public List<TreeNode> TreeLeaves;
+		LeafSequence TreeLeaves;
 		public List<TreeNode> ResultNodes;
 
 		TreeNode currentNode;
@@ -270,7 +349,7 @@ namespace Pianist
 			generateChoiceSequence();
 
 			TreeRoot = new TreeNode();
-			TreeLeaves = new List<TreeNode>();
+			TreeLeaves = new LeafSequence();
 			TreeLeaves.Add(TreeRoot);
 
 			ResultNodes = new List<TreeNode>();
@@ -384,14 +463,11 @@ namespace Pianist
 			for (int i = NoteSeq.Length - 1; i >= 0; --i)
 				accumulatedEstimatedCosts[i] = EstimatedCosts[i].Value + accumulatedEstimatedCosts[i + 1];
 
-			/*TreeLeaves.Sort(delegate(TreeNode node1, TreeNode node2)
-			{
-				double cost1 = node1.CommittedCost + accumulatedEstimatedCosts[node1.Index + 1];
-				double cost2 = node2.CommittedCost + accumulatedEstimatedCosts[node2.Index + 1];
+			TreeLeaves.StairCosts = accumulatedEstimatedCosts;
 
-				return cost1.CompareTo(cost2);
-			});*/
-			double minCost = double.MaxValue;
+			TreeLeaves.bubbleOnce(BubbleLength);
+
+			/*double minCost = double.MaxValue;
 			int minIndex = 0;
 			for(int i = 0; i < TreeLeaves.Count; ++i)
 			{
@@ -405,7 +481,10 @@ namespace Pianist
 			}
 
 			TreeNode currentLeave = TreeLeaves[minIndex];
-			TreeLeaves.RemoveAt(minIndex);
+			TreeLeaves.RemoveAt(minIndex);*/
+			TreeNode currentLeave = TreeLeaves.Top;
+			TreeLeaves.RemoveAt(0);
+
 
 			currentNode = currentLeave;
 
@@ -436,7 +515,7 @@ namespace Pianist
 				//double cost = evaluateNodeCost(currentLeave, choices[i].chord);
 				TreeNode leaf = currentLeave.appendChild(choices, Config, benchmarkDuration, i);
 
-				TreeLeaves.Add(leaf);
+				TreeLeaves.insert(leaf);
 			}
 		}
 
