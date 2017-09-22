@@ -9,6 +9,8 @@ TODO:
 
 2017.9.22	K.L.	<k.l.lambda@gmail.com>
 
+	+	FingeringNavigatorViewer: refined controller bar.
+
 	+	FingeringGenerator: added track name display.
 
 
