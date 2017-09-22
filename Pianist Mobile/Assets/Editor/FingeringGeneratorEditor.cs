@@ -60,7 +60,7 @@ public class FingeringGeneratorEditor : Editor
 
 			for (int i = 0; i < t.TrackHandIndices.Length; ++i)
 			{
-				t.TrackHandIndices[i] = EditorGUILayout.IntField("Track " + i.ToString(), t.TrackHandIndices[i]);
+				t.TrackHandIndices[i] = EditorGUILayout.IntField(string.Format("{0}. {1}", i, t.Notation != null ? t.Notation[i].name : ""), t.TrackHandIndices[i]);
 			}
 
 			EditorGUI.indentLevel--;

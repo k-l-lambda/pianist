@@ -19,6 +19,7 @@ namespace Pianist
 
 	public class NotationTrack
 	{
+		public string name;
 		public Note[] notes;
 
 		public static NotationTrack merge(NotationTrack[] tracks)

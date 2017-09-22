@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Regex = System.Text.RegularExpressions.Regex;
+using Encoding = System.Text.Encoding;
 
 using Pianist;
 using Midi = Sanford.Multimedia.Midi;
@@ -40,6 +41,8 @@ public class NotationUtils
 
 		Regex fingerMetaPattern = new Regex("fingering-marker-pattern:(.*)");
 
+		string name = "";
+
 		foreach (Midi.MidiEvent e in track.Iterator())
 		{
 			time += e.DeltaTicks * microsecondsPerBeat / (division * 1000);
@@ -57,7 +60,7 @@ public class NotationUtils
 							break;
 						case Midi.MetaType.Text:
 							{
-								string text = System.Text.Encoding.Default.GetString(mm.GetBytes());
+								string text = Encoding.Default.GetString(mm.GetBytes());
 								var match = fingerMetaPattern.Match(text);
 								if (match.Success)
 								{
@@ -70,7 +73,7 @@ public class NotationUtils
 						case Midi.MetaType.Marker:
 							if (fingerPattern != null)
 							{
-								string text = System.Text.Encoding.Default.GetString(mm.GetBytes());
+								string text = Encoding.Default.GetString(mm.GetBytes());
 								var match = fingerPattern.Match(text);
 								if (match.Success)
 								{
@@ -93,6 +96,10 @@ public class NotationUtils
 								//else
 								//	Debug.LogWarningFormat("fail marker: {0}", text);
 							}
+
+							break;
+						case Midi.MetaType.TrackName:
+							name = Encoding.Default.GetString(mm.GetBytes());
 
 							break;
 					}
@@ -148,6 +155,7 @@ public class NotationUtils
 
 		NotationTrack notation = new NotationTrack();
 		notation.notes = notes.ToArray();
+		notation.name = name;
 
 		return notation;
 	}
@@ -183,12 +191,12 @@ public class NotationUtils
 					switch (msg.MetaType)
 					{
 						case Midi.MetaType.Text:
-							if (signaturePattern.Match(System.Text.Encoding.Default.GetString(msg.GetBytes())).Length > 0)
+							if (signaturePattern.Match(Encoding.Default.GetString(msg.GetBytes())).Length > 0)
 								toRemove.Add(i);
 
 							break;
 						case Midi.MetaType.Marker:
-							if (fingerPattern.Match(System.Text.Encoding.Default.GetString(msg.GetBytes())).Length > 0)
+							if (fingerPattern.Match(Encoding.Default.GetString(msg.GetBytes())).Length > 0)
 								toRemove.Add(i);
 
 							break;
@@ -231,7 +239,7 @@ public class NotationUtils
 
 		clearFingeringInMidiFile(file);
 
-		file[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, System.Text.Encoding.Default.GetBytes(MidiSignatureText)));
+		file[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, Encoding.Default.GetBytes(MidiSignatureText)));
 
 		foreach (Midi.Track track in file)
 		{
@@ -248,7 +256,7 @@ public class NotationUtils
 
 							string marker = string.Format("finger:{0}|{1}", cm.Data1, (int)f);
 
-							track.Insert(e.AbsoluteTicks, new Midi.MetaMessage(Midi.MetaType.Marker, System.Text.Encoding.Default.GetBytes(marker)));
+							track.Insert(e.AbsoluteTicks, new Midi.MetaMessage(Midi.MetaType.Marker, Encoding.Default.GetBytes(marker)));
 						}
 					}
 				}

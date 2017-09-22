@@ -12,6 +12,12 @@ namespace Pianist
 
 	public class FingeringNavigator
 	{
+		public struct FingerState
+		{
+			float Press;
+			float Release;
+		};
+
 		public class TreeNode
 		{
 			public TreeNode parent = null;
@@ -524,6 +530,8 @@ namespace Pianist
 			ChoiceSequence = new Choice[NoteSeq.Length][];
 			EstimatedCosts = new CostEstimation[NoteSeq.Length];
 
+			int total = 0;
+
 			float lastTime = 0;
 			for (int i = 0; i < ChoiceSequence.Length; ++i)
 			{
@@ -539,10 +547,14 @@ namespace Pianist
 
 				EstimatedCosts[i].append(minCost);
 
+				total += ChoiceSequence[i].Length;
+
 #if UNITY_EDITOR
 				UnityEditor.EditorUtility.DisplayProgressBar("FingeringNavigator running", string.Format("Generating Choice Sequence {0}/{1}", i, ChoiceSequence.Length), (float)i / ChoiceSequence.Length);
 #endif
 			}
+
+			UnityEngine.Debug.LogFormat("Total choices: {0}, average per step: {1}", total, total / ChoiceSequence.Length);
 		}
 
 		Choice[] getFingerChoices(NoteChord nc, float deltaTime)

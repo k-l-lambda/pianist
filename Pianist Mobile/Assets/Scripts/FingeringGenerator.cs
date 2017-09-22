@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Linq;
 
 using Random = UnityEngine.Random;
 using Midi = Sanford.Multimedia.Midi;
@@ -17,7 +18,7 @@ public class FingeringGenerator : MonoBehaviour
 	public TextAsset SourceAsset;
 	public Midi.Sequence MidiSeq;
 
-	NotationTrack[] Notation;
+	public NotationTrack[] Notation;
 
 
 	[System.Serializable]
@@ -95,7 +96,7 @@ public class FingeringGenerator : MonoBehaviour
 		MidiSeq.Load(stream);
 
 		if (TrackHandIndices == null || TrackHandIndices.Length != MidiSeq.Count)
-			TrackHandIndices = new int[MidiSeq.Count];
+			TrackHandIndices = Enumerable.Repeat(-1, MidiSeq.Count).ToArray();
 
 		Notation = NotationUtils.parseMidiFile(MidiSeq);
 	}
