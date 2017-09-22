@@ -74,6 +74,11 @@ namespace Pianist
 
 			float timeUnit;
 
+			NoteChord note;
+
+			FingerState[] leftFingers;
+			FingerState[] rightFingers;
+
 			double staticCost;
 			double dynamicCost;
 
@@ -136,7 +141,7 @@ namespace Pianist
 				dynamicCost = 0;
 			}
 
-			TreeNode(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_)
+			TreeNode(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_, NoteChord note_)
 			{
 				handConfig = config;
 
@@ -147,19 +152,20 @@ namespace Pianist
 				fingerChord = choice.chord;
 				staticCost = choice.staticCost;
 				wrists = choice.wrists;
+				note = note_;
 				timeUnit = choice.deltaTime / benchmarkDuration;
 			}
 
-			public void appendChild(TreeNode child)
+			void appendChild(TreeNode child)
 			{
 				Array.Resize(ref children, children.Length + 1);
 				children[children.Length - 1] = child;
 				child.parent = this;
 			}
 
-			public TreeNode appendChild(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_)
+			public TreeNode appendChild(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_, NoteChord note_)
 			{
-				TreeNode child = new TreeNode(choices, config, benchmarkDuration, choiceIndex_);
+				TreeNode child = new TreeNode(choices, config, benchmarkDuration, choiceIndex_, note_);
 				appendChild(child);
 
 				child.dynamicCost = child.evaluateDynamicCost();
@@ -512,14 +518,14 @@ namespace Pianist
 				return;
 			}
 
-			//NoteChord currentNode = NoteSeq[currentLeave.Index];
-			//NoteChord nextNode = NoteSeq[currentLeave.Index + 1];
+			//NoteChord currentNote = NoteSeq[currentLeave.Index];
+			NoteChord nextNote = NoteSeq[currentLeave.Index + 1];
 
 			Choice[] choices = ChoiceSequence[currentLeave.Index + 1];
 			for (int i = 0; i < choices.Length; ++i)
 			{
 				//double cost = evaluateNodeCost(currentLeave, choices[i].chord);
-				TreeNode leaf = currentLeave.appendChild(choices, Config, benchmarkDuration, i);
+				TreeNode leaf = currentLeave.appendChild(choices, Config, benchmarkDuration, i, nextNote);
 
 				TreeLeaves.insert(leaf);
 			}
