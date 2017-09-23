@@ -9,6 +9,8 @@ TODO:
 
 2017.9.23	K.L.	<k.l.lambda@gmail.com>
 
+	+	Pianist/FingeringNavigator: added finger speed punish cost.
+
 	+	Pianist/FingeringNavigator: finger states generation added.
 
 	+	Pianist/FingeringNavigator: added time cost statistics.

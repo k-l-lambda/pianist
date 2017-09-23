@@ -11,6 +11,16 @@ namespace Pianist
 	using FingerMap = SortedDictionary<int, SortedDictionary<int, Finger>>;
 
 
+	class CostCoeff
+	{
+		public static readonly float WRIST_OFFSET_MIDDLE_PUNISH = 1f;
+		public static readonly float WRIST_OFFSET_RANGE_PUNISH = 10f;
+
+		public static readonly float FINGER_DURATION_CUTOFF_PUNISH = 1f;
+		public static readonly float FINGER_MOVE_INTERVAL_REWARD = 1f;
+	};
+
+
 	public class FingeringNavigator
 	{
 		public struct FingerState
@@ -72,6 +82,7 @@ namespace Pianist
 
 			HandConfig.RangePair wrists;
 
+			float startTime;
 			float timeUnit;
 
 			NoteChord note;
@@ -160,6 +171,7 @@ namespace Pianist
 				staticCost = choice.staticCost;
 				wrists = choice.wrists;
 				note = s_NoteSeq[Index];
+				startTime = note.start;
 				timeUnit = choice.deltaTime / s_BenchmarkDuration;
 
 				leftFingers = generateFingerStates(parent.leftFingers, -1, fingerChord, note);
@@ -231,14 +243,54 @@ namespace Pianist
 				return states;
 			}
 
-			double evaluateSingleArmCost(HandConfig.Range lastWrist, HandConfig.Range currentWrist)
+			double evaluateSingleArmCost(HandConfig.Range lastWrist, HandConfig.Range currentWrist, FingerState[] fingerState, int hand)
 			{
 				double cost = 0;
 
-				cost += Math.Abs(currentWrist.middle - lastWrist.middle) / timeUnit;
+				// wrist offset punish
 
+				//		by middle
+				cost += Math.Abs(currentWrist.middle - lastWrist.middle) * CostCoeff.WRIST_OFFSET_MIDDLE_PUNISH / timeUnit;
+
+				//		by range
 				if (!(lastWrist.low < currentWrist.high && lastWrist.high > currentWrist.low))
-					cost += Math.Min(Math.Abs(currentWrist.low - lastWrist.high), Math.Abs(lastWrist.low - currentWrist.high)) * 10 / timeUnit;
+					cost += Math.Min(Math.Abs(currentWrist.low - lastWrist.high), Math.Abs(lastWrist.low - currentWrist.high)) * CostCoeff.WRIST_OFFSET_RANGE_PUNISH / timeUnit;
+
+				// finger speed punish
+				if (fingerState != null)
+				{
+					List<int> fingers = new List<int>();
+
+					foreach (var pair in fingerChord)
+					{
+						int finger = (int)pair.Value * hand;
+						if (finger > 0)
+						{
+							int first = (int)Math.Floor(finger / 10f) - 1;
+							int second = finger % 10 - 1;
+
+							if (first > 0)
+								fingers.Add(first);
+							fingers.Add(second);
+						}
+					}
+
+					foreach (int finger in fingers)
+					{
+						FingerState state = fingerState[finger];
+
+						// cut off duration punish
+						if (state.Release > note.start)
+						{
+							float duration = state.Release - state.Press;
+							cost += CostCoeff.FINGER_DURATION_CUTOFF_PUNISH * ((note.start - state.Press)) / duration / (duration / s_BenchmarkDuration);
+						}
+
+						// move interval reward
+						float interval = (note.start - state.Press) / s_BenchmarkDuration;
+						cost += CostCoeff.FINGER_MOVE_INTERVAL_REWARD * 1 / (interval * interval);
+					}
+				}
 
 				// TODO:
 
@@ -252,10 +304,10 @@ namespace Pianist
 				if (parent != null)
 				{
 					if (wrists.left != null && parent.wrists.left != null)
-						cost += evaluateSingleArmCost(parent.wrists.left, wrists.left);
+						cost += evaluateSingleArmCost(parent.wrists.left, wrists.left, parent != null ? parent.leftFingers : null, -1);
 
 					if (wrists.right != null && parent.wrists.right != null)
-						cost += evaluateSingleArmCost(parent.wrists.right, wrists.right);
+						cost += evaluateSingleArmCost(parent.wrists.right, wrists.right, parent != null ? parent.rightFingers : null, 1);
 				}
 
 				return cost;
