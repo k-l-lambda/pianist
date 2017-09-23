@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 
 namespace Pianist
@@ -14,8 +15,9 @@ namespace Pianist
 	{
 		public struct FingerState
 		{
-			float Press;
-			float Release;
+			public float Press;
+			public float Release;
+			public float Position;
 		};
 
 		public class TreeNode
@@ -65,8 +67,6 @@ namespace Pianist
 					return prefix + desc;
 				}
 			}
-
-			//HandConfig handConfig;
 
 			FingerChord fingerChord;
 
@@ -161,6 +161,9 @@ namespace Pianist
 				wrists = choice.wrists;
 				note = s_NoteSeq[Index];
 				timeUnit = choice.deltaTime / s_BenchmarkDuration;
+
+				leftFingers = generateFingerStates(parent.leftFingers, -1, fingerChord, note);
+				rightFingers = generateFingerStates(parent.rightFingers, 1, fingerChord, note);
 			}
 
 			void appendChild(TreeNode child)
@@ -177,6 +180,55 @@ namespace Pianist
 				child.dynamicCost = child.evaluateDynamicCost();
 
 				return child;
+			}
+
+			static FingerState[] generateFingerStates(FingerState[] parentStates, int hand, FingerChord chord, NoteChord nc)
+			{
+				FingerState[] states = null;
+
+				if (parentStates != null)
+				{
+					states = new FingerState[parentStates.Length];
+					Array.Copy(parentStates, states, states.Length);
+				}
+
+				foreach (var pair in chord)
+				{
+					int finger = (int)pair.Value * hand;
+					if (finger > 0)
+					{
+						if (states == null)
+						{
+							states = Enumerable.Repeat(new FingerState { Press = -10f, Release = 10f }, 5).ToArray();
+							for (int i = 0; i < states.Length; ++i)
+								states[i].Position = (HandConfig.WristNaturePosition + i - 2) * hand;
+						}
+
+						Note note = nc.notes[pair.Key];
+						UnityEngine.Debug.Assert(note != null, "note and finger chord mismatch");
+
+						float position = Piano.KeyPositions[pair.Key];
+
+						int first = (int)Math.Floor(finger / 10f) - 1;
+						int second = finger % 10 - 1;
+
+						if (first >= 0)
+						{
+							states[first].Press = note.start;
+							states[first].Release = note.start;
+							states[first].Release = position;
+						}
+
+						UnityEngine.Debug.Assert(second >= 0 && second < 5, "invalid finger value");
+						{
+							states[second].Press = note.start;
+							states[second].Release = note.start + note.duration;
+							states[second].Release = position;
+						}
+					}
+				}
+
+				return states;
 			}
 
 			double evaluateSingleArmCost(HandConfig.Range lastWrist, HandConfig.Range currentWrist)

@@ -3,11 +3,13 @@ TODO:
 	show MIDI length in seconds.
 	TextTrackWriter
 	FingeringNavigator
-		finger states
+		extend & squeeze costs
 
 
 
 2017.9.23	K.L.	<k.l.lambda@gmail.com>
+
+	+	Pianist/FingeringNavigator: finger states generation added.
 
 	+	Pianist/FingeringNavigator: added time cost statistics.
 	+	Pianist/FingeringNavigator: added static context.
