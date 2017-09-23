@@ -133,7 +133,7 @@ public class MIDIPlayer : MonoBehaviour {
 	{
 		foreach (Midi.ChannelMessage message in arg.Messages)
 		{
-			Debug.Log("ChannelMessagePlayed: " + message.Command);
+			//Debug.Log("ChannelMessagePlayed: " + message.Command);
 			outDevice.Send(message);
 		}
 	}

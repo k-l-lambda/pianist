@@ -66,7 +66,7 @@ namespace Pianist
 				}
 			}
 
-			HandConfig handConfig;
+			//HandConfig handConfig;
 
 			FingerChord fingerChord;
 
@@ -81,6 +81,14 @@ namespace Pianist
 
 			double staticCost;
 			double dynamicCost;
+
+
+			// common context
+			public static float s_BenchmarkDuration;
+			public static NoteSequence s_NoteSeq;
+			public static HandConfig s_HandConfig;
+			public static Choice[][] s_ChoiceSequence;
+
 
 			public double SelfCost
 			{
@@ -141,31 +149,29 @@ namespace Pianist
 				dynamicCost = 0;
 			}
 
-			TreeNode(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_, NoteChord note_)
+			TreeNode(TreeNode parent_, int choiceIndex_)
 			{
-				handConfig = config;
-
+				parent = parent_;
 				choiceIndex = choiceIndex_;
 
-				Choice choice = choices[choiceIndex];
+				Choice choice = s_ChoiceSequence[Index][choiceIndex];
 
 				fingerChord = choice.chord;
 				staticCost = choice.staticCost;
 				wrists = choice.wrists;
-				note = note_;
-				timeUnit = choice.deltaTime / benchmarkDuration;
+				note = s_NoteSeq[Index];
+				timeUnit = choice.deltaTime / s_BenchmarkDuration;
 			}
 
 			void appendChild(TreeNode child)
 			{
 				Array.Resize(ref children, children.Length + 1);
 				children[children.Length - 1] = child;
-				child.parent = this;
 			}
 
-			public TreeNode appendChild(Choice[] choices, HandConfig config, float benchmarkDuration, int choiceIndex_, NoteChord note_)
+			public TreeNode appendChild(int choiceIndex_)
 			{
-				TreeNode child = new TreeNode(choices, config, benchmarkDuration, choiceIndex_, note_);
+				TreeNode child = new TreeNode(this, choiceIndex_);
 				appendChild(child);
 
 				child.dynamicCost = child.evaluateDynamicCost();
@@ -358,7 +364,17 @@ namespace Pianist
 
 		public Fingering run()
 		{
+			var begin = DateTime.Now;
+
 			generateChoiceSequence();
+
+			var choiceEnd = DateTime.Now;
+			UnityEngine.Debug.LogFormat("Choice generation cost: {0:F4}", choiceEnd.Subtract(begin).TotalMilliseconds / 1000f);
+
+			TreeNode.s_BenchmarkDuration = benchmarkDuration;
+			TreeNode.s_HandConfig = Config;
+			TreeNode.s_ChoiceSequence = ChoiceSequence;
+			TreeNode.s_NoteSeq = NoteSeq;
 
 			TreeRoot = new TreeNode();
 			TreeLeaves = new LeafSequence();
@@ -395,6 +411,8 @@ namespace Pianist
 #endif
 			}
 
+			var stepEnd = DateTime.Now;
+
 			ResultNodes.Sort(delegate(TreeNode node1, TreeNode node2)
 			{
 				double cost1 = node1.CommittedCost;
@@ -418,6 +436,9 @@ namespace Pianist
 
 				result.markers[i] = new Fingering.Marker { tick = note.tick, time = note.start, pitch = note.pitch, finger = finger };
 			}
+
+			var end = DateTime.Now;
+			UnityEngine.Debug.LogFormat("Total cost: {0:F2}s, per step: {1:F4}s", end.Subtract(begin).TotalMilliseconds / 1000f, (stepEnd.Subtract(choiceEnd).TotalMilliseconds / 1000f) / currentStep);
 
 #if UNITY_EDITOR
 			UnityEditor.EditorUtility.ClearProgressBar();
@@ -525,7 +546,7 @@ namespace Pianist
 			for (int i = 0; i < choices.Length; ++i)
 			{
 				//double cost = evaluateNodeCost(currentLeave, choices[i].chord);
-				TreeNode leaf = currentLeave.appendChild(choices, Config, benchmarkDuration, i, nextNote);
+				TreeNode leaf = currentLeave.appendChild(i);
 
 				TreeLeaves.insert(leaf);
 			}
