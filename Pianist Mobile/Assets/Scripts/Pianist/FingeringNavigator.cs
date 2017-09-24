@@ -211,7 +211,7 @@ namespace Pianist
 					{
 						if (states == null)
 						{
-							states = Enumerable.Repeat(new FingerState { Press = -10f, Release = 10f }, 5).ToArray();
+							states = Enumerable.Repeat(new FingerState { Press = -10f, Release = -10f }, 5).ToArray();
 							for (int i = 0; i < states.Length; ++i)
 								states[i].Position = (HandConfig.WristNaturePosition + i - 2) * hand;
 						}
