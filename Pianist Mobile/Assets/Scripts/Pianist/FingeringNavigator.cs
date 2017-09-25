@@ -13,6 +13,10 @@ namespace Pianist
 
 	class CostCoeff
 	{
+		public static readonly float WRIST_POSITION_NATURALITY_REWARD = 1f;
+		public static readonly float SHIFT_FINGERS_PUNISH = 100f;
+		public static readonly float BLACK_KEY_SHORT_PUNISH = 1f;
+
 		public static readonly float WRIST_OFFSET_MIDDLE_PUNISH = 1f;
 		public static readonly float WRIST_OFFSET_RANGE_PUNISH = 10f;
 
@@ -592,20 +596,37 @@ namespace Pianist
 			if (wrists.left != null)
 			{
 				float distance = Math.Abs(wrists.left.middle - -HandConfig.WristNaturePosition);
-				cost = Math.Pow(distance / 14, 4);
+				cost = Math.Pow(distance / 14, 4) * CostCoeff.WRIST_POSITION_NATURALITY_REWARD;
 			}
 
 			if (wrists.right != null)
 			{
 				float distance = Math.Abs(wrists.right.middle - HandConfig.WristNaturePosition);
-				cost = Math.Pow(distance / 14, 4);
+				cost = Math.Pow(distance / 14, 4) * CostCoeff.WRIST_POSITION_NATURALITY_REWARD;
 			}
 
 			// shift fingers punish
 			foreach (Finger f in chord.Values)
 			{
 				if (Math.Abs((int)f) > 10)
-					cost += 100;
+					cost += CostCoeff.SHIFT_FINGERS_PUNISH;
+			}
+
+			// black key short punish
+			foreach (var pair in chord)
+			{
+				if (pair.Value != Finger.EMPTY && Piano.isBlackKey(pair.Key))
+				{
+					int finger = Math.Abs((int)pair.Value);
+					int first = (int)Math.Floor(finger / 10f) - 1;
+					int second = finger % 10 - 1;
+
+					float sh = HandConfig.BlackKeyShort[second];
+					if (first >= 0)
+						sh = Math.Max(HandConfig.BlackKeyShort[first], sh);
+
+					cost += sh * CostCoeff.BLACK_KEY_SHORT_PUNISH;
+				}
 			}
 
 			return new Choice { chord = chord, staticCost = cost, wrists = wrists, deltaTime = deltaTime };

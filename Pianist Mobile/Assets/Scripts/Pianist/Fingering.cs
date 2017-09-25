@@ -235,6 +235,8 @@ namespace Pianist
 
 		public static readonly float WristNaturePosition = 11;
 		public static readonly float BenchmarkDuration = 800;	// in milliseconds
+
+		public static readonly float[] BlackKeyShort = { 2.2f, 0.4f, 0, 0.2f, 1f };
 	};
 
 

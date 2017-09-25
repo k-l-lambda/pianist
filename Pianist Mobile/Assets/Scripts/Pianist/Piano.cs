@@ -19,6 +19,11 @@ namespace Pianist
 			0, 0.38f, 1, 1.62f, 2, 3, 3.37f, 4, 4.50f, 5, 5.63f, 6, 7,
 		};
 
+		public static readonly float[] BlackKeyIndices =
+		{
+			1, 3, 6, 8, 10,
+		};
+
 		public static int pitchStep(int pitch)
 		{
 			return pitch % GroupLength;
@@ -42,6 +47,23 @@ namespace Pianist
 		public static float pitchPairDistance(int pitch1, int pitch2)
 		{
 			return Math.Abs(KeyPositions[pitch1] - KeyPositions[pitch2]);
+		}
+
+		public static bool isBlackKey(int pitch)
+		{
+			int step = pitchStep(pitch);
+			switch(step)
+			{
+				case 1:
+				case 3:
+				case 6:
+				case 8:
+				case 10:
+					return true;
+
+				default:
+					return false;
+			}
 		}
 	};
 }
