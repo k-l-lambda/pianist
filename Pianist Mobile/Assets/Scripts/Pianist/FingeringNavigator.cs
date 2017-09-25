@@ -14,7 +14,15 @@ namespace Pianist
 	class CostCoeff
 	{
 		public static readonly float WRIST_POSITION_NATURALITY_REWARD = 1f;
+
+		public static readonly float WRIST_CROWD_PUNISH = 1f;
+
+		public static readonly float MULTIPLE_FINGERS_PUNISH = 1f;
+
+		public static readonly float OMIT_KEY_PUNISH = 1f;
+
 		public static readonly float SHIFT_FINGERS_PUNISH = 100f;
+
 		public static readonly float BLACK_KEY_SHORT_PUNISH = 1f;
 
 		public static readonly float WRIST_OFFSET_MIDDLE_PUNISH = 1f;
@@ -614,28 +622,58 @@ namespace Pianist
 				cost = Math.Pow(distance / 14, 4) * CostCoeff.WRIST_POSITION_NATURALITY_REWARD;
 			}
 
-			// shift fingers punish
+			// wrist crowd punish
+			if (wrists.left != null && wrists.right != null)
+			{
+				float distance = Math.Max(Math.Abs(wrists.left.high - wrists.right.low), Math.Abs(wrists.right.high - wrists.left.low));
+				if (distance < 5)
+					cost += CostCoeff.WRIST_CROWD_PUNISH * (5f - distance) / 5f;
+			}
+
 			foreach (Finger f in chord.Values)
 			{
+				// shift fingers punish
 				if (Math.Abs((int)f) > 10)
 					cost += CostCoeff.SHIFT_FINGERS_PUNISH;
 			}
 
-			// black key short punish
+			int leftFingerCount = 0;
+			int rightFingerCount = 0;
+
 			foreach (var pair in chord)
 			{
-				if (pair.Value != Finger.EMPTY && Piano.isBlackKey(pair.Key))
+				if (pair.Value != Finger.EMPTY)
 				{
-					int finger = Math.Abs((int)pair.Value);
-					int first = (int)Math.Floor(finger / 10f) - 1;
-					int second = finger % 10 - 1;
+					// black key short punish
+					if (Piano.isBlackKey(pair.Key))
+					{
+						int finger = Math.Abs((int)pair.Value);
+						int first = (int)Math.Floor(finger / 10f) - 1;
+						int second = finger % 10 - 1;
 
-					float sh = HandConfig.BlackKeyShort[second];
-					if (first >= 0)
-						sh = Math.Max(HandConfig.BlackKeyShort[first], sh);
+						float sh = HandConfig.BlackKeyShort[second];
+						if (first >= 0)
+							sh = Math.Max(HandConfig.BlackKeyShort[first], sh);
 
-					cost += sh * CostCoeff.BLACK_KEY_SHORT_PUNISH;
+						cost += sh * CostCoeff.BLACK_KEY_SHORT_PUNISH;
+					}
 				}
+				else if (pair.Value > Finger.EMPTY)
+					++rightFingerCount;
+				else if (pair.Value < Finger.EMPTY)
+					++leftFingerCount;
+			}
+
+			// multiple fingers punish
+			if (leftFingerCount > 0)
+			{
+				float value = leftFingerCount / 5f;
+				cost += CostCoeff.MULTIPLE_FINGERS_PUNISH * value * value;
+			}
+			if (rightFingerCount > 0)
+			{
+				float value = rightFingerCount / 5f;
+				cost += CostCoeff.MULTIPLE_FINGERS_PUNISH * value * value;
 			}
 
 			return new Choice { chord = chord, staticCost = cost, wrists = wrists, deltaTime = deltaTime };
