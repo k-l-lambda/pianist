@@ -10,6 +10,8 @@ TODO:
 
 2017.9.25	K.L.	<k.l.lambda@gmail.com>
 
+	+	Pianist/FingeringNavigator: added finger soft move interval cost.
+
 	+	Pianist/FingeringNavigator: black key short cost added.
 
 	>	Pianist/FingeringNavigator: fixed finger states.

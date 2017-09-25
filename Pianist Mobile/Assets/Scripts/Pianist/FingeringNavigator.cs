@@ -22,6 +22,7 @@ namespace Pianist
 
 		public static readonly float FINGER_DURATION_CUTOFF_PUNISH = 1f;
 		public static readonly float FINGER_MOVE_INTERVAL_REWARD = 1f;
+		public static readonly float FINGER_SOFT_MOVE_INTERVAL_REWARD = 10f;
 	};
 
 
@@ -314,16 +315,24 @@ namespace Pianist
 					{
 						FingerState state = fingerState[finger];
 
-						// cut off duration punish
 						if (state.Release > note.start)
 						{
+							// cut off duration punish
 							float duration = state.Release - state.Press;
 							cost += CostCoeff.FINGER_DURATION_CUTOFF_PUNISH * ((note.start - state.Press)) / duration / (duration / s_BenchmarkDuration);
 						}
+						else
+						{
+							// soft move interval reward
+							float interval = 4f * (note.start - state.Release) / s_BenchmarkDuration;
+							cost += CostCoeff.FINGER_SOFT_MOVE_INTERVAL_REWARD * Math.Pow(1 / CostCoeff.FINGER_SOFT_MOVE_INTERVAL_REWARD, interval);
+						}
 
 						// move interval reward
-						float interval = 4f * (note.start - state.Press) / s_BenchmarkDuration;
-						cost += CostCoeff.FINGER_MOVE_INTERVAL_REWARD * 1 / (interval * interval);
+						{
+							float interval = 4f * (note.start - state.Press) / s_BenchmarkDuration;
+							cost += CostCoeff.FINGER_MOVE_INTERVAL_REWARD * 1 / (interval * interval);
+						}
 					}
 				}
 
