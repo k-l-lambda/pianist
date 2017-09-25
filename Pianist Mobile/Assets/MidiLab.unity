@@ -126,7 +126,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8bd8fc69e5eb0d42a60af3640eeb4e8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SourceAsset: {fileID: 4900000, guid: f294e6d8eac06d24f81a229fca3fbf22, type: 3}
+  SourceAsset: {fileID: 4900000, guid: 3ca1b40497e501348a05163d2d2ce283, type: 3}
   Hands:
   - Config: Default
     Type: 2
@@ -137,8 +137,9 @@ MonoBehaviour:
   - Config: Default
     Type: 0
     AdaptionSpeed: 1
-  TrackHandIndices: 000000000200000002000000
-  StepCountMin: 100
+  TrackHandIndices: ffffffff0000000001000000
+  KeepConstraints: 1
+  StepCountMin: 0
   StepCountMax: 1000
   DumpTree: 1
 --- !u!114 &836143163

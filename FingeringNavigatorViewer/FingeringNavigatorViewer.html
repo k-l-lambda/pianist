@@ -108,6 +108,8 @@
 			var maxStep = 0;
 			var currentStep = 0;
 
+			var nodeList = [];
+
 			var renderNode = function (node) {
 				maxStep = Math.max(maxStep, node.stepIndex);
 
@@ -115,14 +117,15 @@
 
 				code += "<tr><th>";
 
-				code += "	<div class='node-head'>";
+				code += "	<div class='node-head' data-index='" + node.stepIndex + "'>";
 
 				code += "		<span class='step-index'>" + node.stepIndex + "</span>";
 				if (node.choice)
 					code += "		<span class='fingers'>" + node.choice + "</span>";
 				if (node.cost) {
-					var cost = (node.accCost || 0) + node.cost;
-					var title = node.accCost ? (node.accCost + " + " + node.cost + " = " + cost) : node.accCost;
+					node.accCost = node.accCost || 0;
+					var cost = node.accCost + node.cost;
+					var title = node.accCost + " + " + node.cost + " = " + cost;
 					code += "		<span class='cost' title='" + title + "'>" + cost.toPrecision(3) + "</span>";
 				}
 
@@ -130,11 +133,13 @@
 
 				code += "</th></tr>";
 
+				nodeList[node.stepIndex] = node;
+
 				code += "<tr><td>";
 
 				code += "	<table class='node-children'><tr>";
 
-				var accCost = (node.accCost || 0) + node.cost;
+				var accCost = node.accCost + node.cost;
 
 				for (var i in node.children) {
 					var child = node.children[i];
@@ -208,6 +213,11 @@
 
 					//console.log(renderNode(data));
 					$("#viewer").html(renderNode(data));
+
+					$(".node-head").click(function () {
+						var index = $(this).data("index");
+						console.log(index, nodeList[index]);
+					});
 
 					$("#step-slider").attr("max", maxStep);
 

@@ -119,6 +119,14 @@ namespace Pianist
 				}
 			}
 
+			static string removeTailComma(string source)
+			{
+				if (source[source.Length - 1] == ',')
+					return source.Remove(source.Length - 1, 1);
+
+				return source;
+			}
+
 			public string JsonDump
 			{
 				get
@@ -135,14 +143,37 @@ namespace Pianist
 
 					result += "\"stepIndex\":" + StepIndex.ToString() + ",";
 
+					if (leftFingers != null)
+					{
+						result += "\"leftFingers\":[";
+
+						foreach (var finger in leftFingers)
+							result += "{" + string.Format("\"press\":{0},\"release\":{1},\"position\":{2}", finger.Press, finger.Release, finger.Position) + "},";
+
+						result = removeTailComma(result);
+
+						result += "],";
+					}
+
+					if (rightFingers != null)
+					{
+						result += "\"rightFingers\":[";
+
+						foreach (var finger in rightFingers)
+							result += "{" + string.Format("\"press\":{0},\"release\":{1},\"position\":{2}", finger.Press, finger.Release, finger.Position) + "},";
+
+						result = removeTailComma(result);
+
+						result += "],";
+					}
+
 					result += "\"children\":[";
 
 					foreach (TreeNode child in children)
 						if (child.StepIndex > 0)
 							result += child.JsonDump + ",";
 
-					if (result[result.Length - 1] == ',')
-						result = result.Remove(result.Length - 1, 1);
+					result = removeTailComma(result);
 
 					result += "]";
 
@@ -211,7 +242,7 @@ namespace Pianist
 					{
 						if (states == null)
 						{
-							states = Enumerable.Repeat(new FingerState { Press = -10f, Release = -10f }, 5).ToArray();
+							states = Enumerable.Repeat(new FingerState { Press = -10000f, Release = -10000f }, 5).ToArray();
 							for (int i = 0; i < states.Length; ++i)
 								states[i].Position = (HandConfig.WristNaturePosition + i - 2) * hand;
 						}
@@ -228,14 +259,14 @@ namespace Pianist
 						{
 							states[first].Press = note.start;
 							states[first].Release = note.start;
-							states[first].Release = position;
+							states[first].Position = position;
 						}
 
 						UnityEngine.Debug.Assert(second >= 0 && second < 5, "invalid finger value");
 						{
 							states[second].Press = note.start;
 							states[second].Release = note.start + note.duration;
-							states[second].Release = position;
+							states[second].Position = position;
 						}
 					}
 				}
@@ -287,7 +318,7 @@ namespace Pianist
 						}
 
 						// move interval reward
-						float interval = (note.start - state.Press) / s_BenchmarkDuration;
+						float interval = 4f * (note.start - state.Press) / s_BenchmarkDuration;
 						cost += CostCoeff.FINGER_MOVE_INTERVAL_REWARD * 1 / (interval * interval);
 					}
 				}
