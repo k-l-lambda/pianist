@@ -61,6 +61,15 @@
     <Reference Include="UnityEngine.Analytics">
       <HintPath>Library\UnityAssemblies\UnityEngine.Analytics.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.Analytics">
+      <HintPath>Library\UnityAssemblies\UnityEngine.Analytics.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.Networking">
+      <HintPath>Library\UnityAssemblies\UnityEngine.Networking.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>Library\UnityAssemblies\UnityEngine.UI.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEditor">
       <HintPath>Library\UnityAssemblies\UnityEditor.dll</HintPath>
     </Reference>
@@ -191,10 +200,6 @@
     <Compile Include="Assets\Scripts\Sanford\Threading\InvokeCompletedEventArgs.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump0.txt" />
-    <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump1.txt" />
-    <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump2.txt" />
-    <None Include="Assets\Editor\Log\leaves.txt" />
     <None Include="Assets\Editor\Resources\MeshPreview.shader" />
     <None Include="Assets\Resources\Materials\Color.shader" />
   </ItemGroup>
