@@ -263,4 +263,18 @@ public class NotationUtils
 			}
 		}
 	}
+
+	public static float getNoteImportanceInChord(NoteChord chord, int pitch)
+	{
+		if(!chord.notes.ContainsKey(pitch))
+			return 0;
+
+		Note note = chord.notes[pitch];
+
+		int velocitySum = 0;
+		foreach (var pair in chord.notes)
+			velocitySum += pair.Value.velocity;
+
+		return (float)note.velocity / velocitySum;
+	}
 };

@@ -19,7 +19,7 @@ namespace Pianist
 
 		public static readonly float MULTIPLE_FINGERS_PUNISH = 1f;
 
-		public static readonly float OMIT_KEY_PUNISH = 1f;
+		public static readonly float OMIT_KEY_PUNISH = 100f;
 
 		public static readonly float SHIFT_FINGERS_PUNISH = 100f;
 
@@ -41,6 +41,7 @@ namespace Pianist
 			public float Press;
 			public float Release;
 			public float Position;
+			public int Index;
 		};
 
 		public class TreeNode
@@ -218,8 +219,8 @@ namespace Pianist
 				startTime = note.start;
 				timeUnit = choice.deltaTime / s_BenchmarkDuration;
 
-				leftFingers = generateFingerStates(parent.leftFingers, -1, fingerChord, note);
-				rightFingers = generateFingerStates(parent.rightFingers, 1, fingerChord, note);
+				leftFingers = generateFingerStates(parent.leftFingers, -1, fingerChord, note, Index);
+				rightFingers = generateFingerStates(parent.rightFingers, 1, fingerChord, note, Index);
 			}
 
 			void appendChild(TreeNode child)
@@ -238,7 +239,7 @@ namespace Pianist
 				return child;
 			}
 
-			static FingerState[] generateFingerStates(FingerState[] parentStates, int hand, FingerChord chord, NoteChord nc)
+			static FingerState[] generateFingerStates(FingerState[] parentStates, int hand, FingerChord chord, NoteChord nc, int index)
 			{
 				FingerState[] states = null;
 
@@ -255,7 +256,7 @@ namespace Pianist
 					{
 						if (states == null)
 						{
-							states = Enumerable.Repeat(new FingerState { Press = -10000f, Release = -10000f }, 5).ToArray();
+							states = Enumerable.Repeat(new FingerState { Press = -10000f, Release = -10000f, Index = -1 }, 5).ToArray();
 							for (int i = 0; i < states.Length; ++i)
 								states[i].Position = (HandConfig.WristNaturePosition + i - 2) * hand;
 						}
@@ -273,6 +274,7 @@ namespace Pianist
 							states[first].Press = note.start;
 							states[first].Release = note.start;
 							states[first].Position = position;
+							states[first].Index = index;
 						}
 
 						UnityEngine.Debug.Assert(second >= 0 && second < 5, "invalid finger value");
@@ -280,6 +282,7 @@ namespace Pianist
 							states[second].Press = note.start;
 							states[second].Release = note.start + note.duration;
 							states[second].Position = position;
+							states[second].Index = index;
 						}
 					}
 				}
@@ -603,8 +606,12 @@ namespace Pianist
 			return result;
 		}
 
-		Choice evaluateChordChoice(FingerChord chord, float deltaTime)
+		Choice evaluateChordChoice(FingerChord chord, int index)
 		{
+			float deltaTime = index > 0 ? NoteSeq[index].start - NoteSeq[index - 1].start : 0;
+
+			NoteChord note = NoteSeq[index];
+
 			HandConfig.RangePair wrists = Config.getFingerChordWristRange(chord);
 
 			double cost = 0;
@@ -657,11 +664,18 @@ namespace Pianist
 
 						cost += sh * CostCoeff.BLACK_KEY_SHORT_PUNISH;
 					}
+
+					if (pair.Value > Finger.EMPTY)
+						++rightFingerCount;
+					else if (pair.Value < Finger.EMPTY)
+						++leftFingerCount;
 				}
-				else if (pair.Value > Finger.EMPTY)
-					++rightFingerCount;
-				else if (pair.Value < Finger.EMPTY)
-					++leftFingerCount;
+				else
+				{
+					// omit key punish
+					float importance = NotationUtils.getNoteImportanceInChord(note, pair.Key);
+					cost += CostCoeff.OMIT_KEY_PUNISH * importance;
+				}
 			}
 
 			// multiple fingers punish
@@ -765,7 +779,7 @@ namespace Pianist
 			float lastTime = 0;
 			for (int i = 0; i < ChoiceSequence.Length; ++i)
 			{
-				ChoiceSequence[i] = getFingerChoices(NoteSeq[i], NoteSeq[i].start - lastTime);
+				ChoiceSequence[i] = getFingerChoices(NoteSeq[i], i);
 				lastTime = NoteSeq[i].start;
 
 				EstimatedCosts[i] = new CostEstimation();
@@ -787,7 +801,7 @@ namespace Pianist
 			UnityEngine.Debug.LogFormat("Total choices: {0}, average per step: {1}", total, total / ChoiceSequence.Length);
 		}
 
-		Choice[] getFingerChoices(NoteChord nc, float deltaTime)
+		Choice[] getFingerChoices(NoteChord nc, int index)
 		{
 			if(nc.notes.Count == 0)
 				return new Choice[0];
@@ -820,7 +834,7 @@ namespace Pianist
 			for (int i = 0; i < choices.Count; ++i)
 			{
 				FingerChord chord = choices[i];
-				choiceArray[i] = evaluateChordChoice(chord, deltaTime);
+				choiceArray[i] = evaluateChordChoice(chord, index);
 			}
 
 			return choiceArray;
