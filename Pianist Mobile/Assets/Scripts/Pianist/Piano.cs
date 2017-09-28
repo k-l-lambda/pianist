@@ -65,5 +65,10 @@ namespace Pianist
 					return false;
 			}
 		}
+
+		public static int getKeyHeight(int pitch)
+		{
+			return isBlackKey(pitch) ? 1 : 0;
+		}
 	};
 }

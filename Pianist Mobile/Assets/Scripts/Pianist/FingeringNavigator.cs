@@ -283,11 +283,38 @@ namespace Pianist
 							states[second].Release = note.start + note.duration;
 							states[second].Position = position;
 							states[second].Index = index;
+
+							//fixFingerStatesObstacle(ref states, hand, second);
 						}
 					}
 				}
 
 				return states;
+			}
+
+			static void fixFingerStatesObstacle(ref FingerState[] states, int hand, int finger)
+			{
+				FingerState state = states[finger];
+
+				for (int i = finger - 1; i > 0; --i)
+				{
+					float obstacle = state.Position - i * hand;
+					if (states[i].Position * hand > obstacle * hand)
+					{
+						states[i].Position = obstacle;
+						states[i].Release = state.Release;
+					}
+				}
+
+				for (int i = finger + 1; i < 5; ++i)
+				{
+					float obstacle = state.Position + i * hand;
+					if (states[i].Position * hand < obstacle * hand)
+					{
+						states[i].Position = obstacle;
+						states[i].Release = state.Release;
+					}
+				}
 			}
 
 			double evaluateSingleArmCost(HandConfig.Range lastWrist, HandConfig.Range currentWrist, FingerState[] fingerState, int hand)
@@ -307,6 +334,7 @@ namespace Pianist
 				if (fingerState != null)
 				{
 					List<int> fingers = new List<int>();
+					List<int> pitches = new List<int>();
 
 					foreach (var pair in fingerChord)
 					{
@@ -317,13 +345,21 @@ namespace Pianist
 							int second = finger % 10 - 1;
 
 							if (first > 0)
+							{
 								fingers.Add(first);
+								pitches.Add(pair.Key);
+							}
 							fingers.Add(second);
+							pitches.Add(pair.Key);
 						}
 					}
 
-					foreach (int finger in fingers)
+					for (int i = 0; i < fingers.Count; ++i)
 					{
+						int finger = fingers[i];
+						int pitch = pitches[i];
+						float position = Piano.KeyPositions[pitch];
+
 						FingerState state = fingerState[finger];
 
 						if (state.Release > note.start)
@@ -342,7 +378,7 @@ namespace Pianist
 						// move interval reward
 						{
 							float interval = 4f * (note.start - state.Press) / s_BenchmarkDuration;
-							cost += CostCoeff.FINGER_MOVE_INTERVAL_REWARD * 1 / (interval * interval);
+							cost += CostCoeff.FINGER_MOVE_INTERVAL_REWARD * (1 + Math.Abs(position - state.Position)) / (interval * interval);
 						}
 					}
 				}

@@ -3,6 +3,8 @@ TODO:
 	show MIDI length in seconds.
 	TextTrackWriter
 	FingeringNavigator
+		unified move cost
+		minimum press preparation: demisemiquaver
 		finger obstacle cost
 			use omit keys cost
 		extend & squeeze costs
