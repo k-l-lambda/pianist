@@ -20,6 +20,8 @@ namespace Pianist
 		public static readonly float MULTIPLE_FINGERS_PUNISH = 1f;
 
 		public static readonly float OMIT_KEY_PUNISH = 100f;
+		public static readonly float NOTE_CUTOFF_PUNISH = 1f;
+		public static readonly float FINGER_MOVE_SPEED_PUNISH = 10f;
 
 		public static readonly float SHIFT_FINGERS_PUNISH = 100f;
 
@@ -28,9 +30,9 @@ namespace Pianist
 		public static readonly float WRIST_OFFSET_MIDDLE_PUNISH = 1f;
 		public static readonly float WRIST_OFFSET_RANGE_PUNISH = 10f;
 
-		public static readonly float FINGER_DURATION_CUTOFF_PUNISH = 1f;
-		public static readonly float FINGER_MOVE_INTERVAL_REWARD = 1f;
-		public static readonly float FINGER_SOFT_MOVE_INTERVAL_REWARD = 10f;
+		//public static readonly float FINGER_DURATION_CUTOFF_PUNISH = 1f;
+		//public static readonly float FINGER_MOVE_INTERVAL_REWARD = 1f;
+		//public static readonly float FINGER_SOFT_MOVE_INTERVAL_REWARD = 10f;
 	};
 
 
@@ -40,7 +42,10 @@ namespace Pianist
 		{
 			public float Press;
 			public float Release;
+
+			public int Pitch;
 			public float Position;
+			public int Height;
 			public int Index;
 		};
 
@@ -256,7 +261,7 @@ namespace Pianist
 					{
 						if (states == null)
 						{
-							states = Enumerable.Repeat(new FingerState { Press = -10000f, Release = -10000f, Index = -1 }, 5).ToArray();
+							states = Enumerable.Repeat(new FingerState { Press = -10000f, Release = -10000f, Index = -1, Height = 0 }, 5).ToArray();
 							for (int i = 0; i < states.Length; ++i)
 								states[i].Position = (HandConfig.WristNaturePosition + i - 2) * hand;
 						}
@@ -265,6 +270,7 @@ namespace Pianist
 						UnityEngine.Debug.Assert(note != null, "note and finger chord mismatch");
 
 						float position = Piano.KeyPositions[pair.Key];
+						int height = Piano.getKeyHeight(pair.Key);
 
 						int first = (int)Math.Floor(finger / 10f) - 1;
 						int second = finger % 10 - 1;
@@ -273,7 +279,9 @@ namespace Pianist
 						{
 							states[first].Press = note.start;
 							states[first].Release = note.start;
+							states[first].Pitch = pair.Key;
 							states[first].Position = position;
+							states[first].Height = height;
 							states[first].Index = index;
 						}
 
@@ -281,7 +289,9 @@ namespace Pianist
 						{
 							states[second].Press = note.start;
 							states[second].Release = note.start + note.duration;
+							states[second].Pitch = pair.Key;
 							states[second].Position = position;
+							states[second].Height = height;
 							states[second].Index = index;
 
 							//fixFingerStatesObstacle(ref states, hand, second);
@@ -292,7 +302,7 @@ namespace Pianist
 				return states;
 			}
 
-			static void fixFingerStatesObstacle(ref FingerState[] states, int hand, int finger)
+			/*static void fixFingerStatesObstacle(ref FingerState[] states, int hand, int finger)
 			{
 				FingerState state = states[finger];
 
@@ -314,6 +324,34 @@ namespace Pianist
 						states[i].Position = obstacle;
 						states[i].Release = state.Release;
 					}
+				}
+			}*/
+
+			double evaluateFingerObstacleCost(FingerState state, float startTime, float minPreparation, NoteChord obsNote, float startPosition, int startHeight, int pitch)
+			{
+				float deltaX = startPosition - Piano.KeyPositions[pitch];
+				float deltaY = startHeight - Piano.getKeyHeight(pitch);
+				double distance = Math.Min(Math.Sqrt(deltaX * deltaX + deltaY * deltaY), 5) + 1;
+
+				float prepareTime = startTime - minPreparation;
+
+				float importance = NotationUtils.getNoteImportanceInChord(obsNote, state.Pitch);
+
+				if (prepareTime >= state.Release)
+				{
+					double coeff = CostCoeff.FINGER_MOVE_SPEED_PUNISH * Math.Pow(0.1, (prepareTime - state.Release) / s_BenchmarkDuration);
+					return coeff * distance;
+				}
+				else if (prepareTime >= state.Press)
+				{
+					double speedCost = CostCoeff.FINGER_MOVE_SPEED_PUNISH * distance;
+					double cutoffCost = CostCoeff.NOTE_CUTOFF_PUNISH * importance * (state.Release - prepareTime) / (state.Release - state.Press);
+
+					return speedCost + cutoffCost;
+				}
+				else
+				{
+					return CostCoeff.OMIT_KEY_PUNISH * importance;
 				}
 			}
 
@@ -358,11 +396,11 @@ namespace Pianist
 					{
 						int finger = fingers[i];
 						int pitch = pitches[i];
-						float position = Piano.KeyPositions[pitch];
+						//float position = Piano.KeyPositions[pitch];
 
 						FingerState state = fingerState[finger];
 
-						if (state.Release > note.start)
+						/*if (state.Release > note.start)
 						{
 							// cut off duration punish
 							float duration = state.Release - state.Press;
@@ -379,6 +417,52 @@ namespace Pianist
 						{
 							float interval = 4f * (note.start - state.Press) / s_BenchmarkDuration;
 							cost += CostCoeff.FINGER_MOVE_INTERVAL_REWARD * (1 + Math.Abs(position - state.Position)) / (interval * interval);
+						}*/
+
+						float minimumPreparationTime = s_BenchmarkDuration * 2 * HandConfig.MinimumPreparationRate;
+
+						// self obstacle
+						if(state.Index >= 0)
+						{
+							NoteChord obsNote = s_NoteSeq[state.Index];
+							cost += evaluateFingerObstacleCost(state, note.start, minimumPreparationTime * 2, obsNote, state.Position, state.Height, pitch);
+						}
+
+						// other obstacles
+						if (finger > 0)
+						{
+							for (int of = 1; of < 5; ++of)
+							{
+								// ignore self finger
+								if(of == finger)
+									break;
+
+								FingerState obsState = fingerState[of];
+								if(obsState.Index >= 0)
+								{
+									int height = Piano.getKeyHeight(pitch);
+
+									// allow ring finger on black cross pinky finger on white
+									if (finger == 3 && of == 4 && height > obsState.Height)
+										break;
+
+									float startPosition = obsState.Position + (finger - of) * hand;
+									int startHeight = obsState.Height;
+
+									if (state.Index >= 0)
+									{
+										startHeight = state.Height;
+
+										if (finger * hand < of * hand)
+											startPosition = Math.Min(startPosition, state.Position);
+										else
+											startPosition = Math.Max(startPosition, state.Position);
+									}
+
+									NoteChord obsNote = s_NoteSeq[obsState.Index];
+									cost += evaluateFingerObstacleCost(obsState, note.start, minimumPreparationTime, obsNote, startPosition, startHeight, pitch);
+								}
+							}
 						}
 					}
 				}

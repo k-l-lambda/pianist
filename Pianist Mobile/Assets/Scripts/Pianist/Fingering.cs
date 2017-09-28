@@ -234,7 +234,8 @@ namespace Pianist
 
 
 		public static readonly float WristNaturePosition = 11;
-		public static readonly float BenchmarkDuration = 800;	// in milliseconds, typical quater note
+		public static readonly float BenchmarkDuration = 800;	// in milliseconds, the typical quater note
+		public static readonly float MinimumPreparationRate = 1 / 8f;	// the typical demisemiquaver for minimum preparation
 
 		public static readonly float[] BlackKeyShort = { 2.2f, 0.4f, 0, 0.2f, 1f };
 	};
