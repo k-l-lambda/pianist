@@ -112,6 +112,8 @@ namespace Pianist
 			double staticCost;
 			double dynamicCost;
 
+			string debug = "";
+
 
 			// common context
 			public static float s_BenchmarkDuration;
@@ -185,6 +187,9 @@ namespace Pianist
 
 						result += "],";
 					}
+
+					if(debug != null)
+						result += string.Format("\"debug\":\"{0}\",", debug);
 
 					result += "\"children\":[";
 
@@ -302,32 +307,7 @@ namespace Pianist
 				return states;
 			}
 
-			/*static void fixFingerStatesObstacle(ref FingerState[] states, int hand, int finger)
-			{
-				FingerState state = states[finger];
-
-				for (int i = finger - 1; i > 0; --i)
-				{
-					float obstacle = state.Position - i * hand;
-					if (states[i].Position * hand > obstacle * hand)
-					{
-						states[i].Position = obstacle;
-						states[i].Release = state.Release;
-					}
-				}
-
-				for (int i = finger + 1; i < 5; ++i)
-				{
-					float obstacle = state.Position + i * hand;
-					if (states[i].Position * hand < obstacle * hand)
-					{
-						states[i].Position = obstacle;
-						states[i].Release = state.Release;
-					}
-				}
-			}*/
-
-			double evaluateFingerObstacleCost(FingerState state, float startTime, float minPreparation, NoteChord obsNote, float startPosition, int startHeight, int pitch)
+			double evaluateFingerObstacleCost(FingerState state, float minPreparation, NoteChord obsNote, float startPosition, int startHeight, int pitch)
 			{
 				float deltaX = startPosition - Piano.KeyPositions[pitch];
 				float deltaY = startHeight - Piano.getKeyHeight(pitch);
@@ -355,7 +335,7 @@ namespace Pianist
 				}
 			}
 
-			double evaluateSingleArmCost(HandConfig.Range lastWrist, HandConfig.Range currentWrist, FingerState[] fingerState, int hand)
+			double evaluateSingleArmCost(HandConfig.Range lastWrist, HandConfig.Range currentWrist, FingerState[] lastFs, FingerState[] currentFs, int hand)
 			{
 				double cost = 0;
 
@@ -369,7 +349,7 @@ namespace Pianist
 					cost += Math.Min(Math.Abs(currentWrist.low - lastWrist.high), Math.Abs(lastWrist.low - currentWrist.high)) * CostCoeff.WRIST_OFFSET_RANGE_PUNISH / timeUnit;
 
 				// finger speed punish
-				if (fingerState != null)
+				if (lastFs != null)
 				{
 					List<int> fingers = new List<int>();
 					List<int> pitches = new List<int>();
@@ -398,7 +378,7 @@ namespace Pianist
 						int pitch = pitches[i];
 						//float position = Piano.KeyPositions[pitch];
 
-						FingerState state = fingerState[finger];
+						FingerState state = lastFs[finger];
 
 						/*if (state.Release > note.start)
 						{
@@ -425,7 +405,7 @@ namespace Pianist
 						if(state.Index >= 0)
 						{
 							NoteChord obsNote = s_NoteSeq[state.Index];
-							cost += evaluateFingerObstacleCost(state, note.start, minimumPreparationTime * 2, obsNote, state.Position, state.Height, pitch);
+							cost += evaluateFingerObstacleCost(state, minimumPreparationTime * 2, obsNote, state.Position, state.Height, pitch);
 						}
 
 						// other obstacles
@@ -435,19 +415,21 @@ namespace Pianist
 							{
 								// ignore self finger
 								if(of == finger)
-									break;
+									continue;
 
-								FingerState obsState = fingerState[of];
+								FingerState obsState = lastFs[of];
 								if(obsState.Index >= 0)
 								{
 									int height = Piano.getKeyHeight(pitch);
 
 									// allow ring finger on black cross pinky finger on white
 									if (finger == 3 && of == 4 && height > obsState.Height)
-										break;
+										continue;
 
 									float startPosition = obsState.Position + (finger - of) * hand;
 									int startHeight = obsState.Height;
+
+									float targetPosition = currentFs[finger].Position;
 
 									if (state.Index >= 0)
 									{
@@ -459,8 +441,15 @@ namespace Pianist
 											startPosition = Math.Max(startPosition, state.Position);
 									}
 
+									//debug += string.Format("of: {0}, {1}, {2}, {3}\\n", of, startPosition, obsState.Position, targetPosition);
+
+									if ((targetPosition - obsState.Position) * (obsState.Position - startPosition) <= 0)
+										continue;
+
 									NoteChord obsNote = s_NoteSeq[obsState.Index];
-									cost += evaluateFingerObstacleCost(obsState, note.start, minimumPreparationTime, obsNote, startPosition, startHeight, pitch);
+									cost += evaluateFingerObstacleCost(obsState, minimumPreparationTime, obsNote, startPosition, startHeight, pitch);
+
+									debug += "O" + ((of + 1) * hand).ToString() + ",";
 								}
 							}
 						}
@@ -479,10 +468,10 @@ namespace Pianist
 				if (parent != null)
 				{
 					if (wrists.left != null && parent.wrists.left != null)
-						cost += evaluateSingleArmCost(parent.wrists.left, wrists.left, parent != null ? parent.leftFingers : null, -1);
+						cost += evaluateSingleArmCost(parent.wrists.left, wrists.left, parent != null ? parent.leftFingers : null, leftFingers, -1);
 
 					if (wrists.right != null && parent.wrists.right != null)
-						cost += evaluateSingleArmCost(parent.wrists.right, wrists.right, parent != null ? parent.rightFingers : null, 1);
+						cost += evaluateSingleArmCost(parent.wrists.right, wrists.right, parent != null ? parent.rightFingers : null, rightFingers, 1);
 				}
 
 				return cost;
@@ -896,11 +885,11 @@ namespace Pianist
 
 			int total = 0;
 
-			float lastTime = 0;
+			//float lastTime = 0;
 			for (int i = 0; i < ChoiceSequence.Length; ++i)
 			{
 				ChoiceSequence[i] = getFingerChoices(NoteSeq[i], i);
-				lastTime = NoteSeq[i].start;
+				//lastTime = NoteSeq[i].start;
 
 				EstimatedCosts[i] = new CostEstimation();
 

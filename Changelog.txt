@@ -7,6 +7,11 @@ TODO:
 
 
 
+2017.9.29	K.L.	<k.l.lambda@gmail.com>
+
+	>	Pianist/FingeringNavigator: fixed other finger obstacle cost.
+
+
 2017.9.28	K.L.	<k.l.lambda@gmail.com>
 
 	+	Pianist/FingeringNavigator: unified obstacle cost added.
