@@ -7,6 +7,11 @@ TODO:
 
 
 
+2017.9.30	K.L.	<k.l.lambda@gmail.com>
+
+	+	Pianist/FingeringGenerator: added node dump by path.
+
+
 2017.9.29	K.L.	<k.l.lambda@gmail.com>
 
 	>	Pianist/FingeringNavigator: fixed other finger obstacle cost.

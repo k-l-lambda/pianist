@@ -8,6 +8,8 @@ public class FingeringGeneratorEditor : Editor
 {
 	string TargetName;
 
+	string DumpNodePath;
+
 
 	public override void OnInspectorGUI()
 	{
@@ -92,5 +94,19 @@ public class FingeringGeneratorEditor : Editor
 
 			t.generate(string.Format("{0}/Editor/Resources/MIDI/Fingerings/{1}", Application.dataPath, TargetName));
 		}
+
+		EditorGUILayout.Space();
+
+		EditorGUILayout.Space();
+
+		EditorGUILayout.BeginHorizontal();
+
+		DumpNodePath = EditorGUILayout.TextField(DumpNodePath);
+		if (GUILayout.Button("DumpNode"))
+		{
+			t.dumpNode(DumpNodePath);
+		}
+
+		EditorGUILayout.EndHorizontal();
 	}
 }

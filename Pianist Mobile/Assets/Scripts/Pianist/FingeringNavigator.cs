@@ -148,11 +148,11 @@ namespace Pianist
 				return source;
 			}
 
-			public string JsonDump
+			public string JsonDumpSelf
 			{
 				get
 				{
-					string result = "{";
+					string result = "";
 
 					if (choiceIndex >= 0)
 					{
@@ -163,6 +163,8 @@ namespace Pianist
 					}
 
 					result += "\"stepIndex\":" + StepIndex.ToString() + ",";
+
+					result += string.Format("\"path\":\"{0}\",", ChoicePathDescription);
 
 					if (leftFingers != null)
 					{
@@ -188,8 +190,20 @@ namespace Pianist
 						result += "],";
 					}
 
-					if(debug != null)
+					if (debug != null)
 						result += string.Format("\"debug\":\"{0}\",", debug);
+
+					return result;
+				}
+			}
+
+			public string JsonDump
+			{
+				get
+				{
+					string result = "{";
+
+					result += JsonDumpSelf;
 
 					result += "\"children\":[";
 
@@ -1004,6 +1018,25 @@ namespace Pianist
 		public string getTreeJsonDump()
 		{
 			return TreeRoot.JsonDump;
+		}
+
+		public TreeNode getTreeNodeByPath(string path)
+		{
+			if (TreeRoot == null)
+				return null;
+
+			int[] indices = Array.ConvertAll(path.Split('-'), x => int.Parse(x));
+
+			TreeNode node = TreeRoot;
+			for (int i = 0; i < indices.Length; ++i)
+			{
+				if (node.children.Length <= i)
+					return null;
+
+				node = node.children[indices[i]];
+			}
+
+			return node;
 		}
 	};
 }

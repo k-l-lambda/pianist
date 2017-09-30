@@ -239,8 +239,6 @@ public class NotationUtils
 
 		clearFingeringInMidiFile(file);
 
-		file[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, Encoding.Default.GetBytes(MidiSignatureText)));
-
 		foreach (Midi.Track track in file)
 		{
 			foreach(Midi.MidiEvent e in track.Iterator())
@@ -262,6 +260,8 @@ public class NotationUtils
 				}
 			}
 		}
+
+		file[0].Insert(0, new Midi.MetaMessage(Midi.MetaType.Text, Encoding.Default.GetBytes(MidiSignatureText)));
 	}
 
 	public static float getNoteImportanceInChord(NoteChord chord, int pitch)

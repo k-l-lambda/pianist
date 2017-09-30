@@ -206,4 +206,13 @@ public class FingeringGenerator : MonoBehaviour
 
 		NotationUtils.appendFingeringToMidiFile(MidiSeq, results);
 	}
+
+	public void dumpNode(string path)
+	{
+		FingeringNavigator.TreeNode node = Navigator.getTreeNodeByPath(path);
+		if (node != null)
+			Debug.Log(node.JsonDumpSelf);
+		else
+			Debug.Log("Not found: " + path);
+	}
 }
