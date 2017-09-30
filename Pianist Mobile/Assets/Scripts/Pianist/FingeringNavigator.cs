@@ -331,9 +331,11 @@ namespace Pianist
 
 				float importance = NotationUtils.getNoteImportanceInChord(obsNote, state.Pitch);
 
+				debug += string.Format("O{0},{1},{2},{3};", state.Pitch, prepareTime, state.Release, state.Press);
+
 				if (prepareTime >= state.Release)
 				{
-					double coeff = CostCoeff.FINGER_MOVE_SPEED_PUNISH * Math.Pow(0.1, (prepareTime - state.Release) / s_BenchmarkDuration);
+					double coeff = CostCoeff.FINGER_MOVE_SPEED_PUNISH * Math.Pow(0.1, (startTime - state.Release) / minPreparation);
 					return coeff * distance;
 				}
 				else if (prepareTime >= state.Press)
@@ -463,7 +465,7 @@ namespace Pianist
 									NoteChord obsNote = s_NoteSeq[obsState.Index];
 									cost += evaluateFingerObstacleCost(obsState, minimumPreparationTime, obsNote, startPosition, startHeight, pitch);
 
-									debug += "O" + ((of + 1) * hand).ToString() + ",";
+									//debug += "O" + ((of + 1) * hand).ToString() + ","/* + (startTime - minimumPreparationTime - obsState.Release).ToString() + ";"*/;
 								}
 							}
 						}
