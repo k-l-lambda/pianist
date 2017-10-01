@@ -4,6 +4,8 @@ TODO:
 	TextTrackWriter
 	FingeringNavigator
 		extend & squeeze costs
+		step increment estimation costs
+		added some more test MIDI files
 
 
 
