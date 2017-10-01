@@ -4,9 +4,13 @@ TODO:
 	TextTrackWriter
 	FingeringNavigator
 		extend & squeeze costs
-		step increment estimation costs
 		added some more test MIDI files
 
+
+
+2017.10.1	K.L.	<k.l.lambda@gmail.com>
+
+	+	Pianist/FingeringNavigator: added estimation step increment.
 
 
 2017.9.30	K.L.	<k.l.lambda@gmail.com>

@@ -67,6 +67,8 @@ public class FingeringGenerator : MonoBehaviour
 
 	public int BubbleLength = 100;
 
+	public float EstimationStepIncrement = 0.1f;
+
 	public bool DumpTree = true;
 
 	FingeringNavigator Navigator = new FingeringNavigator();
@@ -155,6 +157,7 @@ public class FingeringGenerator : MonoBehaviour
 			Navigator.MinStepCount = StepCountMin;
 			Navigator.MaxStepCount = StepCountMax;
 			Navigator.BubbleLength = BubbleLength;
+			Navigator.EstimationStepIncrement = EstimationStepIncrement;
 
 			if (Navigator.Config == null)
 			{

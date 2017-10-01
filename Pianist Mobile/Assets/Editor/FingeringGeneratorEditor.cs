@@ -77,6 +77,7 @@ public class FingeringGeneratorEditor : Editor
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("StepCountMin"));
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("StepCountMax"));
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("BubbleLength"));
+			EditorGUILayout.PropertyField(serializedObject.FindProperty("EstimationStepIncrement"));
 			EditorGUILayout.PropertyField(serializedObject.FindProperty("DumpTree"));
 
 			if (EditorGUI.EndChangeCheck())
