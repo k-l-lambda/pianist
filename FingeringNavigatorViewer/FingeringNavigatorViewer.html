@@ -39,6 +39,17 @@
 				margin-top: 50px;
 			}
 
+			.loading #viewer
+			{
+				background: #ccc;
+			}
+
+			.loading #paint
+			{
+				background: #fcc;
+				color: #ccc;
+			}
+
 			.drag-hover #source
 			{
 				outline: 2px solid #0f0;
@@ -211,17 +222,23 @@
 
 					maxStep = 0;
 
-					//console.log(renderNode(data));
-					$("#viewer").html(renderNode(data));
+					$("body").addClass("loading");
 
-					$(".node-head").click(function () {
-						var index = $(this).data("index");
-						console.log(index, nodeList[index]);
-					});
+					setTimeout(function () {
+						//console.log(renderNode(data));
+						$("#viewer").html(renderNode(data));
 
-					$("#step-slider").attr("max", maxStep);
+						$("body").removeClass("loading");
 
-					setStep(maxStep);
+						$(".node-head").click(function () {
+							var index = $(this).data("index");
+							console.log(index, nodeList[index]);
+						});
+
+						$("#step-slider").attr("max", maxStep);
+
+						setStep(maxStep);
+					}, 0);
 				});
 
 				$("#step-slider").on("input", function () {

@@ -25,10 +25,10 @@ namespace Pianist
 
 		public static readonly float SHIFT_FINGERS_PUNISH = 100f;
 
-		public static readonly float BLACK_KEY_SHORT_PUNISH = 1f;
+		public static readonly float BLACK_KEY_SHORT_PUNISH = 2f;
 
-		public static readonly float WRIST_OFFSET_MIDDLE_PUNISH = 1f;
-		public static readonly float WRIST_OFFSET_RANGE_PUNISH = 10f;
+		public static readonly float WRIST_OFFSET_MIDDLE_PUNISH = 0.1f;
+		public static readonly float WRIST_OFFSET_RANGE_PUNISH = 4f;
 	};
 
 
@@ -355,10 +355,14 @@ namespace Pianist
 
 				//		by middle
 				cost += Math.Abs(currentWrist.middle - lastWrist.middle) * CostCoeff.WRIST_OFFSET_MIDDLE_PUNISH / timeUnit;
+				debug += string.Format("FM: {0}\\n", Math.Abs(currentWrist.middle - lastWrist.middle) / timeUnit);
 
 				//		by range
 				if (!(lastWrist.low < currentWrist.high && lastWrist.high > currentWrist.low))
+				{
 					cost += Math.Min(Math.Abs(currentWrist.low - lastWrist.high), Math.Abs(lastWrist.low - currentWrist.high)) * CostCoeff.WRIST_OFFSET_RANGE_PUNISH / timeUnit;
+					debug += string.Format("FR: {0}\\n", Math.Min(Math.Abs(currentWrist.low - lastWrist.high), Math.Abs(lastWrist.low - currentWrist.high)) / timeUnit);
+				}
 
 				// finger speed punish
 				if (lastFs != null)
@@ -395,7 +399,7 @@ namespace Pianist
 						float minimumPreparationTime = s_BenchmarkDuration * 2 * HandConfig.MinimumPreparationRate;
 
 						// self obstacle
-						if(state.Index >= 0)
+						if (state.Index >= 0)
 						{
 							NoteChord obsNote = s_NoteSeq[state.Index];
 							cost += evaluateFingerObstacleCost(state, minimumPreparationTime * 2, obsNote, state.Position, state.Height, pitch);
@@ -407,11 +411,11 @@ namespace Pianist
 							for (int of = 1; of < 5; ++of)
 							{
 								// ignore self finger
-								if(of == finger)
+								if (of == finger)
 									continue;
 
 								FingerState obsState = lastFs[of];
-								if(obsState.Index >= 0)
+								if (obsState.Index >= 0)
 								{
 									int height = Piano.getKeyHeight(pitch);
 
@@ -539,7 +543,7 @@ namespace Pianist
 			{
 				get
 				{
-					if(Count > 0)
+					if (Count > 0)
 						return this[0];
 
 					return null;
@@ -680,7 +684,7 @@ namespace Pianist
 
 			var stepEnd = DateTime.Now;
 
-			ResultNodes.Sort(delegate(TreeNode node1, TreeNode node2)
+			ResultNodes.Sort(delegate (TreeNode node1, TreeNode node2)
 			{
 				double cost1 = node1.CommittedCost;
 				double cost2 = node2.CommittedCost;
@@ -914,7 +918,7 @@ namespace Pianist
 
 		Choice[] getFingerChoices(NoteChord nc, int index)
 		{
-			if(nc.notes.Count == 0)
+			if (nc.notes.Count == 0)
 				return new Choice[0];
 
 			List<FingerChord> choices = new List<FingerChord>();
@@ -972,7 +976,7 @@ namespace Pianist
 				}
 				else
 				{
-					foreach(Finger f in FingerConstants.SolveTypeFingers[HandType])
+					foreach (Finger f in FingerConstants.SolveTypeFingers[HandType])
 					{
 						bool pass = true;
 						for (int index = currentNoteIndex - 1; index >= 0; --index)
