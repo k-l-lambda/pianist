@@ -34,9 +34,27 @@
 				vertical-align: top;
 			}
 
+			#column
+			{
+				position: fixed;
+				left: 0;
+				top: 0;
+				bottom: 0;
+				width: 20px;
+				display: grid;
+				grid-auto-rows: 1fr;
+				padding-top: 50px;
+			}
+
+			.column-item.focus
+			{
+				outline: 1px solid black;
+			}
+
 			#viewer
 			{
 				margin-top: 50px;
+				margin-left: 20px;
 			}
 
 			.loading #viewer
@@ -46,8 +64,13 @@
 
 			.loading #paint
 			{
-				background: #fcc;
+				background: #faa;
 				color: #ccc;
+			}
+
+			#paint.dirty
+			{
+				background: #fda;
 			}
 
 			.drag-hover #source
@@ -121,7 +144,16 @@
 
 			var nodeList = [];
 
-			var renderNode = function (node) {
+			var treeWidths = [];
+
+			var renderNode = function (node, depth) {
+				depth = depth || 0;
+
+				node.depth = depth;
+
+				treeWidths[depth] = treeWidths[depth] || 0;
+				++treeWidths[depth];
+
 				maxStep = Math.max(maxStep, node.stepIndex);
 
 				var code = "<table class='node'>";
@@ -157,7 +189,7 @@
 					if (child.stepIndex >= 0) {
 						code += "	<td class='node-child' data-step='" + child.stepIndex + "'>";
 						child.accCost = accCost;
-						code += renderNode(child);
+						code += renderNode(child, depth + 1);
 						code += "	</td>";
 					}
 				}
@@ -167,6 +199,27 @@
 				code += "</td></tr>";
 
 				code += "</table>";
+
+				return code;
+			};
+
+			var renderColumn = function () {
+				var code = "";
+
+				var widthMax = 1;
+				for (var i = 0; i < treeWidths.length; ++i)
+					widthMax = Math.max(widthMax, treeWidths[i]);
+
+				for (var i = 0; i < treeWidths.length; ++i) {
+					var ratio = treeWidths[i] / widthMax;
+					var r = Math.floor(0xff * ratio);
+					var g = 0xff - r;
+					var color = "rgb(" + r + "," + g + ",0)";
+
+					var title = "[" + i + "]:" + treeWidths[i];
+
+					code += "<div class='column-item' style='background:" + color + "' title='" + title + "' data-depth='" + i + "'></div>";
+				}
 
 				return code;
 			};
@@ -185,6 +238,11 @@
 
 				$(".node-child.focus").removeClass("focus");
 				$(".node-child[data-step=" + step + "]").addClass("focus");
+
+				var depth = nodeList[step].depth;
+
+				$(".column-item.focus").removeClass("focus");
+				$(".column-item[data-depth=" + depth + "]").addClass("focus");
 
 				currentStep = step;
 
@@ -207,6 +265,7 @@
 						console.log("Dump file loaded:", file.name);
 
 						$("#source").val(e.currentTarget.result);
+						$("#paint").addClass("dirty");
 
 						localStorage.Source = e.currentTarget.result;
 					};
@@ -224,9 +283,15 @@
 
 					$("body").addClass("loading");
 
+					$("#paint").removeClass("dirty");
+
 					setTimeout(function () {
 						//console.log(renderNode(data));
+						treeWidths = [];
+
 						$("#viewer").html(renderNode(data));
+
+						$("#column").html(renderColumn());
 
 						$("body").removeClass("loading");
 
@@ -317,8 +382,10 @@
 					};
 				});
 
-				if(localStorage.Source)
+				if (localStorage.Source) {
 					$("#source").val(localStorage.Source);
+					$("#paint").addClass("dirty");
+				}
 			});
 		</script>
 	</head>
@@ -334,5 +401,6 @@
 				<input id="step" type="text" size="3" />
 			</span>
 		</div>
+		<div id="column"></div>
 	</body>
 </html>

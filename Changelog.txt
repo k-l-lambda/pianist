@@ -8,6 +8,13 @@ TODO:
 
 
 
+2017.10.8	K.L.	<k.l.lambda@gmail.com>
+
+	+	FingeringNavigatorViewer: added tree width column.
+
+	+	Pianist/FingeringGenerator: added progress bar for dump tree.
+
+
 2017.10.6	K.L.	<k.l.lambda@gmail.com>
 
 	+	Pianist/FingeringNavigator: adjust cost coeffs.

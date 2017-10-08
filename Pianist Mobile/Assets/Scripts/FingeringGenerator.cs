@@ -172,12 +172,23 @@ public class FingeringGenerator : MonoBehaviour
 
 			if (DumpTree)
 			{
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.DisplayProgressBar("FingeringGenerator", "DumpTree ...", 0);
+#endif
+
 				FileStream file = new FileStream(Application.dataPath + "/Editor/Log/FingeringNavigatorTreeDump" + pair.Key.ToString() + ".txt", FileMode.Create);
 
 				byte[] bytes = System.Text.Encoding.Default.GetBytes(Navigator.getTreeJsonDump());
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.DisplayProgressBar("FingeringGenerator", string.Format("DumpTree {0:n} bytes...", bytes.Length), 0);
+#endif
 				file.Write(bytes, 0, bytes.Length);
 
 				file.Close();
+
+#if UNITY_EDITOR
+				UnityEditor.EditorUtility.ClearProgressBar();
+#endif
 			}
 
 			/*// dump leaf nodes
