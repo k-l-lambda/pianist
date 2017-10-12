@@ -115,6 +115,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump0.txt" />
+    <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump1.txt" />
     <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump2.txt" />
     <None Include="Assets\Editor\Resources\MeshPreview.shader" />
     <None Include="Assets\Resources\Materials\Color.shader" />

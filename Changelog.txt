@@ -8,6 +8,11 @@ TODO:
 
 
 
+2017.10.12	K.L.	<k.l.lambda@gmail.com>
+
+	+	Pianist/Gesture.cs: created.
+
+
 2017.10.8	K.L.	<k.l.lambda@gmail.com>
 
 	+	FingeringNavigatorViewer: added tree width column.

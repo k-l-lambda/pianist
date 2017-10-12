@@ -78,6 +78,7 @@
     <Compile Include="Assets\Scripts\NotationUtils.cs" />
     <Compile Include="Assets\Scripts\Pianist\Fingering.cs" />
     <Compile Include="Assets\Scripts\Pianist\FingeringNavigator.cs" />
+    <Compile Include="Assets\Scripts\Pianist\Gesture.cs" />
     <Compile Include="Assets\Scripts\Pianist\HandSkeleton.cs" />
     <Compile Include="Assets\Scripts\Pianist\Notation.cs" />
     <Compile Include="Assets\Scripts\Pianist\Piano.cs" />
@@ -192,6 +193,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump0.txt" />
+    <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump1.txt" />
     <None Include="Assets\Editor\Log\FingeringNavigatorTreeDump2.txt" />
     <None Include="Assets\Editor\Resources\MeshPreview.shader" />
     <None Include="Assets\Resources\Materials\Color.shader" />
