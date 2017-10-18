@@ -7,6 +7,8 @@ namespace Pianist
 
 	public class FingerGesture
 	{
+		public int finger;
+
 		public float[] angles;
 
 		public double Cost

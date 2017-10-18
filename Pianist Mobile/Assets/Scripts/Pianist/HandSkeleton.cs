@@ -128,6 +128,14 @@ namespace Pianist
 			bi.PINKY1_Y, bi.PINKY1_X, bi.PINKY2_X, bi.PINKY3_X,
 		};
 
+		public static readonly HandBoneIndex[][] FingerAngles = new HandBoneIndex[][] {
+			new HandBoneIndex[] {bi.THUMB0_Z, bi.THUMB0_Y, bi.THUMB0_X, bi.THUMB1_X, bi.THUMB2_X,},
+			new HandBoneIndex[] {bi.INDEX1_Y, bi.INDEX1_X, bi.INDEX2_X, bi.INDEX3_X,},
+			new HandBoneIndex[] {bi.MIDDLE1_Y, bi.MIDDLE1_X, bi.MIDDLE2_X, bi.MIDDLE3_X,},
+			new HandBoneIndex[] {bi.RING1_Y, bi.RING1_X, bi.RING2_X, bi.RING3_X,},
+			new HandBoneIndex[] {bi.PINKY1_Y, bi.PINKY1_X, bi.PINKY2_X, bi.PINKY3_X,},
+		};
+
 		public static readonly Vector3[] RotationAxies = new Vector3[]{
 			Vector3.right,		// WRIST_X,
 			Vector3.up,			// WRIST_Y,
