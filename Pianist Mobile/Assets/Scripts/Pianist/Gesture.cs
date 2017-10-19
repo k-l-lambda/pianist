@@ -41,7 +41,32 @@ namespace Pianist
 
 		public static Vector3 computeGesturePosition(HandRigData rig, FingerGesture gesture)
 		{
-			// TODO:
+			FingerTipCalculator calculator = rig.Calculator;
+
+			switch (gesture.finger)
+			{
+				case FingerIndex.THUMB:
+					calculator.computeThumbTip(gesture.angles);
+
+					break;
+				case FingerIndex.INDEX:
+					calculator.computeIndexTip(gesture.angles);
+
+					break;
+				case FingerIndex.MIDDLE:
+					calculator.computeMiddleTip(gesture.angles);
+
+					break;
+				case FingerIndex.RING:
+					calculator.computeRingTip(gesture.angles);
+
+					break;
+				case FingerIndex.PINKY:
+					calculator.computePinkyTip(gesture.angles);
+
+					break;
+			}
+
 			return Vector3.zero;
 		}
 

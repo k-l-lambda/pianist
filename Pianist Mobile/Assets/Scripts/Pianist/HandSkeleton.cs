@@ -7,6 +7,7 @@ namespace Pianist
 {
 	using bi = HandBoneIndex;
 	using Vector3 = UnityEngine.Vector3;
+	using Quaternion = UnityEngine.Quaternion;
 
 
 	public enum HandBoneIndex
@@ -114,26 +115,26 @@ namespace Pianist
 		public static readonly HandBoneIndex[] FixedAngles = new HandBoneIndex[] {
 			bi.THUMB1_FY, bi.THUMB1_FZ, bi.THUMB2_FY, bi.THUMB2_FZ,
 			bi.INDEX0_FY, bi.INDEX0_FZ, bi.INDEX1_FZ, bi.INDEX2_FY, bi.INDEX2_FZ, bi.INDEX3_FY, bi.INDEX3_FZ,
-			bi.MIDDLE0_FZ, bi.MIDDLE0_FY, bi.MIDDLE1_FZ, bi.MIDDLE2_FZ, bi.MIDDLE2_FY, bi.MIDDLE3_FZ, bi.MIDDLE3_FY,
-			bi.RING0_FZ, bi.RING0_FY, bi.RING1_FZ, bi.RING2_FZ, bi.RING2_FY, bi.RING3_FZ, bi.RING3_FY,
-			bi.PINKY0_FZ, bi.PINKY0_FY, bi.PINKY1_FZ, bi.PINKY1_FZ, bi.PINKY2_FZ, bi.PINKY2_FY, bi.PINKY3_FZ, bi.PINKY3_FY,
+			bi.MIDDLE0_FY, bi.MIDDLE0_FZ, bi.MIDDLE1_FZ, bi.MIDDLE2_FY, bi.MIDDLE2_FZ, bi.MIDDLE3_FY, bi.MIDDLE3_FZ,
+			bi.RING0_FY, bi.RING0_FZ, bi.RING1_FZ, bi.RING2_FY, bi.RING2_FZ, bi.RING3_FY, bi.RING3_FZ,
+			bi.PINKY0_FY, bi.PINKY0_FZ, bi.PINKY1_FZ, bi.PINKY2_FY, bi.PINKY2_FZ, bi.PINKY3_FY, bi.PINKY3_FZ,
 		};
 
 		public static readonly HandBoneIndex[] RangedAngles = new HandBoneIndex[] {
-			bi.WRIST_Y, bi.WRIST_X, bi.WRIST_Z,
-			bi.THUMB0_Z, bi.THUMB0_Y, bi.THUMB0_X, bi.THUMB1_X, bi.THUMB2_X,
-			bi.INDEX1_Y, bi.INDEX1_X, bi.INDEX2_X, bi.INDEX3_X,
-			bi.MIDDLE1_Y, bi.MIDDLE1_X, bi.MIDDLE2_X, bi.MIDDLE3_X,
-			bi.RING1_Y, bi.RING1_X, bi.RING2_X, bi.RING3_X,
-			bi.PINKY1_Y, bi.PINKY1_X, bi.PINKY2_X, bi.PINKY3_X,
+			bi.WRIST_X, bi.WRIST_Y, bi.WRIST_Z,
+			bi.THUMB0_Z, bi.THUMB0_X, bi.THUMB0_Y, bi.THUMB1_X, bi.THUMB2_X,
+			bi.INDEX1_X, bi.INDEX1_Y, bi.INDEX2_X, bi.INDEX3_X,
+			bi.MIDDLE1_X, bi.MIDDLE1_Y, bi.MIDDLE2_X, bi.MIDDLE3_X,
+			bi.RING1_X, bi.RING1_Y, bi.RING2_X, bi.RING3_X,
+			bi.PINKY1_X, bi.PINKY1_Y, bi.PINKY2_X, bi.PINKY3_X,
 		};
 
 		public static readonly HandBoneIndex[][] FingerAngles = new HandBoneIndex[][] {
-			new HandBoneIndex[] {bi.THUMB0_Z, bi.THUMB0_Y, bi.THUMB0_X, bi.THUMB1_X, bi.THUMB2_X,},
-			new HandBoneIndex[] {bi.INDEX1_Y, bi.INDEX1_X, bi.INDEX2_X, bi.INDEX3_X,},
-			new HandBoneIndex[] {bi.MIDDLE1_Y, bi.MIDDLE1_X, bi.MIDDLE2_X, bi.MIDDLE3_X,},
-			new HandBoneIndex[] {bi.RING1_Y, bi.RING1_X, bi.RING2_X, bi.RING3_X,},
-			new HandBoneIndex[] {bi.PINKY1_Y, bi.PINKY1_X, bi.PINKY2_X, bi.PINKY3_X,},
+			new HandBoneIndex[] {bi.THUMB0_X, bi.THUMB0_Y, bi.THUMB0_Z, bi.THUMB1_X, bi.THUMB2_X,},
+			new HandBoneIndex[] {bi.INDEX1_X, bi.INDEX1_Y, bi.INDEX2_X, bi.INDEX3_X,},
+			new HandBoneIndex[] {bi.MIDDLE1_X, bi.MIDDLE1_Y, bi.MIDDLE2_X, bi.MIDDLE3_X,},
+			new HandBoneIndex[] {bi.RING1_X, bi.RING1_Y, bi.RING2_X, bi.RING3_X,},
+			new HandBoneIndex[] {bi.PINKY1_X, bi.PINKY1_Y, bi.PINKY2_X, bi.PINKY3_X,},
 		};
 
 		public static readonly Vector3[] RotationAxies = new Vector3[]{
@@ -237,5 +238,166 @@ namespace Pianist
 		public float[] FixedAngles = new float[HandBoneIndices.FixedAngles.Length];
 
 		public Range[] RangedAngles = new Range[HandBoneIndices.RangedAngles.Length];
+
+		FingerTipCalculator calculator;
+
+		public FingerTipCalculator Calculator
+		{
+			get
+			{
+				if (calculator == null)
+					calculator = new FingerTipCalculator(this);
+
+				return calculator;
+			}
+		}
+	};
+
+
+	public class FingerTipCalculator
+	{
+		Vector3 PositionThumb0, PositionThumb1, PositionThumb2, PositionThumbTip;
+		Vector3 PositionIndex0, PositionIndex1, PositionIndex2, PositionIndex3, PositionIndexTip;
+		Vector3 PositionMiddle0, PositionMiddle1, PositionMiddle2, PositionMiddle3, PositionMiddleTip;
+		Vector3 PositionRing0, PositionRing1, PositionRing2, PositionRing3, PositionRingTip;
+		Vector3 PositionPinky0, PositionPinky1, PositionPinky2, PositionPinky3, PositionPinkyTip;
+
+		Quaternion RotationThumb1, RotationThumb2;
+		Quaternion RotationIndex0, RotationIndex1, RotationIndex2, RotationIndex3;
+		Quaternion RotationMiddle0, RotationMiddle1, RotationMiddle2, RotationMiddle3;
+		Quaternion RotationRing0, RotationRing1, RotationRing2, RotationRing3;
+		Quaternion RotationPinky0, RotationPinky1, RotationPinky2, RotationPinky3;
+
+		public FingerTipCalculator(HandRigData rig)
+		{
+			PositionThumb0 = rig.Positions[0];
+			PositionThumb1 = rig.Positions[1];
+			PositionThumb2 = rig.Positions[2];
+			PositionThumbTip = rig.Positions[3];
+
+			PositionIndex0 = rig.Positions[4];
+			PositionIndex1 = rig.Positions[5];
+			PositionIndex2 = rig.Positions[6];
+			PositionIndex3 = rig.Positions[7];
+			PositionIndexTip = rig.Positions[8];
+
+			PositionMiddle0 = rig.Positions[9];
+			PositionMiddle1 = rig.Positions[10];
+			PositionMiddle2 = rig.Positions[11];
+			PositionMiddle3 = rig.Positions[12];
+			PositionMiddleTip = rig.Positions[13];
+
+			PositionRing0 = rig.Positions[14];
+			PositionRing1 = rig.Positions[15];
+			PositionRing2 = rig.Positions[16];
+			PositionRing3 = rig.Positions[17];
+			PositionRingTip = rig.Positions[18];
+
+			PositionPinky0 = rig.Positions[19];
+			PositionPinky1 = rig.Positions[20];
+			PositionPinky2 = rig.Positions[21];
+			PositionPinky3 = rig.Positions[22];
+			PositionPinkyTip = rig.Positions[23];
+
+
+			/*RotationThumb1 = Quaternion.AngleAxis(rig.FixedAngles[1], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[0], Vector3.up);
+			RotationThumb2 = Quaternion.AngleAxis(rig.FixedAngles[3], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[2], Vector3.up);
+
+			RotationIndex0 = Quaternion.AngleAxis(rig.FixedAngles[5], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[4], Vector3.up);
+			RotationIndex1 = Quaternion.AngleAxis(rig.FixedAngles[6], Vector3.forward);
+			RotationIndex2 = Quaternion.AngleAxis(rig.FixedAngles[8], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[7], Vector3.up);
+			RotationIndex3 = Quaternion.AngleAxis(rig.FixedAngles[10], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[9], Vector3.up);
+
+			RotationMiddle0 = Quaternion.AngleAxis(rig.FixedAngles[12], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[11], Vector3.up);
+			RotationMiddle1 = Quaternion.AngleAxis(rig.FixedAngles[13], Vector3.forward);
+			RotationMiddle2 = Quaternion.AngleAxis(rig.FixedAngles[15], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[14], Vector3.up);
+			RotationMiddle3 = Quaternion.AngleAxis(rig.FixedAngles[17], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[16], Vector3.up);
+
+			RotationRing0 = Quaternion.AngleAxis(rig.FixedAngles[19], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[18], Vector3.up);
+			RotationRing1 = Quaternion.AngleAxis(rig.FixedAngles[20], Vector3.forward);
+			RotationRing2 = Quaternion.AngleAxis(rig.FixedAngles[22], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[21], Vector3.up);
+			RotationRing3 = Quaternion.AngleAxis(rig.FixedAngles[24], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[23], Vector3.up);
+
+			RotationPinky0 = Quaternion.AngleAxis(rig.FixedAngles[26], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[25], Vector3.up);
+			RotationPinky1 = Quaternion.AngleAxis(rig.FixedAngles[27], Vector3.forward);
+			RotationPinky2 = Quaternion.AngleAxis(rig.FixedAngles[29], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[28], Vector3.up);
+			RotationPinky3 = Quaternion.AngleAxis(rig.FixedAngles[31], Vector3.forward) * Quaternion.AngleAxis(rig.FixedAngles[30], Vector3.up);*/
+			RotationThumb1 = Quaternion.AngleAxis(rig.FixedAngles[0], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[1], Vector3.forward);
+			RotationThumb2 = Quaternion.AngleAxis(rig.FixedAngles[2], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[3], Vector3.forward);
+
+			RotationIndex0 = Quaternion.AngleAxis(rig.FixedAngles[4], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[5], Vector3.forward);
+			RotationIndex1 = Quaternion.AngleAxis(rig.FixedAngles[6], Vector3.forward);
+			RotationIndex2 = Quaternion.AngleAxis(rig.FixedAngles[7], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[8], Vector3.forward);
+			RotationIndex3 = Quaternion.AngleAxis(rig.FixedAngles[9], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[10], Vector3.forward);
+
+			RotationMiddle0 = Quaternion.AngleAxis(rig.FixedAngles[11], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[12], Vector3.forward);
+			RotationMiddle1 = Quaternion.AngleAxis(rig.FixedAngles[13], Vector3.forward);
+			RotationMiddle2 = Quaternion.AngleAxis(rig.FixedAngles[14], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[15], Vector3.forward);
+			RotationMiddle3 = Quaternion.AngleAxis(rig.FixedAngles[16], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[17], Vector3.forward);
+
+			RotationRing0 = Quaternion.AngleAxis(rig.FixedAngles[18], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[19], Vector3.forward);
+			RotationRing1 = Quaternion.AngleAxis(rig.FixedAngles[20], Vector3.forward);
+			RotationRing2 = Quaternion.AngleAxis(rig.FixedAngles[21], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[22], Vector3.forward);
+			RotationRing3 = Quaternion.AngleAxis(rig.FixedAngles[23], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[24], Vector3.forward);
+
+			RotationPinky0 = Quaternion.AngleAxis(rig.FixedAngles[25], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[26], Vector3.forward);
+			RotationPinky1 = Quaternion.AngleAxis(rig.FixedAngles[27], Vector3.forward);
+			RotationPinky2 = Quaternion.AngleAxis(rig.FixedAngles[28], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[29], Vector3.forward);
+			RotationPinky3 = Quaternion.AngleAxis(rig.FixedAngles[30], Vector3.up) * Quaternion.AngleAxis(rig.FixedAngles[31], Vector3.forward);
+		}
+
+		public Vector3 computeThumbTip(float[] angles)
+		{
+			Vector3 result = Quaternion.AngleAxis(angles[4], Vector3.right) * RotationThumb2 * PositionThumbTip;
+			result = Quaternion.AngleAxis(angles[3], Vector3.right) * RotationThumb1 * (result + PositionThumb2);
+			result = Quaternion.AngleAxis(angles[0], Vector3.right) * Quaternion.AngleAxis(angles[1], Vector3.up) * Quaternion.AngleAxis(angles[2], Vector3.forward) * (result + PositionThumb1);
+			result += PositionThumb0;
+
+			return result;
+		}
+
+		public Vector3 computeIndexTip(float[] angles)
+		{
+			Vector3 result = Quaternion.AngleAxis(angles[3], Vector3.right) * RotationIndex3 * PositionIndexTip;
+			result = Quaternion.AngleAxis(angles[2], Vector3.right) * RotationIndex2 * (result + PositionIndex3);
+			result = Quaternion.AngleAxis(angles[0], Vector3.right) * Quaternion.AngleAxis(angles[1], Vector3.up) * RotationIndex1 * (result + PositionIndex2);
+			result = RotationIndex0 * (result + PositionIndex1);
+			result += PositionIndex0;
+
+			return result;
+		}
+
+		public Vector3 computeMiddleTip(float[] angles)
+		{
+			Vector3 result = Quaternion.AngleAxis(angles[3], Vector3.right) * RotationMiddle3 * PositionMiddleTip;
+			result = Quaternion.AngleAxis(angles[2], Vector3.right) * RotationMiddle2 * (result + PositionMiddle3);
+			result = Quaternion.AngleAxis(angles[0], Vector3.right) * Quaternion.AngleAxis(angles[1], Vector3.up) * RotationMiddle1 * (result + PositionMiddle2);
+			result = RotationMiddle0 * (result + PositionMiddle1);
+			result += PositionMiddle0;
+
+			return result;
+		}
+
+		public Vector3 computeRingTip(float[] angles)
+		{
+			Vector3 result = Quaternion.AngleAxis(angles[3], Vector3.right) * RotationRing3 * PositionRingTip;
+			result = Quaternion.AngleAxis(angles[2], Vector3.right) * RotationRing2 * (result + PositionRing3);
+			result = Quaternion.AngleAxis(angles[0], Vector3.right) * Quaternion.AngleAxis(angles[1], Vector3.up) * RotationRing1 * (result + PositionRing2);
+			result = RotationRing0 * (result + PositionRing1);
+			result += PositionRing0;
+
+			return result;
+		}
+
+		public Vector3 computePinkyTip(float[] angles)
+		{
+			Vector3 result = Quaternion.AngleAxis(angles[3], Vector3.right) * RotationPinky3 * PositionPinkyTip;
+			result = Quaternion.AngleAxis(angles[2], Vector3.right) * RotationPinky2 * (result + PositionPinky3);
+			result = Quaternion.AngleAxis(angles[0], Vector3.right) * Quaternion.AngleAxis(angles[1], Vector3.up) * RotationPinky1 * (result + PositionPinky2);
+			result = RotationPinky0 * (result + PositionPinky1);
+			result += PositionPinky0;
+
+			return result;
+		}
 	};
 }

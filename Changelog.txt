@@ -8,6 +8,11 @@ TODO:
 
 
 
+2017.10.19	K.L.	<k.l.lambda@gmail.com>
+
+	+	Pianist/Gesture: computeGesturePosition implemented.
+
+
 2017.10.16	K.L.	<k.l.lambda@gmail.com>
 
 	+	Pianist/Gesture: FingerGestureField added.
