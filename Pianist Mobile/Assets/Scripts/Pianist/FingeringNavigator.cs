@@ -612,12 +612,38 @@ namespace Pianist
 
 		CostEstimation[] EstimatedCosts;
 
+		public class TreeNodeChoice
+		{
+			TreeNode preferredNode;
+
+			public TreeNode PreferredNode
+			{
+				get
+				{
+					return preferredNode;
+				}
+			}
+
+			public bool evaluate(TreeNode node)
+			{
+				if (preferredNode == null || node.CommittedCost < preferredNode.CommittedCost)
+				{
+					preferredNode = node;
+					return true;
+				}
+
+				return false;
+			}
+		};
+
 		public struct Choice
 		{
 			public FingerChord chord;
 			public double staticCost;
 			public HandConfig.RangePair wrists;
 			public float deltaTime;
+
+			public TreeNodeChoice node;
 		};
 
 		Choice[][] ChoiceSequence;
@@ -802,7 +828,7 @@ namespace Pianist
 				cost += CostCoeff.MULTIPLE_FINGERS_PUNISH * value * value;
 			}
 
-			return new Choice { chord = chord, staticCost = cost, wrists = wrists, deltaTime = deltaTime };
+			return new Choice { chord = chord, staticCost = cost, wrists = wrists, deltaTime = deltaTime, node = new TreeNodeChoice() };
 		}
 
 		FingerMap getTreeNodeFingerMap(TreeNode node)
@@ -880,7 +906,8 @@ namespace Pianist
 				//double cost = evaluateNodeCost(currentLeave, choices[i].chord);
 				TreeNode leaf = currentLeave.appendChild(i);
 
-				TreeLeaves.insert(leaf);
+				if (choices[i].node.evaluate(leaf))
+					TreeLeaves.insert(leaf);
 			}
 		}
 
