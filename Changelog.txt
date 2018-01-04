@@ -9,6 +9,11 @@ TODO:
 
 
 
+2018.1.4	K.L.	<k.l.lambda@gmail.com>
+
+	*	Git change test.
+
+
 2017.10.21	K.L.	<k.l.lambda@gmail.com>
 
 	+	Pianist/FingeringNavigator: optimized by Dijkstra algorithm, xcluded non-optimized leaves.
