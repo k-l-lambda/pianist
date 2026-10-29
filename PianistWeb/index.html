@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Pianist · 3D Piano</title>
+	<style>
+		html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #ddd; font: 13px/1.4 system-ui, sans-serif; }
+		canvas { display: block; touch-action: none; }
+		#hud { position: fixed; left: 12px; bottom: 10px; padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,.45); pointer-events: none; }
+		#loading { position: fixed; inset: 0; display: grid; place-items: center; background: #111; font-size: 15px; letter-spacing: .04em; }
+		#loading.hidden { display: none; }
+	</style>
+</head>
+<body>
+	<div id="loading">Building scene…</div>
+	<div id="hud"></div>
+	<script type="module" src="/src/main.js"></script>
+</body>
+</html>

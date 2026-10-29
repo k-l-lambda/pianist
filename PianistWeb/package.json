@@ -1,0 +1,21 @@
+{
+  "name": "pianist-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Photorealistic WebGL piano scene",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lil-gui": "0.21.0",
+    "three": "0.186.1",
+    "three-gpu-pathtracer": "0.0.27",
+    "three-mesh-bvh": "0.9.17"
+  },
+  "devDependencies": {
+    "vite": "8.3.5"
+  }
+}

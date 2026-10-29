@@ -36,3 +36,5 @@ sysinfo.txt
 
 *.local
 *.local.*
+
+node_modules/
