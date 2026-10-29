@@ -118,6 +118,20 @@ export function makeMaterials( baker, style ) {
 
 }
 
+/**
+ * Glass: physically transmissive (extra transmission render pass) for high quality and the
+ * path tracer; plain alpha-blended glass for the fast real-time mode.
+ */
+export function applyGlass( mat, physical ) {
+
+	mat.transmission = physical ? 1 : 0;
+	mat.transparent = ! physical;
+	mat.opacity = physical ? 1 : 0.18;
+	mat.depthWrite = physical;
+	mat.needsUpdate = true;
+
+}
+
 export const STYLES = [
 	{ id: 'upright-oak', name: 'Upright · weathered oak (UF)', type: 'upright' },
 	{ id: 'upright-walnut', name: 'Upright · walnut', type: 'upright' },

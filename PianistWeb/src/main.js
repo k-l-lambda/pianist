@@ -8,7 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import GUI from 'lil-gui';
 
 import { TextureBaker } from './textures.js';
-import { makeMaterials, STYLES } from './materials.js';
+import { makeMaterials, STYLES, applyGlass } from './materials.js';
 import { buildUpright } from './upright.js';
 import { buildGrand } from './grand.js';
 import { Room, LIGHT_PRESETS } from './room.js';
@@ -24,6 +24,8 @@ const params = new URLSearchParams( location.search );
 const settings = {
 	style: params.get( 'style' ) ?? 'upright-oak',
 	mode: params.get( 'mode' ) ?? 'realtime',		// 'realtime' | 'pathtrace'
+	// global illumination / high quality: off favours frame rate (see applyQuality)
+	gi: params.has( 'gi' ) ? params.get( 'gi' ) !== '0' : false,
 	preset: 'Sunlit afternoon',
 	exposure: Number( params.get( 'exposure' ) ?? 1.7 ),
 	toneMapping: 'AgX',
@@ -44,6 +46,8 @@ renderer.setPixelRatio( Math.min( window.devicePixelRatio, 2 ) );
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
+// shadow maps are re-rendered only when something moved or the lighting changed (see frame)
+renderer.shadowMap.autoUpdate = false;
 renderer.shadowMap.type = params.get( 'shadow' ) === 'vsm' ? THREE.VSMShadowMap : THREE.PCFShadowMap;
 document.body.appendChild( renderer.domElement );
 
@@ -83,7 +87,7 @@ composer.addPass( outputPass );
 
 function applyAO() {
 
-	gtaoPass.enabled = settings.ao;
+	gtaoPass.enabled = settings.ao && settings.gi;
 	gtaoPass.updateGtaoMaterial( { radius: settings.aoRadius, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: 16 } );
 	gtaoPass.updatePdMaterial( { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 } );
 	gtaoPass.blendIntensity = 1.0;
@@ -124,8 +128,10 @@ function setStyle( id ) {
 	for ( const [ name, holds ] of Object.entries( pedalHolds ) ) if ( holds.size ) piano.action?.setPedal( name, true );
 	// back of the piano against the back wall
 	piano.group.position.set( 0, 0, room.backWallZ + piano.depth + 0.03 );
+	piano.materials = M;
+	applyGlass( M.glass, settings.gi || settings.mode === 'pathtrace' );
 	scene.add( piano.group );
-	keyShadow.attach( piano, [ M.keyWhite, M.keyBlack ] );
+	keyShadow.attach( piano, [ M.keyWhite, M.keyBlack ], settings.gi );
 	scene.updateMatrixWorld( true );
 
 	const off = piano.group.position;
@@ -143,12 +149,39 @@ function setStyle( id ) {
 // lighting / GI
 
 let ptDirty = true;
+let shadowsDirty = true;
+
+/**
+ * Global illumination off (default): device pixel ratio 1, no GTAO and bloom, plain PCF sun
+ * shadows from a 2048 map without the keyboard's own shadow map, single-bounce probe, alpha
+ * glass instead of transmission. On: full quality (pixel ratio up to 2, GTAO, bloom, PCSS
+ * contact-hardening shadows, keyboard shadow map, 2-bounce probe GI, transmissive glass).
+ */
+function applyQuality( relight = true ) {
+
+	const hq = settings.gi;
+	renderer.setPixelRatio( Math.min( window.devicePixelRatio, hq ? 2 : 1 ) );
+	composer.setPixelRatio( renderer.getPixelRatio() );
+	resize();
+	applyAO();
+	bloomPass.enabled = hq && settings.bloom > 0;
+	// the glass only shows the (blurry) cavity behind it: half-resolution transmission pass
+	renderer.transmissionResolutionScale = 0.5;
+	room.setQuality( hq );
+	keyShadow.setEnabled( hq );
+	if ( piano ) applyGlass( piano.materials.glass, hq || room.mode === 'pathtrace' );
+	shadowsDirty = true;
+	if ( relight ) refreshLighting();
+
+}
 let probeEnv = null;
 
 // raster: prefiltered room probe; path tracer: the sky itself (light enters through the window)
 function setLightingMode( mode ) {
 
 	room.setMode( mode );
+	if ( piano ) applyGlass( piano.materials.glass, mode === 'pathtrace' || settings.gi );
+	shadowsDirty = true;
 	scene.environment = mode === 'pathtrace' ? room.sky : probeEnv;
 	scene.environmentIntensity = mode === 'pathtrace' ? 1 : probe.intensity;
 
@@ -159,8 +192,9 @@ function refreshLighting() {
 	room.updateLights();
 	renderer.toneMappingExposure = settings.exposure * room.light.exposure;
 	renderer.toneMapping = TONE[ settings.toneMapping ];
-	probe.bounces = settings.giBounces;
+	probe.bounces = settings.gi ? settings.giBounces : 1;
 	renderer.shadowMap.needsUpdate = true;
+	shadowsDirty = true;
 	probeEnv = probe.update( piano ? [ piano.group ] : [] );
 	if ( settings.mode === 'pathtrace' ) setLightingMode( 'pathtrace' );
 	ptDirty = true;
@@ -369,6 +403,7 @@ navigator.requestMIDIAccess?.().then( access => {
 
 const gui = new GUI( { title: 'Pianist' } );
 gui.add( settings, 'style', Object.fromEntries( STYLES.map( s => [ s.name, s.id ] ) ) ).name( 'Piano' ).onChange( setStyle );
+gui.add( settings, 'gi' ).name( 'Global illumination' ).onChange( () => applyQuality() );
 gui.add( settings, 'mode', { 'Real-time (probe GI + GTAO)': 'realtime', 'Path traced': 'pathtrace' } ).name( 'Renderer' ).onChange( setMode );
 
 const fLight = gui.addFolder( 'Lighting' );
@@ -419,7 +454,12 @@ fRender.add( settings, 'toneMapping', Object.keys( TONE ) ).name( 'Tone mapping'
 fRender.add( settings, 'giBounces', 1, 4, 1 ).name( 'Probe GI bounces' ).onFinishChange( relight );
 fRender.add( settings, 'ao' ).name( 'GTAO' ).onChange( applyAO );
 fRender.add( settings, 'aoRadius', 0.02, 1, 0.01 ).name( 'AO radius' ).onChange( applyAO );
-fRender.add( settings, 'bloom', 0, 1, 0.01 ).name( 'Bloom' ).onChange( v => bloomPass.strength = v );
+fRender.add( settings, 'bloom', 0, 1, 0.01 ).name( 'Bloom' ).onChange( v => {
+
+	bloomPass.strength = v;
+	bloomPass.enabled = settings.gi && v > 0;
+
+} );
 fRender.add( settings, 'ptBounces', 2, 16, 1 ).name( 'PT bounces' ).onChange( v => {
 
 	pathTracer.pt.bounces = v;
@@ -563,6 +603,7 @@ synth.load();
 const hud = document.getElementById( 'hud' );
 const timer = new THREE.Timer();
 let cameraMoving = false;
+let fps = 60;
 let keysMoving = false;
 
 controls.addEventListener( 'change', () => {
@@ -590,13 +631,22 @@ function frame() {
 	updateMidiUI();
 
 	timer.update();
-	const dt = Math.min( timer.getDelta(), 0.05 );
+	const raw = timer.getDelta();
+	const dt = Math.min( raw, 0.05 );
+	if ( raw > 0 ) fps += ( 1 / raw - fps ) * 0.05;
 	cameraMoving = false;
 	controls.update();
 	keysMoving = piano.keyboard.update( dt );
 	if ( piano.action?.update( dt ) ) keysMoving = true;
-	// the keyboard's own sun shadow map (same angular sun size as room.js)
-	if ( room.mode !== 'pathtrace' ) keyShadow.update( scene, room.sun, 0.0045 * ( 0.4 + 1.6 * room.light.sunSoftness ) );
+	// re-render shadow maps only when something moved or the lighting changed
+	if ( keysMoving || shadowsDirty ) {
+
+		renderer.shadowMap.needsUpdate = true;
+		// the keyboard's own sun shadow map (high quality only; same angular sun size as room.js)
+		if ( settings.gi && room.mode !== 'pathtrace' ) keyShadow.update( scene, room.sun, 0.0045 * ( 0.4 + 1.6 * room.light.sunSoftness ) );
+		shadowsDirty = false;
+
+	}
 
 	if ( settings.mode === 'pathtrace' ) {
 
@@ -626,7 +676,7 @@ function frame() {
 	} else {
 
 		composer.render();
-		hud.textContent = `Real-time · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
+		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
 
 	}
 
@@ -637,10 +687,9 @@ function frame() {
 // ---------------------------------------------------------------------------
 // boot
 
-resize();
-applyAO();
+applyQuality( false );
 setStyle( settings.style );
 setMode( settings.mode );
 document.getElementById( 'loading' ).classList.add( 'hidden' );
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, synth, midiPlayer, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, composer, synth, midiPlayer, get piano() { return piano; } };
 requestAnimationFrame( frame );

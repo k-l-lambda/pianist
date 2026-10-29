@@ -54,6 +54,25 @@ export function applyPCSS( { near, far } ) {
 					const float REP[ 5 ] = float[]( 0.0, 0.2, 0.77, 2.45, 5.5 );
 					const int NS[ 5 ] = int[]( 4, 6, 8, 12, 16 );
 
+					// early out: most receivers are plainly lit or plainly in shadow (e.g. the walls
+					// behind the window wall). Test the receiver point and a wide ring at its own
+					// depth; only penumbrae run the banded search below.
+					{
+
+						// at least as wide as the farthest band's penumbra, so no penumbra pixel skips the search
+						float rw = 1.25 * clamp( K * REP[ 4 ] / max( dR - REP[ 4 ], 1.0 ), 4.0, 80.0 ) * texelSize.x;
+						float c = texture( shadowMap, shadowCoord.xyz );
+						float ring = 0.0;
+						for ( int i = 0; i < 16; ++ i ) ring += texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( i, 16, phi ) * rw, shadowCoord.z ) );
+						if ( c < 0.5 && ring < 0.01 ) return mix( 1.0, 0.0, shadowIntensity );
+						#ifdef KEY_SHADOW
+						if ( c > 0.5 && ring > 15.99 ) return mix( 1.0, keyShadowVisibility(), shadowIntensity );
+						#else
+						if ( c > 0.5 && ring > 15.99 ) return 1.0;
+						#endif
+
+					}
+
 					// per band: shadow-map depths of its limits dR - E (perspective spot camera; band 0
 					// starts at the receiver), filter radius, and lit counts A (beyond near limit) /
 					// B (beyond far limit) on its own sample ring

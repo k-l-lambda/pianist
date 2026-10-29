@@ -39,10 +39,22 @@ export class KeyShadow {
 		this.box = new THREE.Box3();
 		this.piano = null;
 
+		// allocate the depth texture now (cleared = nothing occludes): key materials declare a
+		// shadow sampler for it even when the map isn't rendered (GI off), and an unallocated
+		// texture there makes their draws fail
+		const prev = renderer.getRenderTarget();
+		renderer.setRenderTarget( this.target );
+		renderer.clear( true, true, false );
+		renderer.setRenderTarget( prev );
+
 	}
 
-	/** Make the piano's keys (and the case around them) cast into, and receive from, this map. */
-	attach( piano, materials ) {
+	/**
+	 * Make the piano's keys (and the case around them) cast into, and receive from, this map.
+	 * `enabled` (GI on) decides whether the key materials use it; when off their shaders don't
+	 * even declare the sampler (see setEnabled).
+	 */
+	attach( piano, materials, enabled ) {
 
 		this.piano = piano;
 		piano.group.updateMatrixWorld( true );
@@ -50,18 +62,37 @@ export class KeyShadow {
 		for ( const m of piano.keyboard.pickables ) m.layers.enable( LAYER );
 		piano.group.traverse( o => o.name === 'caseWood' && o.layers.enable( LAYER ) );
 
+		this.materials = materials;
 		for ( const mat of materials ) {
 
-			mat.defines = { ...( mat.defines || {} ), KEY_SHADOW: '' };
-			mat.customProgramCacheKey = () => 'keyshadow';
+			mat.customProgramCacheKey = () => ( this.enabled ? 'keyshadow' : '' );
 			mat.onBeforeCompile = shader => {
 
+				if ( ! this.enabled ) return;
 				Object.assign( shader.uniforms, this.uniforms );
 				shader.vertexShader = shader.vertexShader
 					.replace( '#include <shadowmap_pars_vertex>', '#include <shadowmap_pars_vertex>\nuniform mat4 keyShadowMatrix;\nuniform float keyShadowNormalBias;\nvarying vec4 vKeyShadowCoord;' )
 					.replace( '#include <shadowmap_vertex>', '#include <shadowmap_vertex>\n\t{\n\t\tvec3 ksNormal = inverseTransformDirection( transformedNormal, viewMatrix );\n\t\tvKeyShadowCoord = keyShadowMatrix * vec4( worldPosition.xyz + ksNormal * keyShadowNormalBias, 1.0 );\n\t}' );
 
 			};
+
+		}
+
+		this.enabled = null;
+		this.setEnabled( enabled );
+
+	}
+
+	/** Switch the key materials between using this map (GI on) and plain sun shadows. */
+	setEnabled( on ) {
+
+		if ( this.enabled === on ) return;
+		this.enabled = on;
+		for ( const mat of this.materials || [] ) {
+
+			const defines = { ...( mat.defines || {} ) };
+			if ( on ) defines.KEY_SHADOW = ''; else delete defines.KEY_SHADOW;
+			mat.defines = defines;
 			mat.needsUpdate = true;
 
 		}
@@ -71,7 +102,7 @@ export class KeyShadow {
 	/** Re-render the map for the current sun and key positions. */
 	update( scene, sun, sunAngularRadius ) {
 
-		if ( ! this.piano || ! sun.visible ) return;
+		if ( ! this.piano || ! this.enabled || ! sun.visible ) return;
 		const r = this.renderer;
 		const cam = this.camera;
 

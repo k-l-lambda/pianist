@@ -47,6 +47,7 @@ export class Room {
 
 		this.scene = scene;
 		this.baker = baker;
+		this.highQuality = true;
 		this.params = { ...ROOM_DEFAULTS };
 		this.light = { ...LIGHT_PRESETS[ 'Sunlit afternoon' ] };
 		this.group = new THREE.Group();
@@ -370,7 +371,7 @@ export class Room {
 			// PCSS: radius = 1000 + (sun angular radius) / (texel angle); see softshadows.js
 			const sunRadius = 0.0045 * ( 0.4 + 1.6 * L.sunSoftness );
 			const texelAngle = 2 * this.sun.angle / this.sun.shadow.mapSize.x;
-			this.sun.shadow.radius = 1000 + sunRadius / texelAngle;
+			this.sun.shadow.radius = this.highQuality ? 1000 + sunRadius / texelAngle : 4;
 			this.sun.shadow.camera.updateProjectionMatrix();
 
 		}
@@ -421,6 +422,23 @@ export class Room {
 		this._sunColorLinear = new THREE.Color( L.sunColor );
 		this.sky.update();
 		this.scene.background = this.sky;
+
+	}
+
+	/** High quality: 4096 sun map with contact-hardening (PCSS) shadows; else 2048 with plain PCF. */
+	setQuality( hq ) {
+
+		this.highQuality = hq;
+		const size = hq ? 4096 : 2048;
+		if ( this.sun.shadow.mapSize.x !== size ) {
+
+			this.sun.shadow.mapSize.set( size, size );
+			this.sun.shadow.map?.dispose();
+			this.sun.shadow.map = null;
+
+		}
+
+		this.updateLights();
 
 	}
 
