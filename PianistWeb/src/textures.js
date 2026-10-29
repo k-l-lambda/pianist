@@ -334,7 +334,7 @@ export class TextureBaker {
 	 * Bake a set of PBR maps from a GLSL `wood()` body.
 	 * Colors in `uniforms` are given as sRGB hex and converted to linear here.
 	 */
-	bake( key, body, uniforms, { width = 2048, height = 1024, normalStrength = 4 } = {} ) {
+	bake( key, body, uniforms, { width = 2048, height = 1024, normalStrength = 4, tile = null } = {} ) {
 
 		if ( this.cache.has( key ) ) return this.cache.get( key );
 
@@ -386,6 +386,8 @@ export class TextureBaker {
 			roughnessMap: roughRT.texture,
 			normalMap: normalRT.texture,
 		};
+		// physical size of one tile (m): geometry UVs are in metres
+		if ( tile ) for ( const t of Object.values( result ) ) t.repeat.set( 1 / tile[ 0 ], 1 / tile[ 1 ] );
 
 		this.cache.set( key, result );
 		return result;
@@ -418,7 +420,7 @@ export class TextureBaker {
 		return this.bake( 'weatheredOak', WOOD_GLSL, {
 			colBase: '#6e5643', colDark: '#574332', colLate: '#3b2c21', colGray: '#7d6a58',
 			weathering: 1.0, crackAmount: 1.0, planks: 3, ringScale: 22.0, roughBase: 0.62, seed: 1.7,
-		}, { normalStrength: 2 } );
+		}, { normalStrength: 2, tile: [ 1.5, 0.75 ] } );
 
 	}
 
@@ -427,7 +429,7 @@ export class TextureBaker {
 		return this.bake( 'walnut', WOOD_GLSL, {
 			colBase: '#6b4630', colDark: '#4a2f1f', colLate: '#2e1c12', colGray: '#6b4630',
 			weathering: 0.0, crackAmount: 0.0, planks: 2, ringScale: 26.0, roughBase: 0.32, seed: 4.2,
-		}, { normalStrength: 1.5 } );
+		}, { normalStrength: 1.5, tile: [ 1.5, 0.75 ] } );
 
 	}
 
@@ -436,7 +438,7 @@ export class TextureBaker {
 		return this.bake( 'spruce', WOOD_GLSL, {
 			colBase: '#d9b98a', colDark: '#c9a472', colLate: '#a8804e', colGray: '#d9b98a',
 			weathering: 0.0, crackAmount: 0.0, planks: 8, ringScale: 50.0, roughBase: 0.4, seed: 9.1,
-		}, { normalStrength: 1.0 } );
+		}, { normalStrength: 1.0, tile: [ 1.2, 0.6 ] } );
 
 	}
 
@@ -445,7 +447,7 @@ export class TextureBaker {
 		return this.bake( 'darkInterior', WOOD_GLSL, {
 			colBase: '#3a3129', colDark: '#2c251f', colLate: '#1d1814', colGray: '#3a3129',
 			weathering: 0.3, crackAmount: 0.0, planks: 4, ringScale: 50.0, roughBase: 0.7, seed: 2.3,
-		}, { width: 1024, height: 512, normalStrength: 2 } );
+		}, { width: 1024, height: 512, normalStrength: 2, tile: [ 1.5, 0.75 ] } );
 
 	}
 
@@ -453,7 +455,7 @@ export class TextureBaker {
 
 		return this.bake( 'floorOak', FLOOR_GLSL, {
 			colBase: '#b08a62', colDark: '#8e6a47', colLate: '#6a4b30', rows: 8, seed: 3.3,
-		}, { width: 2048, height: 2048, normalStrength: 3 } );
+		}, { width: 2048, height: 2048, normalStrength: 3, tile: [ 2.4, 1.12 ] } );
 
 	}
 
@@ -461,7 +463,7 @@ export class TextureBaker {
 
 		return this.bake( 'plaster', PLASTER_GLSL, {
 			colBase: '#9aa39a', colStain: '#868f85', seed: 0.7,
-		}, { width: 2048, height: 2048, normalStrength: 2.5 } );
+		}, { width: 2048, height: 2048, normalStrength: 2.5, tile: [ 1.6, 1.6 ] } );
 
 	}
 
@@ -469,13 +471,13 @@ export class TextureBaker {
 
 		return this.bake( 'ceilingPlaster', PLASTER_GLSL, {
 			colBase: '#d8d6d0', colStain: '#c9c6bf', seed: 5.1,
-		}, { width: 1024, height: 1024, normalStrength: 1.5 } );
+		}, { width: 1024, height: 1024, normalStrength: 1.5, tile: [ 1.6, 1.6 ] } );
 
 	}
 
 	felt( hex, key = hex ) {
 
-		return this.bake( 'felt' + key, FELT_GLSL, { colBase: hex, seed: 1 }, { width: 512, height: 512, normalStrength: 3 } );
+		return this.bake( 'felt' + key, FELT_GLSL, { colBase: hex, seed: 1 }, { width: 512, height: 512, normalStrength: 3, tile: [ 0.5, 0.5 ] } );
 
 	}
 

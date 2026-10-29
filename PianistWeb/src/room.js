@@ -28,7 +28,7 @@ export const LIGHT_PRESETS = {
 	'Sunlit afternoon': { sunAzimuth: 50, sunElevation: 9, sunIntensity: 7, sunColor: '#ffd9a8', sunSoftness: 0.6, sky: 1.0, skyColor: '#a9c4e8', lamp: 0, exposure: 1.0 },
 	'Overcast': { sunAzimuth: 62, sunElevation: 30, sunIntensity: 0, sunColor: '#ffffff', sunSoftness: 1, sky: 2.2, skyColor: '#d0d8e0', lamp: 0, exposure: 1.3 },
 	'Golden hour': { sunAzimuth: 45, sunElevation: 5, sunIntensity: 6, sunColor: '#ffb070', sunSoftness: 0.4, sky: 0.6, skyColor: '#9fb3d9', lamp: 0, exposure: 1.1 },
-	'Evening lamp': { sunAzimuth: 62, sunElevation: 14, sunIntensity: 0, sunColor: '#ffd9a8', sunSoftness: 0.6, sky: 0.05, skyColor: '#203050', lamp: 60, exposure: 1.4 },
+	'Evening lamp': { sunAzimuth: 62, sunElevation: 14, sunIntensity: 0, sunColor: '#ffd9a8', sunSoftness: 0.6, sky: 0.05, skyColor: '#203050', lamp: 42, exposure: 1.4 },
 };
 
 const phys = p => new THREE.MeshPhysicalMaterial( p );
@@ -115,7 +115,7 @@ export class Room {
 
 		};
 
-		const box = ( ax, ay, az, bx, by, bz, mat, uv = { grain: 'x', scale: 1.5, vScale: 1 } ) => {
+		const box = ( ax, ay, az, bx, by, bz, mat, uv = { grain: 'x' } ) => {
 
 			const geo = new THREE.BoxGeometry( bx - ax, by - ay, bz - az );
 			geo.translate( ( ax + bx ) / 2, ( ay + by ) / 2, ( az + bz ) / 2 );
@@ -128,7 +128,7 @@ export class Room {
 
 			const geo = new THREE.BoxGeometry( p.width + 2 * T, T, p.depth + 2 * T );
 			geo.translate( 0, - T / 2, ( z0 + z1 ) / 2 );
-			add( boxProjectUV( geo, { grain: 'x', scale: 2.4, vScale: 2.4 / 1.12, offset: [ 0.13, 0.4 ] } ), M.floor );
+			add( boxProjectUV( geo, { grain: 'x', offset: [ 0.3, 0.45 ] } ), M.floor );
 
 		}
 
@@ -136,8 +136,8 @@ export class Room {
 		box( x0 - T, H, z0 - T, x1 + T, H + T, z1 + T, M.ceiling );
 
 		// walls; one may carry the window opening
-		const wallUV = { grain: 'x', scale: 1.6, vScale: 1 };
-		const wallUVz = { grain: 'z', scale: 1.6, vScale: 1 };
+		const wallUV = { grain: 'x' };
+		const wallUVz = { grain: 'z' };
 		const win = this._windowRect();
 
 		const wall = ( axis, fixed0, fixed1, a0, a1, hasWindow ) => {

@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { v3, merge, rod, beam, woodBox, planarUV1 } from './geometry.js';
+import { v3, merge, rod, beam, woodBox, planarUV1, boxProjectUV } from './geometry.js';
 import { ShadowBaker } from './shadowbake.js';
 
 const lerp = THREE.MathUtils.lerp;
@@ -325,9 +325,9 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 			const x = o.strike.x, y = yStrike;
 			const pivot = v3( x, y - SHANK, zf + 0.022 );
 
-			const felt = woodBox( v3( x - w / 2, y - h / 2, zf ), v3( x + w / 2, y + h / 2, zf + 0.018 ), { noUV: true, radius: 0.0025 } );
-			const molding = woodBox( v3( x - w / 2 + 0.0005, y - h / 2 + 0.004, zf + 0.016 ), v3( x + w / 2 - 0.0005, y + h / 2 - 0.006, zf + 0.028 ), { noUV: true, radius: 0.002 } );
-			const shank = rod( pivot, v3( x, y - h / 2 + 0.004, zf + 0.022 ), 0.0023, 6 );
+			const felt = woodBox( v3( x - w / 2, y - h / 2, zf ), v3( x + w / 2, y + h / 2, zf + 0.018 ), { radius: 0.0025 } );
+			const molding = woodBox( v3( x - w / 2 + 0.0005, y - h / 2 + 0.004, zf + 0.016 ), v3( x + w / 2 - 0.0005, y + h / 2 - 0.006, zf + 0.028 ), { radius: 0.002, grain: 'z' } );
+			const shank = boxProjectUV( rod( pivot, v3( x, y - h / 2 + 0.004, zf + 0.022 ), 0.0023, 6 ), { grain: 'y' } );
 			const wood = merge( [ molding, shank ] );
 			const geo = mergeGeometries( [ merge( [ felt ] ), wood ], true );
 			geo.translate( - pivot.x, - pivot.y, - pivot.z );
@@ -385,8 +385,8 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 			const c = o.strike.clone().addScaledVector( o.dir, - DROP / o.dir.y );
 
 			// local frame: y along the string (upwards), z towards the player, origin on the string
-			const felt = new THREE.BoxGeometry( w, h, 0.006 ).translate( 0, 0, o.dia / 2 + 0.003 );
-			const head = new THREE.BoxGeometry( w - 0.001, h - 0.002, 0.010 ).translate( 0, 0, o.dia / 2 + 0.011 );
+			const felt = boxProjectUV( new THREE.BoxGeometry( w, h, 0.006 ).translate( 0, 0, o.dia / 2 + 0.003 ) );
+			const head = boxProjectUV( new THREE.BoxGeometry( w - 0.001, h - 0.002, 0.010 ).translate( 0, 0, o.dia / 2 + 0.011 ), { grain: 'y' } );
 			const wire = rod( v3( 0, - 0.004, o.dia / 2 + 0.016 ), v3( 0, - 0.07, o.dia / 2 + 0.03 ), 0.0008, 5 );
 			const geo = mergeGeometries( [ merge( [ felt ] ), merge( [ head, wire ] ) ], true );
 

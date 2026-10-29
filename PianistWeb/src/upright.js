@@ -218,7 +218,7 @@ function buildInterior( M, renderer ) {
 	// soundboard, carrying the baked shadows of the strings and the plate
 	{
 
-		const geo = woodBox( v3( - XS, 0.70, - 0.58 ), v3( XS, TOP, - 0.56 ), { grain: 'y', scale: 1.2 } );
+		const geo = woodBox( v3( - XS, 0.70, - 0.58 ), v3( XS, TOP, - 0.56 ), { grain: 'y' } );
 		let mat = M.spruce;
 		if ( stringing.boardAO ) {
 

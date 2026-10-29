@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { Keyboard } from './keyboard.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { woodBox, v3, extrudeTop, merge, beam, rod } from './geometry.js';
+import { woodBox, v3, extrudeTop, merge, beam, rod, boxProjectUV } from './geometry.js';
 import { PianoAction } from './action.js';
 import { pedalShape } from './upright.js';
 
@@ -176,8 +176,8 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 			const t = ( DAMPER_Z - a.z ) / ( b.z - a.z );
 			const p = a.clone().lerp( b, t );
-			const felt = new THREE.BoxGeometry( w, 0.006, 0.026 ).translate( 0, 0.003, 0 );
-			const block = new THREE.BoxGeometry( w - 0.001, 0.026, 0.030 ).translate( 0, 0.019, 0 );
+			const felt = boxProjectUV( new THREE.BoxGeometry( w, 0.006, 0.026 ).translate( 0, 0.003, 0 ) );
+			const block = boxProjectUV( new THREE.BoxGeometry( w - 0.001, 0.026, 0.030 ).translate( 0, 0.019, 0 ) );
 			const node = new THREE.Group();
 			node.position.set( p.x, p.y + r, p.z );
 			node.rotation.y = Math.atan2( b.x - a.x, b.z - a.z );
@@ -277,7 +277,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		// fallboard (open, standing behind the key backs) and felt strip
 		group.add( mesh( woodBox( v3( - 0.618, 0.72, - 0.19 ), v3( 0.618, 0.86, - 0.155 ), { noUV: true, radius: 0.006 } ), M.case ) );
-		group.add( mesh( woodBox( v3( - 0.618, 0.72, - 0.157 ), v3( 0.618, 0.737, - 0.146 ), { noUV: true } ), M.redFelt ) );
+		group.add( mesh( woodBox( v3( - 0.618, 0.72, - 0.157 ), v3( 0.618, 0.737, - 0.146 ) ), M.redFelt ) );
 
 		// music desk
 		const desk = mesh( new THREE.BoxGeometry( 0.86, 0.30, 0.014 ), M.case );

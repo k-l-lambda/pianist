@@ -5,13 +5,15 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 /**
- * Re-project UVs per triangle along its dominant axis, in meters / `scale`.
+ * Re-project UVs per triangle along its dominant axis, in metres (u along the grain, v across).
+ * Every textured part gets the same texel density; each texture sets its own physical tile size
+ * through its repeat (TextureBaker `tile`), so nothing is squashed on small or narrow parts.
  * `grain` is the local axis ('x' | 'y' | 'z') the wood grain should run along (texture u).
  * `offset` randomizes the texture window so pieces sharing a material don't look cloned;
  * when it is left random, the grain also gets a small random angle (±3°) so it never sits
  * exactly on the part's axis. `angle` (radians) sets it explicitly.
  */
-export function boxProjectUV( geometry, { grain = 'x', scale = 1.5, vScale = 2, offset = null, angle = null } = {} ) {
+export function boxProjectUV( geometry, { grain = 'x', scale = 1, vScale = 1, offset = null, angle = null } = {} ) {
 
 	const geo = geometry.index ? geometry.toNonIndexed() : geometry;
 	if ( ! geo.attributes.normal ) geo.computeVertexNormals();

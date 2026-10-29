@@ -67,6 +67,19 @@ const baker = new TextureBaker( renderer );
 const room = new Room( scene, baker );
 const probe = new GIProbe( renderer, scene );
 const keyShadow = new KeyShadow( renderer );
+renderer.debug.onShaderError = ( gl, program, vs, fs ) => {
+
+	const log = gl.getProgramInfoLog( program ) + '\n' + gl.getShaderInfoLog( vs ) + '\n' + gl.getShaderInfoLog( fs );
+	console.error( 'Shader build failed:', log );
+	if ( keyShadow.enabled ) {
+
+		console.warn( 'Disabling the keyboard shadow map on this GPU' );
+		keyShadow.broken = true;
+		keyShadow.setEnabled( false );
+
+	}
+
+};
 const pathTracer = new PathTracer( renderer );
 const synth = new Synth();
 
@@ -131,7 +144,7 @@ function setStyle( id ) {
 	piano.materials = M;
 	applyGlass( M.glass, settings.gi || settings.mode === 'pathtrace' );
 	scene.add( piano.group );
-	keyShadow.attach( piano, [ M.keyWhite, M.keyBlack ], settings.gi );
+	keyShadow.attach( piano, [ M.keyWhite, M.keyBlack ], settings.gi && ! keyShadow.broken );
 	scene.updateMatrixWorld( true );
 
 	const off = piano.group.position;
@@ -165,10 +178,10 @@ function applyQuality( relight = true ) {
 	resize();
 	applyAO();
 	bloomPass.enabled = hq && settings.bloom > 0;
-	// the glass only shows the (blurry) cavity behind it: half-resolution transmission pass
-	renderer.transmissionResolutionScale = 0.5;
+	// full resolution: the strings and pins behind the glass must stay sharp
+	renderer.transmissionResolutionScale = 1.0;
 	room.setQuality( hq );
-	keyShadow.setEnabled( hq );
+	keyShadow.setEnabled( hq && ! keyShadow.broken );
 	if ( piano ) applyGlass( piano.materials.glass, hq || room.mode === 'pathtrace' );
 	shadowsDirty = true;
 	if ( relight ) refreshLighting();
@@ -187,6 +200,21 @@ function setLightingMode( mode ) {
 
 }
 
+// mirror-like piano surfaces (screen, lacquer, glass) reflect the probe without sun and sky
+// (see gi.js); the window itself then appears once, as the window light's sharp reflection
+function applySpecularEnv() {
+
+	if ( ! piano?.materials || ! probe.specular ) return;
+	for ( const mat of Object.values( piano.materials ) ) {
+
+		if ( ! mat?.isMeshStandardMaterial || mat.roughnessMap || mat.roughness > 0.2 ) continue;
+		if ( ! mat.envMap ) mat.needsUpdate = true;
+		mat.envMap = probe.specular;
+
+	}
+
+}
+
 function refreshLighting() {
 
 	room.updateLights();
@@ -195,7 +223,8 @@ function refreshLighting() {
 	probe.bounces = settings.gi ? settings.giBounces : 1;
 	renderer.shadowMap.needsUpdate = true;
 	shadowsDirty = true;
-	probeEnv = probe.update( piano ? [ piano.group ] : [] );
+	probeEnv = probe.update( piano ? [ piano.group ] : [], { lights: [ room.sun ], objects: [ room.foliage ].filter( Boolean ) } );
+	applySpecularEnv();
 	if ( settings.mode === 'pathtrace' ) setLightingMode( 'pathtrace' );
 	ptDirty = true;
 

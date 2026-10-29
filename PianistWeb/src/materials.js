@@ -32,6 +32,10 @@ function lacquer( color, extra = {} ) {
 
 }
 
+// The screens are pure black underneath their lacquer: any diffuse albedo shows the sun patch
+// and the leaf shadows on them as a grey, blotchy second "window" (AgX lifts deep darks a lot).
+const screen = () => lacquer( '#000000', { roughness: 0.05 } );
+
 function shared( baker ) {
 
 	return {
@@ -75,19 +79,19 @@ export function makeMaterials( baker, style ) {
 		case 'upright-oak':
 			m.case = woodMaterial( baker.weatheredOak() );
 			m.trim = m.case;
-			m.panel = lacquer( '#050505', { roughness: 0.05 } );
+			m.panel = screen();
 			break;
 
 		case 'upright-walnut':
 			m.case = woodMaterial( baker.walnut(), { clearcoat: 0.8, clearcoatRoughness: 0.12 } );
 			m.trim = m.case;
-			m.panel = lacquer( '#050505', { roughness: 0.05 } );
+			m.panel = screen();
 			break;
 
 		case 'upright-black':
 			m.case = lacquer( '#060606' );
 			m.trim = m.case;
-			m.panel = lacquer( '#030303', { roughness: 0.05 } );
+			m.panel = screen();
 			break;
 
 		case 'grand-black':
@@ -120,11 +124,15 @@ export function makeMaterials( baker, style ) {
 
 /**
  * Glass: physically transmissive (extra transmission render pass) for high quality and the
- * path tracer; plain alpha-blended glass for the fast real-time mode.
+ * path tracer; plain alpha-blended glass for the fast real-time mode. Both keep a faint diffuse
+ * response (dust, film), so the sun patch and the leaf shadows still show a little on the pane:
+ * 2 % of the light for the transmissive glass, and a dim albedo for the alpha glass.
  */
 export function applyGlass( mat, physical ) {
 
-	mat.transmission = physical ? 1 : 0;
+	mat.transmission = physical ? 0.98 : 0;
+	// transmissive: white (the colour would tint what's seen through it); alpha: 20 % albedo
+	mat.color.setScalar( physical ? 1 : 0.2 );
 	mat.transparent = ! physical;
 	mat.opacity = physical ? 1 : 0.18;
 	mat.depthWrite = physical;

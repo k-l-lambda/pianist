@@ -2,6 +2,10 @@
 // the lit room is captured into a cube map from the piano's position and prefiltered
 // (PMREM) into scene.environment. Repeating the capture with the previous result
 // applied adds one more diffuse/specular bounce each time.
+//
+// Mirror-like surfaces get a second map (`specular`) captured without the sun, the sky and the
+// leaves: from the probe's position the window opening and the sunlit wall patch would appear
+// as a second, offset and pixelated window next to the sharp one the window light gives.
 
 import * as THREE from 'three';
 
@@ -15,6 +19,8 @@ export class GIProbe {
 		this.cubeCamera = new THREE.CubeCamera( 0.05, 50, this.cubeRT );
 		this.pmrem = new THREE.PMREMGenerator( renderer );
 		this.targets = [ null, null ];
+		this.specTarget = null;
+		this.specular = null;
 		this.flip = 0;
 		this.position = new THREE.Vector3( 0, 1.1, 1.0 );
 		this.bounces = 2;
@@ -22,8 +28,11 @@ export class GIProbe {
 
 	}
 
-	/** `hide` lists objects to exclude from the capture (e.g. the piano itself). */
-	update( hide = [] ) {
+	/**
+	 * `hide`: objects left out of both captures (the piano itself); `specularOff`: lights
+	 * (dimmed to 0, no shader rebuild) and objects left out of the specular one.
+	 */
+	update( hide = [], { lights = [], objects = [] } = {} ) {
 
 		const r = this.renderer;
 		const scene = this.scene;
@@ -51,6 +60,21 @@ export class GIProbe {
 
 		}
 
+		// specular map: the room lit by the sky and the bounce light only
+		const saved = lights.map( l => l.intensity );
+		const vis = objects.map( o => o.visible );
+		lights.forEach( l => l.intensity = 0 );
+		objects.forEach( o => o.visible = false );
+		const env = scene.environment;
+		scene.environment = null;
+		scene.background = null;
+		this.cubeCamera.update( r, scene );
+		this.specTarget = this.pmrem.fromCubemap( this.cubeRT.texture, this.specTarget );
+		this.specular = this.specTarget.texture;
+		scene.environment = env;
+		lights.forEach( ( l, i ) => l.intensity = saved[ i ] );
+		objects.forEach( ( o, i ) => o.visible = vis[ i ] );
+
 		scene.environmentIntensity = this.intensity;
 		scene.remove( this.cubeCamera );
 		hide.forEach( ( o, i ) => o.visible = visible[ i ] );
@@ -67,6 +91,7 @@ export class GIProbe {
 
 		this.cubeRT.dispose();
 		this.targets.forEach( t => t?.dispose() );
+		this.specTarget?.dispose();
 		this.pmrem.dispose();
 
 	}
