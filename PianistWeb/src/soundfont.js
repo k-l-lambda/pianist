@@ -114,6 +114,32 @@ export class FluidPiano {
 
 		}
 
+		this.resetChannels();
+
+	}
+
+	/**
+	 * Put every file channel back to a plain piano: program/bank, volume, expression,
+	 * modulation, pan and pitch bend. The player only sends notes and pedals, but this also
+	 * clears anything left by an earlier session.
+	 */
+	resetChannels() {
+
+		if ( ! this.ready ) return;
+		const s = this.synth;
+		for ( let ch = 0; ch < 16; ++ ch ) {
+
+			if ( ch === LIVE_CHANNEL ) continue;
+			s.midiSetChannelType( ch, false );
+			s.midiProgramSelect( ch, this.sfont, 0, 0 );
+			s.midiControl( ch, 1, 0 );			// modulation
+			s.midiControl( ch, 7, 100 );		// volume
+			s.midiControl( ch, 10, 64 );		// pan
+			s.midiControl( ch, 11, 127 );		// expression
+			s.midiPitchBend( ch, 8192 );
+
+		}
+
 	}
 
 	setGain( g ) {

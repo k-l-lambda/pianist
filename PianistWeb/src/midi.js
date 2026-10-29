@@ -9,6 +9,10 @@
 //  - animation: the same events are replayed into the scene at their time (setTimeout), as
 //    key/hammer/damper presses and pedal (CC64 sustain, CC66 sostenuto, CC67 soft) moves.
 // Tempo scales file time; seeking or stopping releases every note and pedal the file holds.
+//
+// Everything plays as the piano: program and bank changes are ignored, and of the
+// controllers only the three pedals are used (volume, expression, modulation, pitch bend
+// etc. would otherwise detune or silence the piano, and stay set for the next file).
 
 // Import the parser from source: the package's browser bundle also boots the legacy
 // MIDI.js audio player as a side effect.
@@ -29,7 +33,7 @@ export function parseMidiEvents( buffer ) {
 	// trimSequence would also drop same-tick controller events with different numbers,
 	// e.g. a sustain-up and a soft-down together, so de-duplicate here instead.)
 	const seq = fixOverlapNotes( midiToSequence( data ) );
-	const kinds = new Set( [ 'noteOn', 'noteOff', 'controller', 'pitchBend' ] );
+	const kinds = new Set( [ 'noteOn', 'noteOff', 'controller' ] );
 	const events = [];
 	const seen = new Set();
 	let time = 0, lastTime = - 1;
@@ -44,6 +48,7 @@ export function parseMidiEvents( buffer ) {
 		}
 
 		if ( event.type !== 'channel' || ! kinds.has( event.subtype ) ) continue;
+		if ( event.subtype === 'controller' && ! PEDALS[ event.controllerType ] ) continue;
 		const key = `${ event.subtype }|${ event.channel }|${ event.noteNumber ?? event.controllerType ?? '' }|${ event.value ?? '' }`;
 		if ( seen.has( key ) ) continue;
 		seen.add( key );
@@ -93,6 +98,8 @@ export class MidiFilePlayer {
 	load( buffer, name = null ) {
 
 		this.stop();
+		// clean piano state on every channel (whatever an earlier file or instrument left set)
+		this._fluid?.resetChannels();
 		const { events, duration } = parseMidiEvents( buffer );
 		this.events = events;
 		this.duration = duration;
@@ -237,10 +244,6 @@ export class MidiFilePlayer {
 				}
 
 				fluid.scheduleAt( { type: 'controlchange', channel: d.channel, control: d.controllerType, value: d.value }, delay );
-				break;
-
-			case 'pitchBend':
-				fluid.scheduleAt( { type: 'pitchbend', channel: d.channel, value: d.value }, delay );
 				break;
 
 		}
