@@ -2,6 +2,7 @@
 // raster renderer and the path tracer agree on the BRDF.
 
 import * as THREE from 'three';
+import { bakeKeyAO } from './keyboard.js';
 
 const phys = params => new THREE.MeshPhysicalMaterial( params );
 
@@ -105,6 +106,10 @@ export function makeMaterials( baker, style ) {
 			throw new Error( 'unknown style ' + style );
 
 	}
+
+	// black keys, fallboard and cheeks occlude the white keys
+	m.keyWhite.aoMap = bakeKeyAO( baker );
+	m.keyWhite.aoMapIntensity = 1;
 
 	// interior parts receive less of the room probe (they sit in a cavity)
 	for ( const k of [ 'interior', 'plate', 'spruce', 'hammerFelt', 'steel', 'copper' ] ) m[ k ].envMapIntensity = 0.6;

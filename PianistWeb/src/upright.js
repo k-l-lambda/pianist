@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Keyboard } from './keyboard.js';
 import { buildStringing } from './stringing.js';
 import { PianoAction } from './action.js';
-import { woodBox, v3, extrudeSide, extrudeTop, mirrorX, merge, boxProjectUV } from './geometry.js';
+import { woodBox, v3, extrudeSide, extrudeTop, mirrorX, merge, boxProjectUV, planarUV1 } from './geometry.js';
 
 const KEY_BOTTOM = 0.698;			// white key top at 0.72
 const XI = 0.616;					// inner face of the arms (keyboard end + 5 mm)
@@ -24,6 +24,9 @@ const SCREEN_LEAN = 25 * Math.PI / 180;
 const PANEL_BOTTOM = v3( 0, 0.737, - 0.150 );
 const screenZ = y => PANEL_BOTTOM.z - ( y - PANEL_BOTTOM.y ) * Math.tan( SCREEN_LEAN );
 const PANEL_TOP = v3( 0, LIP_BOTTOM, screenZ( LIP_BOTTOM ) );
+// front plane of everything above the screen (rail, glass frame, top board): flush with the
+// screen's top edge, nothing sticks out
+const FRONT_UP = PANEL_TOP.z;
 const ARM_TOP = 0.752;
 const ARM_BACK = - 0.215;
 
@@ -45,9 +48,8 @@ function sideBoardShape() {
 	const yFillet = 0.80;
 	s.moveTo( BACK, 0 );
 	s.lineTo( BACK, TOP );
-	s.lineTo( - 0.215, TOP );
-	s.lineTo( - 0.215, LIP_BOTTOM );
-	s.lineTo( screenZ( LIP_BOTTOM ), LIP_BOTTOM );
+	s.lineTo( FRONT_UP, TOP );
+	s.lineTo( FRONT_UP, LIP_BOTTOM );
 	s.lineTo( screenZ( yFillet ), yFillet );
 	s.quadraticCurveTo( screenZ( ARM_TOP ), ARM_TOP - 0.002, - 0.11, ARM_TOP - 0.002 );
 	s.lineTo( - 0.11, 0.66 );
@@ -122,11 +124,11 @@ function buildCase( M ) {
 	const bracket = boxProjectUV( extrudeSide( bracketShape(), XI + 0.012, XO - 0.006, { bevel: 0.004 } ), { grain: 'y' } );
 	caseParts.push( bracket, boxProjectUV( mirrorX( bracket ), { grain: 'y' } ) );
 
-	// top board with slight overhang
-	caseParts.push( woodBox( v3( - XO - 0.015, TOP, BACK - 0.02 ), v3( XO + 0.015, TOP + 0.03, - 0.205 ), { grain: 'x', radius: 0.004 } ) );
+	// top board: overhangs at the sides and the back, flush at the front
+	caseParts.push( woodBox( v3( - XO - 0.015, TOP, BACK - 0.02 ), v3( XO + 0.015, TOP + 0.03, FRONT_UP ), { grain: 'x', radius: 0.004 } ) );
 
-	// thin rail between the screen and the glass, across the full width
-	caseParts.push( woodBox( v3( - XO - 0.004, LIP_BOTTOM, - 0.30 ), v3( XO + 0.004, GLASS_BOTTOM, - 0.205 ), { grain: 'x', radius: 0.003 } ) );
+	// thin rail between the screen and the glass, between the side boards, flush at the front
+	caseParts.push( woodBox( v3( - XS, LIP_BOTTOM, FRONT_UP - 0.04 ), v3( XS, GLASS_BOTTOM, FRONT_UP ), { grain: 'x', radius: 0.003 } ) );
 
 	// keyslip
 	caseParts.push( woodBox( v3( - XI, 0.655, - 0.01 ), v3( XI, 0.705, 0.022 ), { grain: 'x', radius: 0.003 } ) );
@@ -170,7 +172,7 @@ function buildCase( M ) {
 	{
 
 		const geo = new THREE.BoxGeometry( 2 * XS, TOP - GLASS_BOTTOM, 0.005 );
-		geo.translate( 0, ( TOP + GLASS_BOTTOM ) / 2, - 0.224 );
+		geo.translate( 0, ( TOP + GLASS_BOTTOM ) / 2, FRONT_UP - 0.009 );
 		g.add( mesh( geo, M.glass, { cast: false, name: 'glass' } ) );
 
 	}
@@ -178,9 +180,22 @@ function buildCase( M ) {
 	// pedals
 	{
 
+		// soft, sostenuto (middle), sustain; each pivots inside the kneeboard
 		const pedal = extrudeTop( pedalShape(), 0.062, 0.074, { bevel: 0.003 } );
-		const geos = [ - 0.09, 0, 0.09 ].map( x => pedal.clone().translate( x, 0, 0 ) );
-		g.add( mesh( merge( geos ), M.brass, { name: 'pedals' } ) );
+		const pivotZ = - 0.36, pivotY = 0.068;
+		pedal.translate( 0, - pivotY, - pivotZ );
+		g.userData.pedals = {};
+		[ [ 'soft', - 0.09 ], [ 'sostenuto', 0 ], [ 'sustain', 0.09 ] ].forEach( ( [ name, x ] ) => {
+
+			const pivot = new THREE.Group();
+			pivot.position.set( x, pivotY, pivotZ );
+			const m = mesh( pedal, M.brass, { name: 'pedal-' + name } );
+			m.userData.pedal = name;
+			pivot.add( m );
+			g.add( pivot );
+			g.userData.pedals[ name ] = pivot;
+
+		} );
 		// pedal slot felt
 		g.add( mesh( woodBox( v3( - 0.14, 0.055, - 0.191 ), v3( 0.14, 0.08, - 0.188 ) ), M.greenFelt ) );
 
@@ -190,36 +205,53 @@ function buildCase( M ) {
 
 }
 
-function buildInterior( M ) {
+function buildInterior( M, renderer ) {
 
 	const g = new THREE.Group();
 	g.name = 'interior';
 
-	// soundboard
-	g.add( mesh( woodBox( v3( - XS, 0.70, - 0.58 ), v3( XS, TOP, - 0.56 ), { grain: 'y', scale: 1.2 } ), M.spruce ) );
-
-	// plate, wrest pins, overstrung strings, pressure bars, hammers
-	const stringing = buildStringing( M, { yStrike: 1.055, zPlate: - 0.50, zTenor: - 0.492, zBass: - 0.484, top: TOP, halfWidth: XS - 0.004 } );
+	// plate, wrest pins, overstrung strings, pressure bars, hammers (with baked shadows)
+	const stringing = buildStringing( M, { yStrike: 1.055, zPlate: - 0.50, zTenor: - 0.492, zBass: - 0.484, top: TOP, halfWidth: XS - 0.004, renderer, zBoard: - 0.56 } );
 	g.add( stringing.group );
+
+	// soundboard, carrying the baked shadows of the strings and the plate
+	{
+
+		const geo = woodBox( v3( - XS, 0.70, - 0.58 ), v3( XS, TOP, - 0.56 ), { grain: 'y', scale: 1.2 } );
+		let mat = M.spruce;
+		if ( stringing.boardAO ) {
+
+			planarUV1( geo, stringing.boardAO.rect );
+			mat = M.spruce.clone();
+			mat.aoMap = stringing.boardAO.map;
+			mat.aoMapIntensity = 1;
+
+		}
+
+		g.add( mesh( geo, mat ) );
+
+	}
 	g.userData.action = { hammers: stringing.hammers, dampers: stringing.dampers };
+	g.userData.hammerRack = stringing.hammerRack;
 
 	// hammer rail felt and action rail (mostly hidden behind the lip rail)
 	g.add( mesh( woodBox( v3( - XI, 0.99, - 0.40 ), v3( XI, 1.012, - 0.385 ) ), M.greenFelt ) );
 
 	// inner faces of the cavity
-	g.add( mesh( woodBox( v3( - XS, TOP - 0.02, - 0.58 ), v3( XS, TOP, - 0.227 ), { grain: 'x' } ), M.interior ) );
+	g.add( mesh( woodBox( v3( - XS, TOP - 0.02, - 0.58 ), v3( XS, TOP, FRONT_UP - 0.012 ), { grain: 'x' } ), M.interior ) );
 
 	return g;
 
 }
 
-export function buildUpright( M ) {
+export function buildUpright( M, { renderer = null } = {} ) {
 
 	const group = new THREE.Group();
 	group.name = 'upright';
 
-	group.add( buildCase( M ) );
-	const interior = buildInterior( M );
+	const caseGroup = buildCase( M );
+	group.add( caseGroup );
+	const interior = buildInterior( M, renderer );
 	group.add( interior );
 
 	const keyboard = new Keyboard( { white: M.keyWhite, black: M.keyBlack } );
@@ -229,7 +261,8 @@ export function buildUpright( M ) {
 	return {
 		group,
 		keyboard,
-		action: new PianoAction( interior.userData.action ),
+		// soft pedal: keyboard and hammers shift right together, the strings stay (una corda)
+		action: new PianoAction( { ...interior.userData.action, pedals: caseGroup.userData.pedals, softShift: [ keyboard.group, interior.userData.hammerRack ], softShiftAmount: 0.003 } ),
 		depth: - BACK,
 		camera: { position: v3( - 0.2, 1.35, 2.6 ), target: v3( 0, 0.78, - 0.25 ) },
 	};

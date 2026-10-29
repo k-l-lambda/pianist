@@ -392,6 +392,25 @@ export class TextureBaker {
 
 	}
 
+	/**
+	 * Bake a single-pass scalar map from a complete fragment shader (reads `vUv`, writes the
+	 * value to gl_FragColor.r). Clamped at the edges; arrays and vectors pass through as uniforms.
+	 */
+	bakeShader( key, fragmentShader, uniforms, { width = 1024, height = 1024 } = {} ) {
+
+		if ( this.cache.has( key ) ) return this.cache.get( key );
+		const u = {};
+		for ( const [ name, value ] of Object.entries( uniforms ) ) u[ name ] = { value };
+		const mat = new THREE.ShaderMaterial( { vertexShader: VERTEX, fragmentShader, uniforms: u, depthTest: false, depthWrite: false } );
+		const rt = this._target( width, height );
+		rt.texture.wrapS = rt.texture.wrapT = THREE.ClampToEdgeWrapping;
+		this._render( mat, rt );
+		mat.dispose();
+		this.cache.set( key, rt.texture );
+		return rt.texture;
+
+	}
+
 	// ---- presets ----------------------------------------------------------
 
 	weatheredOak() {

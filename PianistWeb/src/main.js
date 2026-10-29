@@ -114,8 +114,11 @@ function setStyle( id ) {
 	}
 
 	const M = makeMaterials( baker, style.id );
-	piano = style.type === 'grand' ? buildGrand( M, { lidAngle: settings.lidAngle } ) : buildUpright( M );
+	piano = style.type === 'grand' ? buildGrand( M, { lidAngle: settings.lidAngle } ) : buildUpright( M, { renderer } );
 	piano.style = style;
+	piano.pedalMeshes = [];
+	piano.group.traverse( o => o.userData.pedal && piano.pedalMeshes.push( o ) );
+	for ( const [ name, holds ] of Object.entries( pedalHolds ) ) if ( holds.size ) piano.action?.setPedal( name, true );
 	// back of the piano against the back wall
 	piano.group.position.set( 0, 0, room.backWallZ + piano.depth + 0.03 );
 	scene.add( piano.group );
@@ -194,39 +197,74 @@ function noteOff( pitch ) {
 
 }
 
-// sustain pedal: lifts every damper; on release, notes whose keys are up are damped
-function setSustain( on ) {
+// pedals: soft (left), sostenuto (middle), sustain (right). Several sources (keyboard,
+// pointer, MIDI) may hold one; it is down while any of them is.
+const pedalHolds = { soft: new Set(), sostenuto: new Set(), sustain: new Set() };
+let pointerPedal = null;
 
-	synth.sustain = on;
-	piano.action?.setSustain( on );
-	if ( ! on ) for ( const p of [ ...synth.voices.keys() ] ) if ( ! piano.keyboard.keys.get( p )?.target ) synth.noteOff( p );
+function pedal( name, source, on ) {
+
+	const holds = pedalHolds[ name ];
+	const was = holds.size > 0;
+	if ( on ) holds.add( source ); else holds.delete( source );
+	const now = holds.size > 0;
+	if ( was !== now ) applyPedal( name, now );
 
 }
 
-function pickKey( event ) {
+function applyPedal( name, on ) {
+
+	piano.action?.setPedal( name, on );
+	if ( name === 'sustain' ) synth.sustain = on;
+	if ( name === 'soft' ) synth.soft = on;
+	if ( name === 'sostenuto' ) {
+
+		synth.latched.clear();
+		if ( on ) for ( const [ p, k ] of piano.keyboard.keys ) if ( k.target > 0 ) synth.latched.add( p );
+
+	}
+
+	// releasing a pedal damps every note whose key is up and that nothing else holds
+	if ( ! on && name !== 'soft' ) {
+
+		for ( const p of [ ...synth.voices.keys() ] ) if ( ! piano.keyboard.keys.get( p )?.target ) synth.noteOff( p );
+
+	}
+
+}
+
+function pick( event ) {
 
 	const rect = renderer.domElement.getBoundingClientRect();
 	pointer.set( ( event.clientX - rect.left ) / rect.width * 2 - 1, - ( event.clientY - rect.top ) / rect.height * 2 + 1 );
 	raycaster.setFromCamera( pointer, camera );
-	const hit = raycaster.intersectObjects( piano.keyboard.pickables, false )[ 0 ];
-	return hit ? hit.object.userData.pitch : null;
+	const hit = raycaster.intersectObjects( [ ...piano.keyboard.pickables, ...piano.pedalMeshes ], false )[ 0 ];
+	return hit ? hit.object.userData : null;
 
 }
 
 renderer.domElement.addEventListener( 'pointerdown', event => {
 
-	const pitch = pickKey( event );
-	if ( pitch === null ) return;
+	const hit = pick( event );
+	if ( ! hit ) return;
 	controls.enabled = false;
-	pointerPitch = pitch;
-	noteOn( pitch, 0.8 );
+	if ( hit.pedal ) {
+
+		pointerPedal = hit.pedal;
+		pedal( hit.pedal, 'pointer', true );
+		return;
+
+	}
+
+	pointerPitch = hit.pitch;
+	noteOn( hit.pitch, 0.8 );
 
 }, { capture: true } );
 
 renderer.domElement.addEventListener( 'pointermove', event => {
 
 	if ( pointerPitch === null ) return;
-	const pitch = pickKey( event );
+	const pitch = pick( event )?.pitch ?? null;
 	if ( pitch !== null && pitch !== pointerPitch ) {
 
 		noteOff( pointerPitch );
@@ -240,7 +278,9 @@ renderer.domElement.addEventListener( 'pointermove', event => {
 window.addEventListener( 'pointerup', () => {
 
 	if ( pointerPitch !== null ) noteOff( pointerPitch );
+	if ( pointerPedal !== null ) pedal( pointerPedal, 'pointer', false );
 	pointerPitch = null;
+	pointerPedal = null;
 	controls.enabled = true;
 
 } );
@@ -255,7 +295,9 @@ window.addEventListener( 'keydown', event => {
 	const k = event.key.toLowerCase();
 	if ( k === 'z' ) { octaveShift = Math.max( - 3, octaveShift - 1 ); return; }
 	if ( k === 'x' ) { octaveShift = Math.min( 3, octaveShift + 1 ); return; }
-	if ( k === ' ' ) { setSustain( true ); event.preventDefault(); return; }
+	if ( k === ' ' ) { pedal( 'sustain', 'key', true ); event.preventDefault(); return; }
+	if ( k === 'q' ) { pedal( 'soft', 'key', true ); return; }
+	if ( k === 'r' ) { pedal( 'sostenuto', 'key', true ); return; }
 	const i = KEYMAP.indexOf( k );
 	if ( i < 0 ) return;
 	const pitch = 60 + i + 12 * octaveShift;
@@ -267,9 +309,10 @@ window.addEventListener( 'keydown', event => {
 window.addEventListener( 'keyup', event => {
 
 	const k = event.key.toLowerCase();
-	if ( k === ' ' ) {
+	const pedalKeys = { ' ': 'sustain', q: 'soft', r: 'sostenuto' };
+	if ( pedalKeys[ k ] ) {
 
-		setSustain( false );
+		pedal( pedalKeys[ k ], 'key', false );
 		return;
 
 	}
@@ -295,7 +338,9 @@ navigator.requestMIDIAccess?.().then( access => {
 		const cmd = status & 0xf0;
 		if ( cmd === 0x90 && b > 0 ) noteOn( a, b / 127 );
 		else if ( cmd === 0x80 || ( cmd === 0x90 && b === 0 ) ) noteOff( a );
-		else if ( cmd === 0xb0 && a === 64 ) setSustain( b >= 64 );
+		else if ( cmd === 0xb0 && a === 64 ) pedal( 'sustain', 'midi', b >= 64 );
+		else if ( cmd === 0xb0 && a === 66 ) pedal( 'sostenuto', 'midi', b >= 64 );
+		else if ( cmd === 0xb0 && a === 67 ) pedal( 'soft', 'midi', b >= 64 );
 
 	};
 	access.inputs.forEach( bind );
@@ -431,12 +476,12 @@ function frame() {
 
 		}
 
-		hud.textContent = `Path tracing · ${ Math.floor( pathTracer.samples ) } spp · drag to orbit · keys A–' play · Z/X octave`;
+		hud.textContent = `Path tracing · ${ Math.floor( pathTracer.samples ) } spp · drag to orbit · keys A–' play · Z/X octave · pedals Q/R/Space`;
 
 	} else {
 
 		composer.render();
-		hud.textContent = `Real-time · drag to orbit · click keys or A–' to play · Z/X octave · Space sustain`;
+		hud.textContent = `Real-time · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
 
 	}
 
@@ -452,5 +497,5 @@ applyAO();
 setStyle( settings.style );
 setMode( settings.mode );
 document.getElementById( 'loading' ).classList.add( 'hidden' );
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, get piano() { return piano; } };
 requestAnimationFrame( frame );

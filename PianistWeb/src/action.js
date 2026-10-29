@@ -2,21 +2,29 @@
 //
 // Hammer: a press throws it to the string (accelerating; faster for louder notes) and it
 // springs straight back to rest after the blow, independent of how long the key is held.
-// Damper: lifts off the string while the key is down (or the sustain pedal is held) and
-// falls back onto it when both are released.
+// Damper: lifts off the string while the key is down (or the sustain pedal is held, or the
+// sostenuto pedal caught it lifted) and falls back onto it when all of these are released.
+// Pedals: each pedal lever rotates down when pressed. The soft (left) pedal shifts the
+// keyboard together with the hammers sideways (una corda); the strings stay, so each hammer
+// moves off one string of its unison and strikes two of the three.
 
 const REBOUND_TIME = 0.09;		// string contact -> back at rest
 const DAMPER_LIFT_TIME = 0.03;
 const DAMPER_FALL_TIME = 0.06;
 const DAMPER_DELAY = 0.012;		// dampers start lifting partway into the key stroke
+const PEDAL_TIME = 0.06;
+const PEDAL_ANGLE = 0.09;		// lever rotation when fully down (~5°)
 
 export class PianoAction {
 
 	/**
 	 * @param hammers Map pitch -> { node, strike }  (node.rotation.x = strike at the string)
 	 * @param dampers Map pitch -> { node, axis, lift } (node.position[axis] offset when lifted)
+	 * @param pedals { soft, sostenuto, sustain } -> pivot nodes rotating about x
+	 * @param softShift node(s) the soft pedal shifts along x by `softShiftAmount`
+	 *        (the keyboard, and the hammers where they are modelled)
 	 */
-	constructor( { hammers = new Map(), dampers = new Map() } = {} ) {
+	constructor( { hammers = new Map(), dampers = new Map(), pedals = {}, softShift = [], softShiftAmount = 0.003 } = {} ) {
 
 		this.hammers = new Map();
 		for ( const [ pitch, h ] of hammers ) {
@@ -33,6 +41,32 @@ export class PianoAction {
 		}
 
 		this.sustain = false;
+		this.sostenuto = false;
+		this.pedalNodes = pedals;
+		this.pedalState = { soft: 0, sostenuto: 0, sustain: 0 };
+		this.pedalDown = { soft: false, sostenuto: false, sustain: false };
+		this.softShift = ( Array.isArray( softShift ) ? softShift : [ softShift ] ).filter( Boolean ).map( node => ( { node, base: node.position.x } ) );
+		this.softShiftAmount = softShiftAmount;
+
+	}
+
+	setPedal( name, on ) {
+
+		this.pedalDown[ name ] = on;
+		if ( name === 'sustain' ) this.sustain = on;
+		if ( name === 'sostenuto' ) {
+
+			this.sostenuto = on;
+			// catches only the dampers that are lifted by their keys right now
+			for ( const d of this.dampers.values() ) d.latched = on && d.held;
+
+		}
+
+	}
+
+	_ease( x ) {
+
+		return x * x * ( 3 - 2 * x );
 
 	}
 
@@ -71,7 +105,7 @@ export class PianoAction {
 
 	setSustain( on ) {
 
-		this.sustain = on;
+		this.setPedal( 'sustain', on );
 
 	}
 
@@ -102,7 +136,7 @@ export class PianoAction {
 
 		for ( const d of this.dampers.values() ) {
 
-			const up = d.held || this.sustain;
+			const up = d.held || this.sustain || d.latched;
 			if ( up && d.delay > 0 ) {
 
 				d.delay -= dt;
@@ -118,6 +152,22 @@ export class PianoAction {
 			d.amount = up ? Math.min( 1, d.amount + step ) : Math.max( 0, d.amount - step );
 			const e = d.amount * d.amount * ( 3 - 2 * d.amount );
 			d.node.position[ d.axis ] = d.base + d.lift * e;
+
+		}
+
+		// pedals, and what the soft pedal moves
+		for ( const name of [ 'soft', 'sostenuto', 'sustain' ] ) {
+
+			const target = this.pedalDown[ name ] ? 1 : 0;
+			const v = this.pedalState[ name ];
+			if ( v === target ) continue;
+			moving = true;
+			const step = dt / PEDAL_TIME;
+			this.pedalState[ name ] = target > v ? Math.min( 1, v + step ) : Math.max( 0, v - step );
+			const e = this._ease( this.pedalState[ name ] );
+			const node = this.pedalNodes[ name ];
+			if ( node ) node.rotation.x = PEDAL_ANGLE * e;
+			if ( name === 'soft' ) for ( const s of this.softShift ) s.node.position.x = s.base + this.softShiftAmount * e;
 
 		}
 

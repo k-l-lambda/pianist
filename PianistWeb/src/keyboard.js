@@ -94,7 +94,103 @@ function whiteKeyGeometry( pitch ) {
 	// shape (x, y, z) -> world (x, z, -y): rotate -90° about x
 	geo.rotateX( - Math.PI / 2 );
 	geo.translate( 0, bevel, 0 );		// key bottom at y = 0, top at WHITE_HEIGHT
+
+	// uv: position on the whole keyboard, for the baked occlusion map (see bakeKeyAO)
+	const pos = geo.attributes.position;
+	const uv = new Float32Array( pos.count * 2 );
+	const cx = pitchX( pitch );
+	for ( let i = 0; i < pos.count; ++ i ) {
+
+		uv[ 2 * i ] = ( cx + pos.getX( i ) + KEYBOARD_HALF_WIDTH ) / ( 2 * KEYBOARD_HALF_WIDTH );
+		uv[ 2 * i + 1 ] = - pos.getZ( i ) / AO_DEPTH;
+
+	}
+
+	geo.setAttribute( 'uv', new THREE.BufferAttribute( uv, 2 ) );
 	return geo;
+
+}
+
+// --- occlusion of the white keys by the black keys, the fallboard and the cheeks ------------
+const AO_DEPTH = WHITE_VISIBLE;
+
+const KEY_AO_GLSL = /* glsl */`
+	precision highp float;
+	varying vec2 vUv;
+	uniform float halfWidth;
+	uniform float depth;
+	uniform float blackX[ 36 ];
+	uniform vec3 blackMin;		// relative to a black key centre, y from the white key top
+	uniform vec3 blackMax;
+	uniform float wallZ;		// fallboard / name rail front and its height above the keys
+	uniform float wallH;
+	uniform float cheekH;
+
+	float slab( vec3 o, vec3 d, vec3 bmin, vec3 bmax ) {
+		vec3 inv = 1.0 / d;
+		vec3 t0 = ( bmin - o ) * inv, t1 = ( bmax - o ) * inv;
+		vec3 tn = min( t0, t1 ), tf = max( t0, t1 );
+		float a = max( max( tn.x, tn.y ), tn.z ), b = min( min( tf.x, tf.y ), tf.z );
+		return ( b > max( a, 0.0 ) ) ? 1.0 : 0.0;
+	}
+
+	void main() {
+		// point on the white key top: x across the keyboard, z towards the back (negative)
+		vec3 p = vec3( ( vUv.x * 2.0 - 1.0 ) * halfWidth, 0.0002, - vUv.y * depth );
+		float vis = 0.0;
+		const int N = 64;
+		for ( int i = 0; i < N; ++ i ) {
+			// cosine-weighted hemisphere (Hammersley)
+			float u1 = ( float( i ) + 0.5 ) / float( N );
+			float u2 = fract( float( i ) * 0.618034 );
+			float r = sqrt( u1 ), phi = 6.2831853 * u2;
+			vec3 d = vec3( r * cos( phi ), sqrt( 1.0 - u1 ), r * sin( phi ) );
+			d += sign( d ) * 1e-5;
+			float hit = 0.0;
+			for ( int k = 0; k < 36; ++ k ) {
+				float bx = blackX[ k ];
+				if ( abs( bx - p.x ) > 0.09 ) continue;
+				hit = max( hit, slab( p, d, blackMin + vec3( bx, 0.0, 0.0 ), blackMax + vec3( bx, 0.0, 0.0 ) ) );
+			}
+			// fallboard: a wall wallH high across the back
+			if ( d.z < 0.0 ) {
+				float t = ( wallZ - p.z ) / d.z;
+				if ( p.y + d.y * t < wallH ) hit = 1.0;
+			}
+			// cheeks / arms at the keyboard ends
+			if ( abs( d.x ) > 1e-4 ) {
+				float t = ( sign( d.x ) * halfWidth - p.x ) / d.x;
+				if ( t > 0.0 && p.y + d.y * t < cheekH ) hit = 1.0;
+			}
+			vis += 1.0 - hit;
+		}
+		gl_FragColor = vec4( vis / float( N ), 0.0, 0.0, 1.0 );
+	}
+`;
+
+/** Bake the white-key occlusion map (uv = position on the keyboard, see whiteKeyGeometry). */
+export function bakeKeyAO( baker ) {
+
+	const xs = [];
+	for ( let p = PITCH_MIN; p <= PITCH_MAX; ++ p ) if ( isBlack( p ) ) xs.push( pitchX( p ) );
+	return baker.bakeShader( 'keyAO', KEY_AO_GLSL, {
+		halfWidth: KEYBOARD_HALF_WIDTH,
+		depth: AO_DEPTH,
+		blackX: xs,
+		blackMin: new THREE.Vector3( - BLACK_WIDTH / 2, 0, - BLACK_RAISED_END ),
+		blackMax: new THREE.Vector3( BLACK_WIDTH / 2, BLACK_HEIGHT, - BLACK_FRONT ),
+		wallZ: - WHITE_VISIBLE,
+		wallH: 0.05,
+		cheekH: 0.035,
+	}, { width: 4096, height: 256 } );
+
+}
+
+// deterministic per-key manufacturing tolerance (sub-millimetre), as in a real action
+function keyJitter( pitch, k ) {
+
+	const v = Math.sin( pitch * 12.9898 + k * 78.233 ) * 43758.5453;
+	return ( v - Math.floor( v ) ) * 2 - 1;
 
 }
 
@@ -248,7 +344,13 @@ export class Keyboard {
 			const black = isBlack( pitch );
 			const pivot = new THREE.Group();
 			const pivotY = WHITE_HEIGHT - PIVOT_BELOW_TOP;
-			pivot.position.set( pitchX( pitch ), pivotY, - PIVOT_BACK );
+			// up to ±0.3 mm sideways / in depth, ±0.25 mm in height, small yaw and roll
+			pivot.position.set(
+				pitchX( pitch ) + 0.0003 * keyJitter( pitch, 0 ),
+				pivotY + 0.00025 * keyJitter( pitch, 1 ),
+				- PIVOT_BACK + 0.0003 * keyJitter( pitch, 2 ) );
+			pivot.rotation.y = 0.0015 * keyJitter( pitch, 3 );
+			pivot.rotation.z = 0.004 * keyJitter( pitch, 4 );
 
 			let mesh;
 			if ( black ) {
@@ -281,7 +383,11 @@ export class Keyboard {
 	press( pitch, velocity = 1 ) {
 
 		const key = this.keys.get( pitch );
-		if ( key ) key.target = Math.min( 1, 0.75 + 0.25 * velocity );
+		if ( ! key ) return;
+		// keys always reach the key bed; velocity (0..1, MIDI velocity / 127) sets how fast:
+		// ~100 ms to the bottom for pp, ~20 ms for ff
+		key.target = 1;
+		key.rate = THREE.MathUtils.lerp( 12, 110, THREE.MathUtils.clamp( velocity, 0, 1 ) );
 
 	}
 
@@ -299,7 +405,7 @@ export class Keyboard {
 		for ( const key of this.keys.values() ) {
 
 			if ( key.depth === key.target ) continue;
-			const rate = key.target > key.depth ? 60 : 22;
+			const rate = key.target > key.depth ? ( key.rate ?? 60 ) : 22;
 			key.depth += ( key.target - key.depth ) * Math.min( 1, dt * rate );
 			if ( Math.abs( key.target - key.depth ) < 1e-3 ) key.depth = key.target;
 			key.pivot.rotation.x = key.depth * this.maxAngle;

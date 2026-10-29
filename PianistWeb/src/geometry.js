@@ -255,3 +255,20 @@ export function roundedRectPath( x0, y0, x1, y1, r ) {
 	return p;
 
 }
+
+/** Second uv set (uv1) as a planar xy projection onto `rect`, for baked occlusion maps. */
+export function planarUV1( geo, rect ) {
+
+	const pos = geo.attributes.position;
+	const uv = new Float32Array( pos.count * 2 );
+	for ( let i = 0; i < pos.count; ++ i ) {
+
+		uv[ 2 * i ] = ( pos.getX( i ) - rect.x0 ) / ( rect.x1 - rect.x0 );
+		uv[ 2 * i + 1 ] = ( pos.getY( i ) - rect.y0 ) / ( rect.y1 - rect.y0 );
+
+	}
+
+	geo.setAttribute( 'uv1', new THREE.BufferAttribute( uv, 2 ) );
+	return geo;
+
+}

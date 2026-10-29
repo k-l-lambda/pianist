@@ -8,6 +8,8 @@ export class Synth {
 		this.voices = new Map();
 		this.volume = 0.5;
 		this.sustain = false;
+		this.soft = false;				// soft pedal: quieter, darker
+		this.latched = new Set();		// notes held by the sostenuto pedal
 
 	}
 
@@ -39,6 +41,7 @@ export class Synth {
 
 		const ctx = this._ensure();
 		this.noteOff( pitch, true );
+		if ( this.soft ) velocity *= 0.7;
 
 		const f0 = 440 * Math.pow( 2, ( pitch - 69 ) / 12 );
 		const t = ctx.currentTime;
@@ -51,7 +54,7 @@ export class Synth {
 
 		const filter = ctx.createBiquadFilter();
 		filter.type = 'lowpass';
-		filter.frequency.setValueAtTime( Math.min( 18000, f0 * ( 6 + 14 * velocity ) ), t );
+		filter.frequency.setValueAtTime( Math.min( 18000, f0 * ( 6 + 14 * velocity ) * ( this.soft ? 0.6 : 1 ) ), t );
 		filter.frequency.setTargetAtTime( f0 * 3, t, decay / 6 );
 		filter.connect( out ).connect( this.master );
 
@@ -79,7 +82,7 @@ export class Synth {
 	noteOff( pitch, immediate = false ) {
 
 		const v = this.voices.get( pitch );
-		if ( ! v || ( this.sustain && ! immediate ) ) return;
+		if ( ! v || ( ( this.sustain || this.latched.has( pitch ) ) && ! immediate ) ) return;
 		const t = this.ctx.currentTime;
 		v.out.gain.cancelScheduledValues( t );
 		v.out.gain.setTargetAtTime( 0, t, immediate ? 0.01 : 0.08 );

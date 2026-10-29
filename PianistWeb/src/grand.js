@@ -110,6 +110,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 	const group = new THREE.Group();
 	const dampers = new Map();
+	const pedals = {};
 	group.name = 'grand';
 
 	const outer = rimPath();
@@ -322,9 +323,24 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		lyre.push( rod( v3( 0.15, 0.10, - 0.66 ), v3( 0.30, RIM_BOTTOM - 0.06, - 1.10 ), 0.008, 8 ) );
 		group.add( mesh( merge( lyre ), M.case ) );
 
-		const pedal = extrudeTop( pedalShape(), 0.065, 0.077, { bevel: 0.003 } );
-		for ( const x of [ - 0.075, 0, 0.075 ] ) brass.push( pedal.clone().translate( x, 0, - 0.52 + 0.215 - 0.03 ) );
 		group.add( mesh( merge( brass ), M.brass ) );
+
+		// soft, sostenuto, sustain, pivoting inside the pedal box
+		const pedal = extrudeTop( pedalShape(), 0.065, 0.077, { bevel: 0.003 } );
+		const pivotY = 0.071, pivotZ = - 0.60;
+		pedal.translate( 0, - pivotY, - 0.335 - pivotZ );
+		[ [ 'soft', - 0.075 ], [ 'sostenuto', 0 ], [ 'sustain', 0.075 ] ].forEach( ( [ name, x ] ) => {
+
+			const pivot = new THREE.Group();
+			pivot.position.set( x, pivotY, pivotZ );
+			const m = mesh( pedal, M.brass );
+			m.name = 'pedal-' + name;
+			m.userData.pedal = name;
+			pivot.add( m );
+			group.add( pivot );
+			pedals[ name ] = pivot;
+
+		} );
 
 	}
 
@@ -335,8 +351,9 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	return {
 		group,
 		keyboard,
-		// the grand's hammers strike from below, hidden in the case; only the dampers show
-		action: new PianoAction( { dampers } ),
+		// the grand's hammers strike from below, hidden in the case; only the dampers show.
+		// Soft pedal: the whole keyboard and action shift right (una corda)
+		action: new PianoAction( { dampers, pedals, softShift: keyboard.group, softShiftAmount: 0.003 } ),
 		depth: LENGTH,
 		camera: { position: v3( 1.55, 1.55, 1.65 ), target: v3( 0.0, 0.85, - 0.65 ) },
 	};

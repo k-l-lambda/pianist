@@ -12,7 +12,8 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { v3, merge, rod, beam, woodBox } from './geometry.js';
+import { v3, merge, rod, beam, woodBox, planarUV1 } from './geometry.js';
+import { ShadowBaker } from './shadowbake.js';
 
 const lerp = THREE.MathUtils.lerp;
 const D2R = Math.PI / 180;
@@ -155,14 +156,18 @@ export function uprightScale() {
  * Build plate, pins, strings, pressure bars and hammers.
  * Returns { group, hammers, dampers }: hammers maps MIDI pitch -> { node, strike angle },
  * dampers maps MIDI pitch -> { node, axis, lift }.
+ * With `renderer` and `zBoard` given, the strings', pins' and bars' shadows on the plate and
+ * the soundboard are baked (see shadowbake.js); the soundboard map is returned as `boardAO`
+ * with its uv1 rect, for the caller's soundboard mesh.
  * @param M materials
  * @param o { yStrike, zPlate (front face), zTenor, zBass, top, halfWidth }
  */
-export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWidth } ) {
+export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWidth, renderer = null, zBoard = null } ) {
 
 	const g = new THREE.Group();
 	g.name = 'stringing';
 	const { notes, bars } = uprightScale();
+	const bake = { maskShapes: [], plateOcc: [], boardOcc: [] };
 	const Y = p => p.y + yStrike;
 
 	const add = ( geo, mat, cast = true ) => {
@@ -195,7 +200,10 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 		const s = new THREE.Shape( pts );
 		const geo = new THREE.ExtrudeGeometry( s, { depth: 0.016, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.003, bevelOffset: - 0.003, bevelSegments: 2 } );
 		geo.translate( 0, 0, zPlate - 0.019 );
-		add( geo, M.plate, true ).name = 'plate';
+		const plateMesh = add( geo, M.plate, true );
+		plateMesh.name = 'plate';
+		bake.plateMesh = plateMesh;
+		bake.maskShapes.push( s );
 
 		// side flanges and struts running down behind the strings
 		const struts = [];
@@ -204,12 +212,13 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 
 			const x = ( xa + xb ) / 2;
 			struts.push( woodBox( v3( x - w / 2, yStrike - 0.35, zPlate - 0.02 ), v3( x + w / 2, yTop, zPlate ), { noUV: true, radius: 0.003 } ) );
+			bake.maskShapes.push( new THREE.Shape( [ new THREE.Vector2( x - w / 2, yStrike - 0.35 ), new THREE.Vector2( x + w / 2, yStrike - 0.35 ), new THREE.Vector2( x + w / 2, yTop ), new THREE.Vector2( x - w / 2, yTop ) ] ) );
 
 		};
 		strutAt( notes[ 31 ].strike.x, notes[ 32 ].strike.x, Y( bars.tenor[ 0 ] ), 0.024 );
 		strutAt( notes[ 57 ].strike.x, notes[ 58 ].strike.x, Y( bars.tenor[ 1 ] ), 0.02 );
 		for ( const sx of [ - 1, 1 ] ) struts.push( woodBox( v3( sx * halfWidth - 0.03, yStrike - 0.35, zPlate - 0.02 ), v3( sx * halfWidth + 0.0, top - 0.01, zPlate + 0.002 ), { noUV: true } ).translate( sx > 0 ? 0 : 0.03, 0, 0 ) );
-		add( merge( struts ), M.plate );
+		bake.strutMesh = add( merge( struts ), M.plate );
 
 	}
 
@@ -227,9 +236,18 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 			const low = s.bearing.clone().addScaledVector( o.dir, - ( s.bearing.y + 0.40 ) / o.dir.y );
 			list.push( rod( v3( low.x, Y( low ), z ), v3( s.bearing.x, Y( s.bearing ), z ), r, segs ) );
 			// above the bearing the wire (for bass: plain core) runs to the pin coil
-			steel.push( rod( v3( s.bearing.x, Y( s.bearing ), z ), v3( s.end.x, Y( s.end ), z ), o.section === 'bass' ? 0.0006 : r, 4 ) );
+			const rTop = o.section === 'bass' ? 0.0006 : r;
+			steel.push( rod( v3( s.bearing.x, Y( s.bearing ), z ), v3( s.end.x, Y( s.end ), z ), rTop, 4 ) );
+
+			// shadow casters: the speaking length only down to just below the plate edge
+			const cut = s.bearing.clone().addScaledVector( o.dir, - 0.12 / o.dir.y );
+			const lowSeg = { a: v3( cut.x, Y( cut ), z ), b: v3( s.bearing.x, Y( s.bearing ), z ), r };
+			bake.plateOcc.push( lowSeg, { a: lowSeg.b, b: v3( s.end.x, Y( s.end ), z ), r: rTop } );
+			bake.boardOcc.push( lowSeg );
 
 			const px = s.pin.x, py = Y( s.pin );
+			bake.plateOcc.push( { a: v3( px, py, zPlate + 0.0005 ), b: v3( px, py, z + 0.022 ), r: PIN_R } );
+			bake.plateOcc.push( { a: v3( px, py, z - 0.003 ), b: v3( px, py, z + 0.003 ), r: COIL_R } );
 			pins.push( rod( v3( px, py, zPlate ), v3( px, py, z + 0.022 ), PIN_R, 10 ) );
 			pins.push( rod( v3( px, py, z - 0.004 ), v3( px, py, z + 0.004 ), COIL_R, 10 ) );
 			pins.push( woodBox( v3( px - 0.0026, py - 0.0026, z + 0.022 ), v3( px + 0.0026, py + 0.0026, z + 0.030 ), { noUV: true } ) );
@@ -241,6 +259,7 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 
 			const b = o.bearing;
 			studs.push( rod( v3( b.x, Y( b ) - 0.0055 - r, zPlate ), v3( b.x, Y( b ) - 0.0055 - r, z + 0.004 ), 0.0055, 12 ) );
+			bake.plateOcc.push( { a: v3( b.x, Y( b ) - 0.0055 - r, zPlate + 0.0005 ), b: v3( b.x, Y( b ) - 0.0055 - r, z + 0.004 ), r: 0.0055 } );
 
 		}
 
@@ -264,6 +283,7 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 			const B = b.clone().addScaledVector( up, 0.0065 ).addScaledVector( d, 0.012 );
 			const zc = zTenor + 0.0055;
 			parts.push( beam( v3( A.x, Y( A ), zc ), v3( B.x, Y( B ), zc ), 0.009, 0.012 ) );
+			bake.plateOcc.push( { a: v3( A.x, Y( A ), zc ), b: v3( B.x, Y( B ), zc ), r: 0.0055 } );
 			const len = A.distanceTo( B );
 			const count = Math.max( 2, Math.round( len / 0.07 ) );
 			for ( let i = 0; i <= count; ++ i ) {
@@ -280,8 +300,12 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 	}
 
 	// --- hammers (at rest, 45 mm in front of the strings) -------------------------------
-	// one pivot per note at the butt flange, so the action can swing each hammer to its string
+	// one pivot per note at the butt flange, so the action can swing each hammer to its string.
+	// All hammers sit in one rack, which the soft pedal shifts sideways with the keyboard.
 	const hammers = new Map();
+	const hammerRack = new THREE.Group();
+	hammerRack.name = 'hammerRack';
+	g.add( hammerRack );
 	{
 
 		const SHANK = 0.14;		// flange centre to strike line
@@ -292,13 +316,16 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 			const t = ( o.n - 1 ) / 87;
 			const h = lerp( 0.046, 0.034, t );
 			const pitch = o.section === 'bass' ? 0.014 : o.section === 'tenor' ? 0.0133 : 0.0129;
-			const w = Math.min( pitch - 0.0018, lerp( 0.0125, 0.0105, t ) );
+			// trichords: 1.5 mm wider than the unison on each side, so the 3 mm soft-pedal shift
+			// takes the hammer off the left string (strikes 2 of 3)
+			const spread = o.unison === 3 ? lerp( 0.0055, 0.0065, ( o.n - 33 ) / 55 ) : 0;
+			const w = o.unison === 3 ? spread + 0.003 : Math.min( pitch - 0.0018, lerp( 0.0125, 0.0105, t ) );
 			const zs = o.section === 'bass' ? zBass : zTenor;
 			const zf = zs + BLOW;
 			const x = o.strike.x, y = yStrike;
 			const pivot = v3( x, y - SHANK, zf + 0.022 );
 
-			const felt = woodBox( v3( x - w / 2, y - h / 2, zf ), v3( x + w / 2, y + h / 2, zf + 0.018 ), { noUV: true, radius: 0.004 } );
+			const felt = woodBox( v3( x - w / 2, y - h / 2, zf ), v3( x + w / 2, y + h / 2, zf + 0.018 ), { noUV: true, radius: 0.0025 } );
 			const molding = woodBox( v3( x - w / 2 + 0.0005, y - h / 2 + 0.004, zf + 0.016 ), v3( x + w / 2 - 0.0005, y + h / 2 - 0.006, zf + 0.028 ), { noUV: true, radius: 0.002 } );
 			const shank = rod( pivot, v3( x, y - h / 2 + 0.004, zf + 0.022 ), 0.0023, 6 );
 			const wood = merge( [ molding, shank ] );
@@ -311,7 +338,7 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 			m.castShadow = true;
 			m.receiveShadow = true;
 			node.add( m );
-			g.add( node );
+			hammerRack.add( node );
 
 			// rotation about x at which the felt's nearest point just touches the string
 			// (bisection over the felt vertices; z' = y sinφ + z cosφ relative to the pivot)
@@ -377,6 +404,35 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 
 	}
 
-	return { group: g, hammers, dampers };
+	// --- baked contact shadows on the plate and the soundboard -------------------------------
+	let boardAO = null;
+	if ( renderer && zBoard !== null ) {
+
+		const rect = { x0: - halfWidth - 0.01, y0: yStrike - 0.075, x1: halfWidth + 0.01, y1: top };
+		// broad key light: the glass top and the room in front, from above-right
+		const light = { dir: new THREE.Vector3( 0.25, 0.55, 1.0 ), angle: 0.35, weight: 0.55 };
+		const maps = new ShadowBaker( renderer ).bake( {
+			rect, light,
+			plate: { z: zPlate, occluders: bake.plateOcc },
+			board: { z: zBoard, occluders: bake.boardOcc, maskShapes: bake.maskShapes, zPlate: zPlate - 0.01, cover: { y: 0.985, z: - 0.45 } },
+		} );
+
+		const plateMat = M.plate.clone();
+		plateMat.aoMap = maps.plate;
+		plateMat.aoMap.channel = 1;
+		plateMat.aoMapIntensity = 1;
+		for ( const m of [ bake.plateMesh, bake.strutMesh ] ) {
+
+			planarUV1( m.geometry, rect );
+			m.material = plateMat;
+
+		}
+
+		maps.board.channel = 1;
+		boardAO = { map: maps.board, rect };
+
+	}
+
+	return { group: g, hammers, hammerRack, dampers, boardAO };
 
 }

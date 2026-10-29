@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { ProceduralEquirectTexture } from 'three-gpu-pathtracer';
 import { boxProjectUV } from './geometry.js';
+import { applyPCSS } from './softshadows.js';
 
 RectAreaLightUniformsLib.init();
 
@@ -34,6 +35,11 @@ const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // sky radiance scale shared by the raster window portal and the path-traced environment
 const SKY_RADIANCE = 2.5;
+const SUN_DIST = 40;
+const SUN_NEAR = SUN_DIST - 8, SUN_FAR = SUN_DIST + 12;
+
+// contact-hardening sun shadows: sharp under the black keys, soft from the window frame
+applyPCSS( { near: SUN_NEAR, far: SUN_FAR } );
 
 export class Room {
 
@@ -260,16 +266,16 @@ export class Room {
 
 	_buildLights() {
 
-		// raster sun
-		const sun = new THREE.DirectionalLight( '#ffffff', 1 );
+		// raster sun: a distant, narrow spot aimed through the window, so the whole shadow map
+		// covers just the sunlit shaft (~0.7 mm texels: fine enough for black keys on white keys,
+		// strings and pins). Outside the cone everything is behind the wall anyway.
+		const sun = new THREE.SpotLight( '#ffffff', 1, 0, 0.05, 0.05, 0 );
 		sun.castShadow = true;
 		sun.shadow.mapSize.set( 4096, 4096 );
-		sun.shadow.bias = - 0.0002;
-		sun.shadow.normalBias = 0.01;
-		sun.shadow.radius = 6;
-		sun.shadow.blurSamples = 16;
-		const sc = sun.shadow.camera;
-		sc.left = - 5; sc.right = 5; sc.top = 5; sc.bottom = - 5; sc.near = 0.5; sc.far = 40;
+		sun.shadow.bias = - 0.00002;
+		sun.shadow.normalBias = 0.001;
+		sun.shadow.camera.near = SUN_NEAR;
+		sun.shadow.camera.far = SUN_FAR;
 		this.scene.add( sun, sun.target );
 		this.sun = sun;
 
@@ -352,9 +358,22 @@ export class Room {
 		this.sun.color.set( L.sunColor );
 		this.sun.intensity = L.sunIntensity;
 		this.sun.visible = L.sunIntensity > 0 && this.mode !== 'pathtrace';
-		this.sun.position.copy( target ).addScaledVector( dir, dist );
-		this.sun.target.position.copy( target );
-		this.sun.shadow.radius = 2 + 10 * L.sunSoftness;
+		{
+
+			// cone just covering the window aperture as seen from the sun
+			const aim = f ? f.center : target;
+			const win = this._windowRect();
+			const r = 0.5 * Math.hypot( win.a1 - win.a0, win.y1 - win.y0 ) + 0.2;
+			this.sun.position.copy( aim ).addScaledVector( dir, SUN_DIST );
+			this.sun.target.position.copy( aim );
+			this.sun.angle = Math.atan( r / SUN_DIST );
+			// PCSS: radius = 1000 + (sun angular radius) / (texel angle); see softshadows.js
+			const sunRadius = 0.0045 * ( 0.4 + 1.6 * L.sunSoftness );
+			const texelAngle = 2 * this.sun.angle / this.sun.shadow.mapSize.x;
+			this.sun.shadow.radius = 1000 + sunRadius / texelAngle;
+			this.sun.shadow.camera.updateProjectionMatrix();
+
+		}
 
 		// area sun: angular size grows with softness; keep irradiance equal to the directional light
 		const size = 0.15 + 0.9 * L.sunSoftness;
