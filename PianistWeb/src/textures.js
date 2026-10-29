@@ -51,24 +51,33 @@ const WOOD_GLSL = /* glsl */`
 
 	WoodSample wood( vec2 uv ) {
 		WoodSample s;
+		const float TAU = 6.2831853;
+		// Tile: u along the grain (~1.5 m), v across (~0.75 m) split into edge-glued boards.
+		// All noise periods are integers in tile units, so the texture wraps in both axes.
 
-		// plank layout across v with irregular widths
 		float pv = uv.y * planks;
 		float plank = floor( pv );
 		float pf = fract( pv );
 		float pr = hash12( vec2( plank, seed ) );
 		float pr2 = hash12( vec2( plank + 17.0, seed + 3.0 ) );
 
-		// growth rings of a flat-sawn board: mostly straight lines along the grain, with long
-		// nested cathedral arcs where the cut runs tangent to the rings
-		float c = 0.3 + 0.4 * pr2;
-		float arcU = ( fract( uv.x * 1.0 + pr * 3.7 ) - 0.5 ) * 0.22;
-		float dist = sqrt( ( pf - c ) * ( pf - c ) + arcU * arcU );
-		float warp = fbm( vec2( uv.x * 4.0 + pr * 7.0, pv * 0.7 ), vec2( 4.0, 1000.0 ), 4 );
-		float ring = dist * ringScale + warp * 2.5;
-		ring += ( vnoise( vec2( uv.x * 24.0, pv * 30.0 ), vec2( 24.0, 100000.0 ) ) - 0.5 ) * 0.5;
+		// grain meander: the fibres wander a few degrees either side instead of running
+		// parallel to the texture axis; q is the across-grain coordinate that follows them
+		float meander = 0.10 * sin( TAU * ( uv.x + pr ) ) + 0.05 * sin( TAU * ( 2.0 * uv.x + pr2 ) )
+			+ 0.25 * ( fbm( vec2( uv.x * 3.0, plank * 7.13 ), vec2( 3.0, 100000.0 ), 4 ) - 0.5 );
+		float q = pf + meander;
+		float qp = q + plank * 3.17;		// decorrelate boards
 
-		// knots (positions in meters-ish: tile is ~1.5 m along u, ~0.25 m per plank)
+		// growth rings of a flat-sawn board: contours of the distance to the pith; where the
+		// cut dips towards the pith they close into cathedral arcs
+		float c = 0.3 + 0.4 * pr2;
+		float arc = 0.12 * ( 0.5 - 0.5 * cos( TAU * ( uv.x + pr * 0.7 ) ) );
+		float dist = sqrt( ( q - c ) * ( q - c ) + arc * arc );
+		float warp = fbm( vec2( uv.x * 4.0, pv * 2.0 ), vec2( 4.0, planks * 2.0 ), 4 );
+		float ring = dist * ringScale + warp * 1.5;
+		ring += ( vnoise( vec2( uv.x * 24.0, qp * 30.0 ), vec2( 24.0, 100000.0 ) ) - 0.5 ) * 0.6;
+
+		// knots
 		float knot = 0.0;
 		for ( int k = 0; k < 2; ++ k ) {
 			float kr = hash12( vec2( plank * 3.0 + float( k ), seed + 11.0 ) );
@@ -81,39 +90,45 @@ const WOOD_GLSL = /* glsl */`
 			}
 		}
 
+		// latewood bands, each ring with its own strength so they don't read as even stripes
 		float rf = fract( ring );
-		float late = smoothstep( 0.55, 0.85, rf ) * ( 1.0 - smoothstep( 0.92, 1.0, rf ) );
+		float band = smoothstep( 0.35, 0.85, rf ) * ( 1.0 - smoothstep( 0.9, 1.0, rf ) );
+		float late = band * ( 0.35 + 0.65 * hash12( vec2( floor( ring ), plank + seed ) ) );
 
-		// fiber streaks stretched along grain
-		float fiber = fbm( vec2( uv.x * 10.0, pv * 160.0 ), vec2( 10.0, 100000.0 ), 4 );
-		float fineFiber = vnoise( vec2( uv.x * 200.0, pv * 600.0 ), vec2( 200.0, 100000.0 ) );
+		// non-directional variation: broad blotches (~25 cm) and smaller clouds (~6 cm)
+		float mottle = fbm( vec2( uv.x * 6.0, uv.y * 3.0 ), vec2( 6.0, 3.0 ), 5 );
+		float mottle2 = fbm( vec2( uv.x * 24.0, uv.y * 12.0 ), vec2( 24.0, 12.0 ), 3 );
 
-		// cracks / checks along grain
-		float crackLine = abs( fbm( vec2( uv.x * 10.0, pv * 18.0 + 4.0 ), vec2( 10.0, 1000.0 ), 4 ) - 0.5 );
-		float crackGate = smoothstep( 0.62, 0.75, fbm( vec2( uv.x * 2.0, pv * 2.0 + 9.0 ), vec2( 2.0, 1000.0 ), 3 ) );
-		float crack = smoothstep( 0.012, 0.0, crackLine ) * crackGate * crackAmount;
+		// fibres and open pores, following the meandering grain
+		float fiber = fbm( vec2( uv.x * 30.0, qp * 50.0 ), vec2( 30.0, 100000.0 ), 3 );
+		float pores = smoothstep( 0.62, 0.8, vnoise( vec2( uv.x * 400.0, qp * 350.0 ), vec2( 400.0, 100000.0 ) ) ) * ( 1.0 - late );
 
-		// plank seam
-		float seam = smoothstep( 0.012, 0.0, min( pf, 1.0 - pf ) ) * step( 1.5, planks );
+		// checks along the grain, only in some areas
+		float crackLine = abs( fbm( vec2( uv.x * 8.0, qp * 12.0 ), vec2( 8.0, 100000.0 ), 4 ) - 0.5 );
+		float crackGate = smoothstep( 0.62, 0.75, fbm( vec2( uv.x * 2.0, uv.y * 2.0 + 4.0 ), vec2( 2.0, 2.0 ), 3 ) );
+		float crack = smoothstep( 0.010, 0.0, crackLine ) * crackGate * crackAmount;
 
-		vec3 col = mix( colBase, colDark, fiber * 0.45 + ( pr - 0.5 ) * 0.35 );
-		col = mix( col, colLate, late * mix( 0.6, 0.32, weathering ) );
-		col *= 0.92 + 0.16 * fineFiber;
-		// silver-gray patina accumulating in earlywood
-		col = mix( col, colGray, weathering * ( 1.0 - late ) * ( 0.35 + 0.4 * fiber ) );
+		// faint glue line between boards
+		float seam = smoothstep( 0.006, 0.0, min( pf, 1.0 - pf ) ) * step( 1.5, planks );
+
+		vec3 col = mix( colBase, colDark, clamp( 0.25 + ( fiber - 0.5 ) * 0.4 + ( mottle - 0.5 ) * 0.8 + ( pr - 0.5 ) * 0.25, 0.0, 1.0 ) );
+		col = mix( col, colLate, late * mix( 0.4, 0.2, weathering ) );
+		col *= 0.95 + 0.1 * mottle2;
+		col = mix( col, colLate * 0.7, pores * 0.5 );
+		// weathering patina, patchy rather than striped
+		col = mix( col, colGray, weathering * ( 0.25 + 0.35 * mottle ) * ( 1.0 - 0.6 * late ) );
 		col = mix( col, colLate * 0.55, knot * 0.8 );
-		col = mix( col, colLate * 0.35, max( crack, seam * 0.8 ) );
-		col *= 0.94 + 0.12 * pr2;
+		col = mix( col, colLate * 0.35, max( crack, seam * 0.4 ) );
+		col *= 0.95 + 0.1 * pr2;
 		s.albedo = col;
 
-		s.rough = clamp( roughBase + 0.12 * fiber + weathering * 0.15 * ( 1.0 - late ) + crack * 0.3, 0.05, 1.0 );
+		s.rough = clamp( roughBase + 0.1 * ( mottle - 0.5 ) + 0.08 * fiber + weathering * 0.12 * ( 1.0 - late ) + crack * 0.3, 0.05, 1.0 );
 
-		// height: wire-brushed earlywood is lower in weathered wood
+		// height: brushed earlywood slightly lower, pores and checks recessed
 		float h = 0.5;
-		h += weathering * ( late * 0.35 - 0.1 * ( 1.0 - late ) );
-		h += ( fineFiber - 0.5 ) * mix( 0.05, 0.18, weathering );
-		h += ( fiber - 0.5 ) * 0.1;
-		h -= crack * 0.8 + seam * 0.6;
+		h += weathering * ( late * 0.08 - 0.02 * ( 1.0 - late ) );
+		h += ( fiber - 0.5 ) * 0.03 + ( mottle2 - 0.5 ) * 0.06;
+		h -= pores * 0.04 + crack * 0.8 + seam * 0.4;
 		s.height = h;
 
 		return s;
@@ -383,8 +398,8 @@ export class TextureBaker {
 
 		return this.bake( 'weatheredOak', WOOD_GLSL, {
 			colBase: '#6e5643', colDark: '#574332', colLate: '#3b2c21', colGray: '#7d6a58',
-			weathering: 1.0, crackAmount: 1.0, planks: 3, ringScale: 70.0, roughBase: 0.62, seed: 1.7,
-		}, { normalStrength: 3 } );
+			weathering: 1.0, crackAmount: 1.0, planks: 3, ringScale: 22.0, roughBase: 0.62, seed: 1.7,
+		}, { normalStrength: 2 } );
 
 	}
 
@@ -392,7 +407,7 @@ export class TextureBaker {
 
 		return this.bake( 'walnut', WOOD_GLSL, {
 			colBase: '#6b4630', colDark: '#4a2f1f', colLate: '#2e1c12', colGray: '#6b4630',
-			weathering: 0.0, crackAmount: 0.0, planks: 2, ringScale: 60.0, roughBase: 0.32, seed: 4.2,
+			weathering: 0.0, crackAmount: 0.0, planks: 2, ringScale: 26.0, roughBase: 0.32, seed: 4.2,
 		}, { normalStrength: 1.5 } );
 
 	}

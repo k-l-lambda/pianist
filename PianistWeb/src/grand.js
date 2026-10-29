@@ -5,7 +5,9 @@
 
 import * as THREE from 'three';
 import { Keyboard } from './keyboard.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { woodBox, v3, extrudeTop, merge, beam, rod } from './geometry.js';
+import { PianoAction } from './action.js';
 import { pedalShape } from './upright.js';
 
 const KEY_BOTTOM = 0.698;
@@ -107,6 +109,7 @@ function caseEndZ( pts, x ) {
 export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 	const group = new THREE.Group();
+	const dampers = new Map();
 	group.name = 'grand';
 
 	const outer = rimPath();
@@ -164,7 +167,25 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	// --- strings, pins, dampers --------------------------------------------
 	{
 
-		const steel = [], copper = [], pins = [], dampers = [];
+		const steel = [], copper = [], pins = [];
+		const DAMPER_Z = - 0.385;
+		const damperMats = [ M.hammerFelt, M.keyBlack ];
+		// one damper per note, resting on the top of its string(s) at DAMPER_Z; lifts upwards
+		const addDamper = ( i, a, b, r, w ) => {
+
+			const t = ( DAMPER_Z - a.z ) / ( b.z - a.z );
+			const p = a.clone().lerp( b, t );
+			const felt = new THREE.BoxGeometry( w, 0.006, 0.026 ).translate( 0, 0.003, 0 );
+			const block = new THREE.BoxGeometry( w - 0.001, 0.026, 0.030 ).translate( 0, 0.019, 0 );
+			const node = new THREE.Group();
+			node.position.set( p.x, p.y + r, p.z );
+			node.rotation.y = Math.atan2( b.x - a.x, b.z - a.z );
+			const m = mesh( mergeGeometries( [ merge( [ felt ] ), merge( [ block ] ) ], true ), damperMats );
+			node.add( m );
+			group.add( node );
+			dampers.set( i + 21, { node, axis: 'y', lift: 0.010 } );
+
+		};
 		const n = 88;
 		const x0 = - HALF_W + 0.08, x1 = HALF_W - 0.06;
 		const pinZ = - 0.29;
@@ -184,6 +205,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 				const endX = - 0.55 + 0.45 * t * n / bassCount;
 				const b = v3( endX, plateY + 0.02, caseEndZ( inner, endX ) + 0.06 );
 				copper.push( beam( a, b, 0.003, 0.003 ) );
+				addDamper( i, a, b, 0.0015, 0.011 );
 
 			} else {
 
@@ -191,18 +213,15 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 				const a = v3( x - 0.003, plateY + 0.012, zPin ), b = v3( x - 0.003, plateY + 0.008, endZ );
 				steel.push( beam( a, b, 0.0012, 0.0012 ) );
 				steel.push( beam( a.clone().setX( x + 0.003 ), b.clone().setX( x + 0.003 ), 0.0012, 0.0012 ) );
+				if ( i < 68 ) addDamper( i, a.clone().setX( x ), b.clone().setX( x ), 0.0006, 0.012 );
 
 			}
-
-			// dampers sit above the strings a little behind the hammers
-			if ( i < 70 ) dampers.push( woodBox( v3( x - 0.006, plateY + 0.03, - 0.40 ), v3( x + 0.006, plateY + 0.06, - 0.37 ), { noUV: true, radius: 0.002 } ) );
 
 		}
 
 		group.add( mesh( merge( steel ), M.steel ) );
 		group.add( mesh( merge( copper ), M.copper ) );
 		group.add( mesh( merge( pins ), M.steel ) );
-		group.add( mesh( merge( dampers ), M.keyBlack ) );
 
 		// pin block cover / plate flange across the front
 		group.add( mesh( woodBox( v3( - HALF_W + RIM_T, plateY, - 0.33 ), v3( HALF_W - RIM_T, plateY + 0.006, - 0.245 ), { noUV: true } ), M.plate ) );
@@ -316,6 +335,8 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	return {
 		group,
 		keyboard,
+		// the grand's hammers strike from below, hidden in the case; only the dampers show
+		action: new PianoAction( { dampers } ),
 		depth: LENGTH,
 		camera: { position: v3( 1.55, 1.55, 1.65 ), target: v3( 0.0, 0.85, - 0.65 ) },
 	};

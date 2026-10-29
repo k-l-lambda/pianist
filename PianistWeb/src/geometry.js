@@ -7,15 +7,19 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 /**
  * Re-project UVs per triangle along its dominant axis, in meters / `scale`.
  * `grain` is the local axis ('x' | 'y' | 'z') the wood grain should run along (texture u).
- * `offset` randomizes the texture window so pieces sharing a material don't look cloned.
+ * `offset` randomizes the texture window so pieces sharing a material don't look cloned;
+ * when it is left random, the grain also gets a small random angle (±3°) so it never sits
+ * exactly on the part's axis. `angle` (radians) sets it explicitly.
  */
-export function boxProjectUV( geometry, { grain = 'x', scale = 1.5, vScale = 2, offset = null } = {} ) {
+export function boxProjectUV( geometry, { grain = 'x', scale = 1.5, vScale = 2, offset = null, angle = null } = {} ) {
 
 	const geo = geometry.index ? geometry.toNonIndexed() : geometry;
 	if ( ! geo.attributes.normal ) geo.computeVertexNormals();
 	const pos = geo.attributes.position;
 	const uv = new Float32Array( pos.count * 2 );
 	const off = offset ?? [ Math.random() * 10, Math.random() ];
+	const ang = angle ?? ( offset ? 0 : ( Math.random() - 0.5 ) * 2 * 3 * Math.PI / 180 );
+	const ca = Math.cos( ang ), sa = Math.sin( ang );
 	const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
 
 	for ( let i = 0; i < pos.count; i += 3 ) {
@@ -46,8 +50,10 @@ export function boxProjectUV( geometry, { grain = 'x', scale = 1.5, vScale = 2, 
 
 			}
 
-			uv[ ( i + k ) * 2 ] = coord[ uAxis ] / scale + off[ 0 ];
-			uv[ ( i + k ) * 2 + 1 ] = coord[ vAxis ] / scale * vScale + off[ 1 ];
+			const pu = coord[ uAxis ] * ca - coord[ vAxis ] * sa;
+			const pv = coord[ uAxis ] * sa + coord[ vAxis ] * ca;
+			uv[ ( i + k ) * 2 ] = pu / scale + off[ 0 ];
+			uv[ ( i + k ) * 2 + 1 ] = pv / scale * vScale + off[ 1 ];
 
 		}
 

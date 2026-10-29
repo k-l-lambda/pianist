@@ -153,7 +153,8 @@ export function uprightScale() {
 
 /**
  * Build plate, pins, strings, pressure bars and hammers.
- * Returns { group, hammers } where hammers maps MIDI pitch -> { node, strike angle }.
+ * Returns { group, hammers, dampers }: hammers maps MIDI pitch -> { node, strike angle },
+ * dampers maps MIDI pitch -> { node, axis, lift }.
  * @param M materials
  * @param o { yStrike, zPlate (front face), zTenor, zBass, top, halfWidth }
  */
@@ -339,6 +340,43 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 
 	}
 
-	return { group: g, hammers };
+	// --- dampers: felt heads pressing on the strings below the strike line -----------------
+	// Notes 1–68 are damped (the top treble rings freely, as on real pianos). Each head sits on
+	// its unison, rotated with the string; lifting moves it towards the player.
+	const dampers = new Map();
+	{
+
+		const DROP = 0.034;		// below the strike line, along the string
+		const mats = [ M.hammerFelt, M.spruce ];
+		for ( const o of notes ) {
+
+			if ( o.n > 68 ) continue;
+			const zs = o.section === 'bass' ? zBass : zTenor;
+			const pitch = o.section === 'bass' ? 0.0138 : 0.0133;
+			const w = Math.min( pitch - 0.0016, o.unison === 1 ? 0.008 : o.unison === 2 ? 0.010 : 0.0105 );
+			const h = 0.016;
+			const c = o.strike.clone().addScaledVector( o.dir, - DROP / o.dir.y );
+
+			// local frame: y along the string (upwards), z towards the player, origin on the string
+			const felt = new THREE.BoxGeometry( w, h, 0.006 ).translate( 0, 0, o.dia / 2 + 0.003 );
+			const head = new THREE.BoxGeometry( w - 0.001, h - 0.002, 0.010 ).translate( 0, 0, o.dia / 2 + 0.011 );
+			const wire = rod( v3( 0, - 0.004, o.dia / 2 + 0.016 ), v3( 0, - 0.07, o.dia / 2 + 0.03 ), 0.0008, 5 );
+			const geo = mergeGeometries( [ merge( [ felt ] ), merge( [ head, wire ] ) ], true );
+
+			const node = new THREE.Group();
+			node.position.set( c.x, c.y + yStrike, zs );
+			node.rotation.z = - Math.atan2( o.dir.x, o.dir.y );
+			const m = new THREE.Mesh( geo, mats );
+			m.castShadow = true;
+			m.receiveShadow = true;
+			node.add( m );
+			g.add( node );
+			dampers.set( o.n + 20, { node, axis: 'z', lift: 0.008 } );
+
+		}
+
+	}
+
+	return { group: g, hammers, dampers };
 
 }

@@ -194,6 +194,15 @@ function noteOff( pitch ) {
 
 }
 
+// sustain pedal: lifts every damper; on release, notes whose keys are up are damped
+function setSustain( on ) {
+
+	synth.sustain = on;
+	piano.action?.setSustain( on );
+	if ( ! on ) for ( const p of [ ...synth.voices.keys() ] ) if ( ! piano.keyboard.keys.get( p )?.target ) synth.noteOff( p );
+
+}
+
 function pickKey( event ) {
 
 	const rect = renderer.domElement.getBoundingClientRect();
@@ -246,7 +255,7 @@ window.addEventListener( 'keydown', event => {
 	const k = event.key.toLowerCase();
 	if ( k === 'z' ) { octaveShift = Math.max( - 3, octaveShift - 1 ); return; }
 	if ( k === 'x' ) { octaveShift = Math.min( 3, octaveShift + 1 ); return; }
-	if ( k === ' ' ) { synth.sustain = true; event.preventDefault(); return; }
+	if ( k === ' ' ) { setSustain( true ); event.preventDefault(); return; }
 	const i = KEYMAP.indexOf( k );
 	if ( i < 0 ) return;
 	const pitch = 60 + i + 12 * octaveShift;
@@ -260,8 +269,7 @@ window.addEventListener( 'keyup', event => {
 	const k = event.key.toLowerCase();
 	if ( k === ' ' ) {
 
-		synth.sustain = false;
-		for ( const p of [ ...synth.voices.keys() ] ) if ( ! piano.keyboard.keys.get( p )?.target ) synth.noteOff( p );
+		setSustain( false );
 		return;
 
 	}
@@ -287,12 +295,7 @@ navigator.requestMIDIAccess?.().then( access => {
 		const cmd = status & 0xf0;
 		if ( cmd === 0x90 && b > 0 ) noteOn( a, b / 127 );
 		else if ( cmd === 0x80 || ( cmd === 0x90 && b === 0 ) ) noteOff( a );
-		else if ( cmd === 0xb0 && a === 64 ) {
-
-			synth.sustain = b >= 64;
-			if ( ! synth.sustain ) for ( const p of [ ...synth.voices.keys() ] ) if ( ! piano.keyboard.keys.get( p )?.target ) synth.noteOff( p );
-
-		}
+		else if ( cmd === 0xb0 && a === 64 ) setSustain( b >= 64 );
 
 	};
 	access.inputs.forEach( bind );

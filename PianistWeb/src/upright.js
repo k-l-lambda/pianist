@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { Keyboard } from './keyboard.js';
 import { buildStringing } from './stringing.js';
-import { HammerAction } from './action.js';
+import { PianoAction } from './action.js';
 import { woodBox, v3, extrudeSide, extrudeTop, mirrorX, merge, boxProjectUV } from './geometry.js';
 
 const KEY_BOTTOM = 0.698;			// white key top at 0.72
@@ -201,7 +201,7 @@ function buildInterior( M ) {
 	// plate, wrest pins, overstrung strings, pressure bars, hammers
 	const stringing = buildStringing( M, { yStrike: 1.055, zPlate: - 0.50, zTenor: - 0.492, zBass: - 0.484, top: TOP, halfWidth: XS - 0.004 } );
 	g.add( stringing.group );
-	g.userData.hammers = stringing.hammers;
+	g.userData.action = { hammers: stringing.hammers, dampers: stringing.dampers };
 
 	// hammer rail felt and action rail (mostly hidden behind the lip rail)
 	g.add( mesh( woodBox( v3( - XI, 0.99, - 0.40 ), v3( XI, 1.012, - 0.385 ) ), M.greenFelt ) );
@@ -229,7 +229,7 @@ export function buildUpright( M ) {
 	return {
 		group,
 		keyboard,
-		action: new HammerAction( interior.userData.hammers ),
+		action: new PianoAction( interior.userData.action ),
 		depth: - BACK,
 		camera: { position: v3( - 0.2, 1.35, 2.6 ), target: v3( 0, 0.78, - 0.25 ) },
 	};
