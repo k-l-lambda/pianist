@@ -262,7 +262,9 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	{
 
 		// keybed + keyslip
-		group.add( mesh( woodBox( v3( - 0.66, 0.62, - 0.25 ), v3( 0.66, 0.685, 0 ), { noUV: true } ), M.keybed ) );
+		// key bed: top slab behind the keyslip, its front face hidden behind the keyslip
+		group.add( mesh( woodBox( v3( - 0.66, 0.655, - 0.25 ), v3( 0.66, 0.685, 0 ), { noUV: true } ), M.keybed ) );
+		group.add( mesh( woodBox( v3( - 0.66, 0.62, - 0.25 ), v3( 0.66, 0.655, - 0.012 ), { noUV: true } ), M.case ) );
 		group.add( mesh( woodBox( v3( - 0.70, 0.655, - 0.01 ), v3( 0.70, 0.705, 0.022 ), { noUV: true, radius: 0.004 } ), M.case ) );
 		// cheek blocks
 		for ( const sx of [ - 1, 1 ] ) {

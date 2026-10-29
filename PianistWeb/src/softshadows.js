@@ -2,9 +2,15 @@
 //
 // The sun's penumbra should grow with the distance between occluder and receiver: black keys
 // a few millimetres above the white keys give crisp shadows, the window frame and leaves
-// metres away give soft ones. three's PCF only reads the shadow map through a comparison
-// sampler, so the blocker search probes it at several depth offsets ("is there an occluder
-// at least Δ in front of me?") instead of averaging raw depths.
+// metres away give soft ones — and where both fall on the same spot they must multiply
+// (a sharp key shadow inside the frame's soft penumbra), not blend into one blur.
+//
+// So occluders are split into distance bands, each filtered with the penumbra size of its
+// own distance, and the band visibilities are multiplied. three's PCF only reads the shadow
+// map through a comparison sampler; "lit by band b" is estimated as the fraction of samples
+// with no occluder beyond the band's near limit, among those with none beyond its far limit
+// (the shadow map stores only the occluder nearest to the light per texel). Where a band is
+// almost entirely hidden behind farther occluders, it is estimated on the next wider ring.
 //
 // Lights opt in by setting shadow.radius = 1000 + K, where K = (sun angular radius) /
 // (angle of one shadow-map texel); every other light keeps the stock PCF filter.
@@ -40,54 +46,126 @@ export function applyPCSS( { near, far } ) {
 
 					float K = shadowRadius - 1000.0;
 					const float N = ${ f( near ) }, F = ${ f( far ) };
-					float zr = shadowCoord.z;
-					float dR = 2.0 * F * N / ( F + N - ( 2.0 * zr - 1.0 ) * ( F - N ) );
+					float dR = 2.0 * F * N / ( F + N - ( 2.0 * shadowCoord.z - 1.0 ) * ( F - N ) );
 
-					// blocker search: occlusion fraction for occluders at least delta in front
-					const float LEVELS[ 6 ] = float[]( 0.003, 0.012, 0.05, 0.2, 0.8, 3.0 );
-					float occ[ 6 ];
-					for ( int l = 0; l < 6; ++ l ) {
+					// bands of occluder distance in front of the receiver (m), a representative
+					// distance for each band's penumbra, and sample counts
+					const float E[ 6 ] = float[]( 0.0, 0.1, 0.4, 1.5, 4.0, 1e6 );
+					const float REP[ 5 ] = float[]( 0.0, 0.2, 0.77, 2.45, 5.5 );
+					const int NS[ 5 ] = int[]( 4, 6, 8, 12, 16 );
 
-						float delta = LEVELS[ l ];
-						// shadow-map depth of the distance dR - delta (perspective spot camera)
-						float z = 0.5 * ( ( F + N - 2.0 * F * N / max( dR - delta, N ) ) / ( F - N ) ) + 0.5;
-						float r = clamp( K * delta / dR, 1.0, 80.0 ) * texelSize.x;
-						float s = 0.0;
-						for ( int i = 0; i < 6; ++ i ) s += texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( i, 6, phi ) * r, z ) );
-						occ[ l ] = 1.0 - s / 6.0;
+					// per band: shadow-map depths of its limits dR - E (perspective spot camera; band 0
+					// starts at the receiver), filter radius, and lit counts A (beyond near limit) /
+					// B (beyond far limit) on its own sample ring
+					float z0[ 5 ], z1[ 5 ], rt[ 5 ], A[ 5 ], B[ 5 ];
+					for ( int b = 0; b < 5; ++ b ) {
 
-					}
+						rt[ b ] = clamp( K * REP[ b ] / max( dR - REP[ b ], 1.0 ), 0.75, 80.0 ) * texelSize.x;
+						z0[ b ] = b == 0 ? shadowCoord.z : 0.5 * ( ( F + N - 2.0 * F * N / max( dR - E[ b ], N ) ) / ( F - N ) ) + 0.5;
+						z1[ b ] = 0.5 * ( ( F + N - 2.0 * F * N / max( dR - E[ b + 1 ], N ) ) / ( F - N ) ) + 0.5;
+						int n = NS[ b ];
+						float s0 = 0.0, s1 = 0.0;
+						for ( int i = 0; i < 16; ++ i ) {
 
-					// blocker distance: deepest level that still sees occluders, interpolated in log space
-					float dB = 0.0;
-					for ( int l = 0; l < 6; ++ l ) {
-
-						if ( occ[ l ] > 0.02 ) {
-
-							float next = l < 5 ? occ[ l + 1 ] : 0.0;
-							float t = clamp( ( occ[ l ] - 0.02 ) / max( occ[ l ] - next, 1e-3 ), 0.0, 1.0 );
-							float hi = l < 5 ? LEVELS[ l + 1 ] : LEVELS[ 5 ] * 2.0;
-							dB = LEVELS[ l ] * pow( hi / LEVELS[ l ], t );
+							if ( i >= n ) break;
+							vec2 uv = shadowCoord.xy + vogelDiskSample( i, n, phi + float( b ) * 1.7 ) * rt[ b ];
+							s0 += texture( shadowMap, vec3( uv, z0[ b ] ) );
+							if ( b < 4 ) s1 += texture( shadowMap, vec3( uv, z1[ b ] ) );
 
 						}
 
+						A[ b ] = s0;
+						B[ b ] = s1;
+
 					}
 
-					// no occluder at any distance: lit. (Testing only the nearest level here would cut
-					// off the outer half of far occluders' penumbrae, e.g. the leaves.)
-					if ( dB == 0.0 ) return 1.0;
+					float vis = A[ 4 ] / float( NS[ 4 ] );
+					for ( int b = 3; b >= 0; -- b ) {
 
-					// filter with the penumbra this blocker distance produces
-					float pr = clamp( K * dB / max( dR - dB, 1.0 ), 0.75, 80.0 ) * texelSize.x;
-					float sum = 0.0;
-					for ( int i = 0; i < 24; ++ i ) sum += texture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( i, 24, phi ) * pr, shadowCoord.z ) );
-					return mix( 1.0, sum / 24.0, shadowIntensity );
+						// fraction lit by this band among samples not hidden behind farther occluders.
+						// Where its own ring is (mostly) hidden — e.g. the piano behind the leaves, seen
+						// from the sun — move outward ring by ring until the band shows through the
+						// gaps. The band's visibility is the average over what the rings did see; only
+						// if no ring sees it at all is it taken as clear (farther bands carry the shadow).
+						float v = 0.0, remaining = 1.0;
+						for ( int r = b; r < 5; ++ r ) {
+
+							float c, d;
+							if ( r == b ) {
+
+								c = A[ b ];
+								d = B[ b ];
+
+							} else {
+
+								int n = NS[ r ];
+								c = 0.0;
+								d = 0.0;
+								for ( int i = 0; i < 16; ++ i ) {
+
+									if ( i >= n ) break;
+									vec2 uv = shadowCoord.xy + vogelDiskSample( i, n, phi + float( r ) * 1.7 ) * rt[ r ];
+									c += texture( shadowMap, vec3( uv, z0[ b ] ) );
+									if ( r > b + 1 ) d += texture( shadowMap, vec3( uv, z1[ b ] ) );
+
+								}
+
+								// ring b+1 at our far limit is that ring's own near-limit count
+								if ( r == b + 1 ) d = A[ b + 1 ];
+
+							}
+
+							float w = smoothstep( 0.25, 1.5, d ) * remaining;
+							v += w * clamp( c / max( d, 1e-4 ), 0.0, 1.0 );
+							remaining -= w;
+							if ( remaining < 0.01 ) break;
+
+						}
+
+						float seen = 1.0 - remaining;
+						v = mix( 1.0, v / max( seen, 1e-4 ), smoothstep( 0.0, 0.1, seen ) );
+						vis *= v;
+						if ( vis < 0.004 ) break;
+						#ifdef KEY_SHADOW
+						// nearest band (black keys, arms) comes from the keyboard's own map below
+						if ( b == 1 ) break;
+						#endif
+
+					}
+
+					#ifdef KEY_SHADOW
+					vis *= keyShadowVisibility();
+					#endif
+					return mix( 1.0, vis, shadowIntensity );
 
 				}
 				#endif
 				float radius = shadowRadius * texelSize.x;`;
 
 	// replace texelSize / radius / phi setup; the PCSS block declares texelSize and phi itself
-	THREE.ShaderChunk.shadowmap_pars_fragment = chunk.slice( 0, t ) + pcss + chunk.slice( p + PHI.length );
+	let patched = chunk.slice( 0, t ) + pcss + chunk.slice( p + PHI.length );
+
+	// materials with KEY_SHADOW (the keys) also read the keyboard's own sun map (keyshadow.js)
+	const PCF_FN = 'float getShadow( sampler2DShadow shadowMap,';
+	const keyFn = /* glsl */`
+		#ifdef KEY_SHADOW
+			uniform sampler2DShadow keyShadowMap;
+			uniform vec2 keyShadowRadius;
+			uniform float keyShadowBias;
+			varying vec4 vKeyShadowCoord;
+			float keyShadowVisibility() {
+				vec3 c = vKeyShadowCoord.xyz / vKeyShadowCoord.w * 0.5 + 0.5;
+				if ( c.x < 0.0 || c.x > 1.0 || c.y < 0.0 || c.y > 1.0 || c.z > 1.0 ) return 1.0;
+				float ph = interleavedGradientNoise( gl_FragCoord.xy ) * PI2;
+				float s = 0.0;
+				for ( int i = 0; i < 8; ++ i ) s += texture( keyShadowMap, vec3( c.xy + vogelDiskSample( i, 8, ph ) * keyShadowRadius, c.z - keyShadowBias ) );
+				return s / 8.0;
+			}
+		#endif
+		`;
+	const fnAt = patched.indexOf( PCF_FN );
+	if ( fnAt >= 0 ) patched = patched.slice( 0, fnAt ) + keyFn + patched.slice( fnAt );
+	else console.warn( 'softshadows: PCF getShadow not found; key shadows not applied' );
+	THREE.ShaderChunk.shadowmap_pars_fragment = patched;
 
 }

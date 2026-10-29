@@ -14,6 +14,7 @@ import { buildGrand } from './grand.js';
 import { Room, LIGHT_PRESETS } from './room.js';
 import { GIProbe } from './gi.js';
 import { PathTracer } from './pathtracer.js';
+import { KeyShadow } from './keyshadow.js';
 import { Synth } from './synth.js';
 import { MidiFilePlayer } from './midi.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
@@ -61,6 +62,7 @@ controls.maxPolarAngle = Math.PI * 0.53;
 const baker = new TextureBaker( renderer );
 const room = new Room( scene, baker );
 const probe = new GIProbe( renderer, scene );
+const keyShadow = new KeyShadow( renderer );
 const pathTracer = new PathTracer( renderer );
 const synth = new Synth();
 
@@ -123,6 +125,7 @@ function setStyle( id ) {
 	// back of the piano against the back wall
 	piano.group.position.set( 0, 0, room.backWallZ + piano.depth + 0.03 );
 	scene.add( piano.group );
+	keyShadow.attach( piano, [ M.keyWhite, M.keyBlack ] );
 	scene.updateMatrixWorld( true );
 
 	const off = piano.group.position;
@@ -592,6 +595,8 @@ function frame() {
 	controls.update();
 	keysMoving = piano.keyboard.update( dt );
 	if ( piano.action?.update( dt ) ) keysMoving = true;
+	// the keyboard's own sun shadow map (same angular sun size as room.js)
+	if ( room.mode !== 'pathtrace' ) keyShadow.update( scene, room.sun, 0.0045 * ( 0.4 + 1.6 * room.light.sunSoftness ) );
 
 	if ( settings.mode === 'pathtrace' ) {
 

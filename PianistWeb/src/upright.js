@@ -143,7 +143,8 @@ function buildCase( M ) {
 	g.add( mesh( merge( caseParts ), M.case, { name: 'caseWood' } ) );
 
 	// key bed (dark, under the keys) and cover behind the key backs
-	g.add( mesh( woodBox( v3( - XI, 0.62, - 0.235 ), v3( XI, 0.685, 0.0 ), { grain: 'x' } ), M.keybed ) );
+	// (only as deep as the keyslip, so its front face stays hidden behind it)
+	g.add( mesh( woodBox( v3( - XI, 0.655, - 0.235 ), v3( XI, 0.685, 0.0 ), { grain: 'x' } ), M.keybed ) );
 
 	// red key-cover felt along the panel bottom
 	g.add( mesh( woodBox( v3( - XI, 0.72, - 0.156 ), v3( XI, 0.737, - 0.146 ), { grain: 'x' } ), M.redFelt ) );

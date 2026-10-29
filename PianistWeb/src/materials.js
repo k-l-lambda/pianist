@@ -49,7 +49,7 @@ function shared( baker ) {
 		steel: phys( { color: '#d6d8db', metalness: 1, roughness: 0.22 } ),
 		copper: phys( { color: '#c47a45', metalness: 1, roughness: 0.3 } ),
 		brass: phys( { color: '#d4ab5e', metalness: 1, roughness: 0.18, clearcoat: 0.5 } ),
-		redFelt: woodMaterial( baker.felt( '#7a1218' ), { sheen: 1, sheenColor: new THREE.Color( '#c0303a' ), sheenRoughness: 0.6 } ),
+		redFelt: woodMaterial( baker.felt( '#3a080b' ), { sheen: 0.3, sheenColor: new THREE.Color( '#4a1418' ), sheenRoughness: 0.7 } ),
 		greenFelt: woodMaterial( baker.felt( '#1f2a1c' ), { sheen: 0.6, sheenColor: new THREE.Color( '#3c4a36' ), sheenRoughness: 0.7 } ),
 		hammerFelt: woodMaterial( baker.felt( '#e9e4d6' ), { sheen: 1, sheenColor: new THREE.Color( '#ffffff' ), sheenRoughness: 0.5 } ),
 		keyWhite: phys( {
