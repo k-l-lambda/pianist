@@ -5,11 +5,16 @@
   "type": "module",
   "description": "Photorealistic WebGL piano scene",
   "scripts": {
+    "predev": "node tools/copy-fluid.mjs",
     "dev": "vite",
+    "prebuild": "node tools/copy-fluid.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "soundfont": "node tools/extract-piano.mjs"
   },
   "dependencies": {
+    "@k-l-lambda/music-widgets": "1.0.10",
+    "js-synthesizer": "1.11.0",
     "lil-gui": "0.21.0",
     "three": "0.186.1",
     "three-gpu-pathtracer": "0.0.27",

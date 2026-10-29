@@ -15,6 +15,7 @@ import { Room, LIGHT_PRESETS } from './room.js';
 import { GIProbe } from './gi.js';
 import { PathTracer } from './pathtracer.js';
 import { Synth } from './synth.js';
+import { MidiFilePlayer } from './midi.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
 
 const params = new URLSearchParams( location.search );
@@ -180,20 +181,32 @@ const pointer = new THREE.Vector2();
 let pointerPitch = null;
 const keysDown = new Set();
 
-function noteOn( pitch, velocity = 0.8 ) {
+// `sound: false` animates only (MIDI file playback schedules its own sound)
+function noteOn( pitch, velocity = 0.8, { sound = true } = {} ) {
 
-	if ( pitch < PITCH_MIN || pitch > PITCH_MAX ) return;
+	if ( pitch < PITCH_MIN || pitch > PITCH_MAX ) {
+
+		if ( sound ) synth.noteOn( pitch, velocity );
+		return;
+
+	}
+
 	piano.keyboard.press( pitch, velocity );
 	piano.action?.press( pitch, velocity );
-	synth.noteOn( pitch, velocity );
+	if ( sound ) synth.noteOn( pitch, velocity );
 
 }
 
-function noteOff( pitch ) {
+function noteOff( pitch, { sound = true } = {} ) {
 
-	piano.keyboard.release( pitch );
-	piano.action?.release( pitch );
-	synth.noteOff( pitch );
+	if ( pitch >= PITCH_MIN && pitch <= PITCH_MAX ) {
+
+		piano.keyboard.release( pitch );
+		piano.action?.release( pitch );
+
+	}
+
+	if ( sound ) synth.noteOff( pitch );
 
 }
 
@@ -417,6 +430,131 @@ fGrand.add( settings, 'lidAngle', 0, 45, 1 ).name( 'Lid angle' ).onFinishChange(
 gui.add( settings, 'volume', 0, 1, 0.01 ).name( 'Volume' ).onChange( v => synth.setVolume( v ) );
 
 // ---------------------------------------------------------------------------
+// MIDI file player: open / drop a .mid file; playback animates keys, hammers, dampers and pedals
+
+const midiPlayer = new MidiFilePlayer( synth, {
+	noteOn: ( pitch, velocity, opts ) => noteOn( pitch, velocity, opts ),
+	noteOff: ( pitch, opts ) => noteOff( pitch, opts ),
+	pedal: ( name, on ) => pedal( name, 'midi-file', on ),
+	onEnd: () => midiUI.updateDisplay(),
+} );
+
+const midiState = {
+	file: '(none)',
+	position: 0,
+	tempo: 1,
+	open: () => fileInput.click(),
+	toggle: () => midiPlayer.playing ? midiPlayer.pause() : playMidi(),
+	stop: () => midiPlayer.stop(),
+};
+
+async function playMidi() {
+
+	await synth.resume();
+	midiPlayer.play();
+
+}
+
+async function loadMidiFile( file ) {
+
+	if ( ! file ) return;
+	try {
+
+		const { duration, notes } = midiPlayer.load( await file.arrayBuffer(), file.name );
+		midiState.file = file.name;
+		midiState.position = 0;
+		positionCtrl.max( Math.max( 1, duration / 1000 ) );
+		console.log( `MIDI: ${ file.name }, ${ notes } notes, ${ ( duration / 1000 ).toFixed( 1 ) } s` );
+		await playMidi();
+
+	} catch ( err ) {
+
+		midiState.file = `error: ${ err.message }`;
+		console.warn( 'MIDI load failed:', err );
+
+	}
+
+	fMidi.controllersRecursive().forEach( c => c.updateDisplay() );
+
+}
+
+const fileInput = Object.assign( document.createElement( 'input' ), { type: 'file', accept: '.mid,.midi,audio/midi' } );
+fileInput.style.display = 'none';
+document.body.appendChild( fileInput );
+fileInput.addEventListener( 'change', () => {
+
+	loadMidiFile( fileInput.files[ 0 ] );
+	fileInput.value = '';
+
+} );
+
+const fMidi = gui.addFolder( 'MIDI player' );
+fMidi.add( midiState, 'open' ).name( 'Open MIDI file…' );
+fMidi.add( midiState, 'file' ).name( 'File' ).disable();
+const midiUI = fMidi.add( midiState, 'toggle' ).name( 'Play / pause' );
+fMidi.add( midiState, 'stop' ).name( 'Stop' );
+let seeking = false;
+const positionCtrl = fMidi.add( midiState, 'position', 0, 1, 0.1 ).name( 'Position (s)' )
+	.onChange( () => seeking = true )
+	.onFinishChange( v => {
+
+		seeking = false;
+		midiPlayer.seek( v * 1000 );
+
+	} );
+fMidi.add( midiState, 'tempo', 0.25, 2, 0.05 ).name( 'Tempo' ).onChange( v => midiPlayer.setRate( v ) );
+
+function updateMidiUI() {
+
+	if ( seeking || ! midiPlayer.duration ) return;
+	const t = Math.round( Math.min( midiPlayer.position, midiPlayer.duration ) / 100 ) / 10;
+	if ( t !== midiState.position ) {
+
+		midiState.position = t;
+		positionCtrl.updateDisplay();
+
+	}
+
+}
+
+// drop a MIDI file anywhere on the page
+const dropOverlay = document.getElementById( 'drop' );
+let dragDepth = 0;
+const hasFiles = e => [ ...( e.dataTransfer?.types ?? [] ) ].includes( 'Files' );
+window.addEventListener( 'dragenter', e => {
+
+	if ( ! hasFiles( e ) ) return;
+	e.preventDefault();
+	if ( ++ dragDepth === 1 ) dropOverlay.classList.add( 'show' );
+
+} );
+window.addEventListener( 'dragover', e => hasFiles( e ) && e.preventDefault() );
+window.addEventListener( 'dragleave', e => {
+
+	if ( ! hasFiles( e ) ) return;
+	if ( -- dragDepth <= 0 ) {
+
+		dragDepth = 0;
+		dropOverlay.classList.remove( 'show' );
+
+	}
+
+} );
+window.addEventListener( 'drop', e => {
+
+	if ( ! hasFiles( e ) ) return;
+	e.preventDefault();
+	dragDepth = 0;
+	dropOverlay.classList.remove( 'show' );
+	const file = [ ...e.dataTransfer.files ].find( f => /\.midi?$/i.test( f.name ) || /midi/.test( f.type ) );
+	if ( file ) loadMidiFile( file );
+
+} );
+
+// start fetching the soundfont piano right away (audio starts on the first gesture)
+synth.load();
+
+// ---------------------------------------------------------------------------
 // loop
 
 const hud = document.getElementById( 'hud' );
@@ -445,6 +583,8 @@ function resize() {
 window.addEventListener( 'resize', resize );
 
 function frame() {
+
+	updateMidiUI();
 
 	timer.update();
 	const dt = Math.min( timer.getDelta(), 0.05 );
@@ -497,5 +637,5 @@ applyAO();
 setStyle( settings.style );
 setMode( settings.mode );
 document.getElementById( 'loading' ).classList.add( 'hidden' );
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, synth, midiPlayer, get piano() { return piano; } };
 requestAnimationFrame( frame );

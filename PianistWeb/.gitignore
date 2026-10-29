@@ -1,2 +1,6 @@
 node_modules/
 dist/
+# source soundfont (input of `npm run soundfont`), not shipped
+soundfont/gm.sf3
+# copied from node_modules by tools/copy-fluid.mjs on dev/build
+public/fluid/

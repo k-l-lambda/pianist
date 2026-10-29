@@ -11,11 +11,14 @@
 		#hud { position: fixed; left: 12px; bottom: 10px; padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,.45); pointer-events: none; }
 		#loading { position: fixed; inset: 0; display: grid; place-items: center; background: #111; font-size: 15px; letter-spacing: .04em; }
 		#loading.hidden { display: none; }
+		#drop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(10,12,14,.72); border: 3px dashed rgba(255,255,255,.55); box-sizing: border-box; font-size: 20px; letter-spacing: .04em; pointer-events: none; z-index: 10; }
+		#drop.show { display: grid; }
 	</style>
 </head>
 <body>
 	<div id="loading">Building scene…</div>
 	<div id="hud"></div>
+	<div id="drop">Drop a MIDI file to play it</div>
 	<script type="module" src="/src/main.js"></script>
 </body>
 </html>
