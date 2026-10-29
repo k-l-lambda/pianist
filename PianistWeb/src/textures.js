@@ -382,7 +382,7 @@ export class TextureBaker {
 	weatheredOak() {
 
 		return this.bake( 'weatheredOak', WOOD_GLSL, {
-			colBase: '#a89f8f', colDark: '#8f8575', colLate: '#6f665a', colGray: '#b8b2a8',
+			colBase: '#6e5643', colDark: '#574332', colLate: '#3b2c21', colGray: '#7d6a58',
 			weathering: 1.0, crackAmount: 1.0, planks: 3, ringScale: 70.0, roughBase: 0.62, seed: 1.7,
 		}, { normalStrength: 3 } );
 

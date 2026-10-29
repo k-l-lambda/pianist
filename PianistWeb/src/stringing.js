@@ -11,6 +11,7 @@
 // Coordinates: x along the keyboard, y up (absolute), strings in planes of constant z.
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { v3, merge, rod, beam, woodBox } from './geometry.js';
 
 const lerp = THREE.MathUtils.lerp;
@@ -34,7 +35,7 @@ export function uprightScale() {
 	let x = 0;
 	for ( let n = 1; n <= 88; ++ n ) {
 
-		if ( n > 1 ) x += n <= 14 ? 0.0140 : n === 15 ? 0.0141 : n <= 32 ? 0.0142 : n === 33 ? 0.034 : n <= 58 ? 0.0135 : n === 59 ? 0.028 : 0.0130;
+		if ( n > 1 ) x += n <= 14 ? 0.0138 : n === 15 ? 0.0139 : n <= 32 ? 0.0140 : n === 33 ? 0.032 : n <= 58 ? 0.0133 : n === 59 ? 0.026 : 0.0129;
 		const section = n <= 32 ? 'bass' : n <= 58 ? 'tenor' : 'treble';
 		const unison = n <= 14 ? 1 : n <= 32 ? 2 : 3;
 		// angle from vertical; positive leans the top towards the treble
@@ -47,8 +48,7 @@ export function uprightScale() {
 
 	}
 
-	const mid = ( notes[ 0 ].x + notes[ 87 ].x ) / 2;
-	for ( const o of notes ) o.strike = new THREE.Vector2( o.x - mid, 0 );
+	for ( const o of notes ) o.strike = new THREE.Vector2( o.x, 0 );
 
 	// bearing points: bass studs on a line (heights 115 → 89 mm); tenor/treble pressure bars
 	const at = ( o, h ) => o.strike.clone().addScaledVector( o.dir, h / o.dir.y );
@@ -116,12 +116,44 @@ export function uprightScale() {
 
 	}
 
-	return { notes, bars };
+	// center the pin field (the bass pins lean far to the left) rather than the strike line
+	let mn = Infinity, mx = - Infinity;
+	for ( const o of notes ) for ( const st of o.strings ) {
+
+		mn = Math.min( mn, st.pin.x );
+		mx = Math.max( mx, st.pin.x );
+
+	}
+
+	const dx = - ( mn + mx ) / 2;
+	const moved = new Set();
+	const shift = v => {
+
+		if ( ! moved.has( v ) ) {
+
+			v.x += dx;
+			moved.add( v );
+
+		}
+
+	};
+	for ( const o of notes ) {
+
+		shift( o.strike );
+		shift( o.bearing );
+		for ( const st of o.strings ) [ st.bearing, st.end, st.pin ].forEach( shift );
+
+	}
+
+	[ ...bars.tenor, ...bars.treble ].forEach( shift );
+
+	return { notes, bars, pinExtent: ( mx - mn ) / 2 };
 
 }
 
 /**
  * Build plate, pins, strings, pressure bars and hammers.
+ * Returns { group, hammers } where hammers maps MIDI pitch -> { node, strike angle }.
  * @param M materials
  * @param o { yStrike, zPlate (front face), zTenor, zBass, top, halfWidth }
  */
@@ -247,29 +279,66 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 	}
 
 	// --- hammers (at rest, 45 mm in front of the strings) -------------------------------
+	// one pivot per note at the butt flange, so the action can swing each hammer to its string
+	const hammers = new Map();
 	{
 
-		const felt = [], molding = [], shanks = [];
+		const SHANK = 0.14;		// flange centre to strike line
+		const BLOW = 0.045;		// hammer face to string at rest
+		const mats = [ M.hammerFelt, M.spruce ];
 		for ( const o of notes ) {
 
 			const t = ( o.n - 1 ) / 87;
 			const h = lerp( 0.046, 0.034, t );
-			const pitch = o.section === 'bass' ? 0.014 : o.section === 'tenor' ? 0.0135 : 0.013;
+			const pitch = o.section === 'bass' ? 0.014 : o.section === 'tenor' ? 0.0133 : 0.0129;
 			const w = Math.min( pitch - 0.0018, lerp( 0.0125, 0.0105, t ) );
-			const zf = ( o.section === 'bass' ? zBass : zTenor ) + 0.045;
+			const zs = o.section === 'bass' ? zBass : zTenor;
+			const zf = zs + BLOW;
 			const x = o.strike.x, y = yStrike;
-			felt.push( woodBox( v3( x - w / 2, y - h / 2, zf ), v3( x + w / 2, y + h / 2, zf + 0.018 ), { noUV: true, radius: 0.004 } ) );
-			molding.push( woodBox( v3( x - w / 2 + 0.0005, y - h / 2 + 0.004, zf + 0.016 ), v3( x + w / 2 - 0.0005, y + h / 2 - 0.006, zf + 0.028 ), { noUV: true, radius: 0.002 } ) );
-			shanks.push( rod( v3( x, y - 0.14, zf + 0.022 ), v3( x, y - h / 2 + 0.004, zf + 0.022 ), 0.0023, 6 ) );
+			const pivot = v3( x, y - SHANK, zf + 0.022 );
+
+			const felt = woodBox( v3( x - w / 2, y - h / 2, zf ), v3( x + w / 2, y + h / 2, zf + 0.018 ), { noUV: true, radius: 0.004 } );
+			const molding = woodBox( v3( x - w / 2 + 0.0005, y - h / 2 + 0.004, zf + 0.016 ), v3( x + w / 2 - 0.0005, y + h / 2 - 0.006, zf + 0.028 ), { noUV: true, radius: 0.002 } );
+			const shank = rod( pivot, v3( x, y - h / 2 + 0.004, zf + 0.022 ), 0.0023, 6 );
+			const wood = merge( [ molding, shank ] );
+			const geo = mergeGeometries( [ merge( [ felt ] ), wood ], true );
+			geo.translate( - pivot.x, - pivot.y, - pivot.z );
+
+			const node = new THREE.Group();
+			node.position.copy( pivot );
+			const m = new THREE.Mesh( geo, mats );
+			m.castShadow = true;
+			m.receiveShadow = true;
+			node.add( m );
+			g.add( node );
+
+			// rotation about x at which the felt's nearest point just touches the string
+			// (bisection over the felt vertices; z' = y sinφ + z cosφ relative to the pivot)
+			const fp = felt.attributes.position;
+			const touch = zs + o.dia / 2 - pivot.z;
+			const minZ = phi => {
+
+				let m = Infinity;
+				const sn = Math.sin( phi ), cs = Math.cos( phi );
+				for ( let i = 0; i < fp.count; ++ i ) m = Math.min( m, ( fp.getY( i ) - pivot.y ) * sn + ( fp.getZ( i ) - pivot.z ) * cs );
+				return m;
+
+			};
+			let lo = - 0.8, hi = 0;
+			for ( let k = 0; k < 40; ++ k ) {
+
+				const mid = ( lo + hi ) / 2;
+				if ( minZ( mid ) > touch ) hi = mid; else lo = mid;
+
+			}
+
+			const strike = hi;
+			hammers.set( o.n + 20, { node, strike } );
 
 		}
 
-		add( merge( felt ), M.hammerFelt ).name = 'hammers';
-		add( merge( molding ), M.spruce );
-		add( merge( shanks ), M.spruce );
-
 	}
 
-	return g;
+	return { group: g, hammers };
 
 }

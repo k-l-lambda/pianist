@@ -181,6 +181,7 @@ function noteOn( pitch, velocity = 0.8 ) {
 
 	if ( pitch < PITCH_MIN || pitch > PITCH_MAX ) return;
 	piano.keyboard.press( pitch, velocity );
+	piano.action?.press( pitch, velocity );
 	synth.noteOn( pitch, velocity );
 
 }
@@ -188,6 +189,7 @@ function noteOn( pitch, velocity = 0.8 ) {
 function noteOff( pitch ) {
 
 	piano.keyboard.release( pitch );
+	piano.action?.release( pitch );
 	synth.noteOff( pitch );
 
 }
@@ -401,6 +403,7 @@ function frame() {
 	cameraMoving = false;
 	controls.update();
 	keysMoving = piano.keyboard.update( dt );
+	if ( piano.action?.update( dt ) ) keysMoving = true;
 
 	if ( settings.mode === 'pathtrace' ) {
 
@@ -446,5 +449,5 @@ applyAO();
 setStyle( settings.style );
 setMode( settings.mode );
 document.getElementById( 'loading' ).classList.add( 'hidden' );
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, get piano() { return piano; } };
 requestAnimationFrame( frame );
