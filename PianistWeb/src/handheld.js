@@ -109,7 +109,7 @@ function psdAt( freqs, psd, f ) {
  * Stationary Gaussian noise with a one-sided PSD (units²/Hz), as a looping buffer.
  * Frequencies below `fLow` are removed (that part belongs to the intended motion).
  */
-function shapedNoise( rand, freqs, psd, { rate = 120, seconds = 68.27, fLow = 0.2 } = {} ) {
+function shapedNoise( rand, freqs, psd, { rate = 120, seconds = 68.27, fLow = 0.2, fHigh = Infinity } = {} ) {
 
 	const n = 1 << Math.ceil( Math.log2( rate * seconds ) );
 	const re = new Float64Array( n ), im = new Float64Array( n );
@@ -120,7 +120,10 @@ function shapedNoise( rand, freqs, psd, { rate = 120, seconds = 68.27, fLow = 0.
 		if ( f < fLow ) continue;
 		// one-sided PSD S: the ±f bin pair must carry variance S df. With independent real and
 		// imaginary parts of variance a², the pair gives a sinusoid of variance 4a², so a = √(S df) / 2
-		const a = Math.sqrt( psdAt( freqs, psd, f ) * df ) / 2;
+		// above fHigh the measured spectrum is a flat floor (tracking noise, motion blur, rolling
+		// shutter), not hand motion: roll it off as 1/f^4
+		const roll = f > fHigh ? ( fHigh / f ) ** 2 : 1;
+		const a = Math.sqrt( psdAt( freqs, psd, f ) * df ) / 2 * roll;
 		const gr = gaussian( rand ) * a, gi = gaussian( rand ) * a;
 		re[ k ] = gr; im[ k ] = gi;
 		re[ n - k ] = gr; im[ n - k ] = - gi;
@@ -150,12 +153,13 @@ export class HandheldCamera {
 	 * @param params   handheld_params.json (fitted from video)
 	 * @param options  { seed, intensity (overall shake gain), followTime (s), moveGain }
 	 */
-	constructor( params, { seed = 1, intensity = 1, followTime = 0.22, moveGain = 3 } = {} ) {
+	constructor( params, { seed = 1, intensity = 1, followTime = 0.22, moveGain = 3, cutoff = Infinity } = {} ) {
 
 		this.params = params;
 		this.intensity = intensity;
 		this.followTime = followTime;
 		this.moveGain = moveGain;		// shake while moving / shake while holding still (measured ~3)
+		this.cutoff = cutoff;			// Hz, roll-off of the measured spectra (Infinity = as measured)
 		this.setSeed( seed );
 		this.keys = [];
 		this._pos = new THREE.Vector3();
@@ -174,9 +178,9 @@ export class HandheldCamera {
 		const rmsOf = psd => Math.sqrt( psd.reduce( ( a, v, i ) => a + v * ( i ? F[ i ] - F[ i - 1 ] : F[ 0 ] ), 0 ) );
 		this.rollFromPan = rho * rmsOf( R.roll ) / rmsOf( R.pan );
 		this.rot = [
-			shapedNoise( rand, F, R.tilt, { fLow } ),
-			shapedNoise( rand, F, R.pan, { fLow } ),
-			shapedNoise( rand, F, R.roll.map( v => v * ( 1 - rho * rho ) ), { fLow } ),
+			shapedNoise( rand, F, R.tilt, { fLow, fHigh: this.cutoff } ),
+			shapedNoise( rand, F, R.pan, { fLow, fHigh: this.cutoff } ),
+			shapedNoise( rand, F, R.roll.map( v => v * ( 1 - rho * rho ) ), { fLow, fHigh: this.cutoff } ),
 		];
 		// translation shake not explained by the lever arm (mm): measured minus coupled part.
 		// lever (m/rad): right = lever.pan * pan, down = lever.tilt * tilt
@@ -188,7 +192,7 @@ export class HandheldCamera {
 			const tot = p.pos_psd_mm2_per_hz[ k ];
 			const c = couple[ k ];
 			const own = c ? tot.map( ( v, i ) => Math.max( 0.15 * v, v - ( c[ 1 ] ** 2 ) * R[ c[ 0 ] ][ i ] ) ) : tot;
-			return shapedNoise( rand, F, own, { fLow } );
+			return shapedNoise( rand, F, own, { fLow, fHigh: this.cutoff } );
 
 		} );
 		this.reset();

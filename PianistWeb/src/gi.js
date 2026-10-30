@@ -119,11 +119,61 @@ export class GIProbe {
 
 	}
 
+	/**
+	 * Mirror map for one flat glossy surface (`plane`, normal towards the viewer): captured from
+	 * the viewer's mirror image behind the plane, with everything behind the plane clipped. A
+	 * ray reflected off the plane runs on from that point, so looking the map up by reflection
+	 * direction alone gives the exact planar reflection — the viewer (the person holding the
+	 * camera) at the right size and place. Same exclusions as update(). Returns the texture.
+	 * Own, sharper cube: a mirror shows the cube's texels at several screen pixels each.
+	 */
+	updateMirror( viewer, plane, hide = [], { lights = [], objects = [], size = 1024 } = {} ) {
+
+		if ( this.mirrorRT?.width !== size ) {
+
+			this.mirrorRT?.dispose();
+			this.mirrorTarget?.dispose();
+			this.mirrorTarget = null;
+			this.mirrorRT = new THREE.WebGLCubeRenderTarget( size, { type: THREE.HalfFloatType, generateMipmaps: false } );
+			this.mirrorCamera = new THREE.CubeCamera( 0.05, 50, this.mirrorRT );
+
+		}
+
+		const r = this.renderer, scene = this.scene, cam = this.mirrorCamera;
+		const prev = { toneMapping: r.toneMapping, shadowAuto: r.shadowMap.autoUpdate, background: scene.background, env: scene.environment, clip: r.clippingPlanes };
+		const hv = hide.map( o => o.visible ), ov = objects.map( o => o.visible ), li = lights.map( l => l.intensity );
+		hide.forEach( o => o.visible = false );
+		objects.forEach( o => o.visible = false );
+		lights.forEach( l => l.intensity = 0 );
+		r.toneMapping = THREE.NoToneMapping;
+		r.shadowMap.autoUpdate = false;
+		scene.background = null;
+		const d = plane.distanceToPoint( viewer );
+		cam.position.copy( viewer ).addScaledVector( plane.normal, - 2 * d );
+		r.clippingPlanes = [ plane ];
+		scene.add( cam );
+		cam.update( r, scene );
+		scene.remove( cam );
+		r.clippingPlanes = prev.clip;
+		this.mirrorTarget = this.pmrem.fromCubemap( this.mirrorRT.texture, this.mirrorTarget );
+		hide.forEach( ( o, i ) => o.visible = hv[ i ] );
+		objects.forEach( ( o, i ) => o.visible = ov[ i ] );
+		lights.forEach( ( l, i ) => l.intensity = li[ i ] );
+		r.toneMapping = prev.toneMapping;
+		r.shadowMap.autoUpdate = prev.shadowAuto;
+		scene.background = prev.background;
+		scene.environment = prev.env;
+		return this.mirrorTarget.texture;
+
+	}
+
 	dispose() {
 
 		this.cubeRT.dispose();
 		this.targets.forEach( t => t?.dispose() );
 		this.specTarget?.dispose();
+		this.mirrorTarget?.dispose();
+		this.mirrorRT?.dispose();
 		this.pmrem.dispose();
 
 	}

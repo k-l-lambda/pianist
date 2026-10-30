@@ -76,11 +76,39 @@ const baker = new TextureBaker( renderer );
 const room = new Room( scene, baker );
 const probe = new GIProbe( renderer, scene );
 const keyShadow = new KeyShadow( renderer );
+const MIRROR_GAIN = 2.5;
+const MIRROR_SIZE = 1024;		// mirror cube face (px): at 256 the reflection shows the texels as steps
+const screenPlane = new THREE.Plane(), _n = new THREE.Vector3(), _x = new THREE.Vector3( 1, 0, 0 );
 // handheld camera mode (handheldmode.js): shake, walking, height cap, FOV zoom, person in reflections
 const handheld = new HandheldMode( {
 	camera, controls, scene, renderer,
 	isPathTracing: () => settings.mode === 'pathtrace',
-	specularCapture: position => probe.updateSpecular( position, piano ? [ piano.group ] : [], { lights: [ room.sun ], objects: [ room.foliage ].filter( Boolean ) } ),
+	specularCapture: ( eye, ahead ) => {
+
+		const opts = { lights: [ room.sun ], objects: [ room.foliage ].filter( Boolean ) };
+		const panel = piano?.roll?.screen && piano.materials?.panel;
+		if ( panel ) {
+
+			// a flat screen: exact planar reflection of the person, on the screen only. Lit by the
+			// sun as well (sunlit walls and floor belong in a mirror), and brighter than the black
+			// panel's 4-8 % reflectance: under AgX that would sink into the shadow toe (a wall at
+			// 92/255 came out at 4/255), and the room should read in the screen, the person dark
+			// against it
+			const R = piano.roll;
+			piano.group.updateMatrixWorld();
+			screenPlane.setFromNormalAndCoplanarPoint( _n.crossVectors( _x, R.up ).normalize(), R.origin ).applyMatrix4( piano.group.matrixWorld );
+			panel.envMap = probe.updateMirror( eye, screenPlane, [ piano.group ], { objects: opts.objects, size: MIRROR_SIZE } );
+			panel.envMapIntensity = MIRROR_GAIN;
+
+		} else probe.updateSpecular( ahead, piano ? [ piano.group ] : [], opts );
+
+	},
+	specularRestore: () => {
+
+		if ( piano?.materials?.panel ) piano.materials.panel.envMapIntensity = 1;
+		applySpecularEnv();
+
+	},
 	bounds: () => ( { minX: - room.params.width / 2, maxX: room.params.width / 2, minZ: room.backWallZ, maxZ: room.backWallZ + room.params.depth } ),
 } );
 renderer.debug.onShaderError = ( gl, program, vs, fs ) => {
@@ -792,5 +820,5 @@ applyQuality( false );
 setStyle( settings.style );
 setMode( settings.mode );
 if ( ! params.has( 'loading' ) ) document.getElementById( 'loading' ).classList.add( 'hidden' );		// ?loading keeps it (design preview)
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, setScreenPower, synth, midiPlayer, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, synth, midiPlayer, get piano() { return piano; } };
 requestAnimationFrame( frame );

@@ -1,23 +1,27 @@
-// The person holding the phone in handheld mode: a flattened, stylised figure standing behind
-// the camera, seen only in reflections (glossy screen, lacquer, glass) and, in path tracing,
-// as real geometry. After the reference silhouette (Footages.local/186e889d-...png): dark crew-
-// neck sweater, short dark hair, one hand in the trouser pocket, the other arm raised forward
-// holding the phone at chest-to-eye height.
+// The person holding the phone in handheld mode: a flat cut-out of the reference mirror selfie
+// (Footages.local/186e889d-...png; public/person/cutout.png, made by tools/build-person-cutout.py)
+// standing behind the camera. It is seen only in reflections (the black screen, lacquer, glass)
+// and, in path tracing, as real geometry: a dark figure against the lit room behind it, as a
+// person shows up in a black screen. The card is unlit-looking only because the photo is dark;
+// it is an ordinary diffuse surface lit by the room.
 //
-// The phone is placed exactly at the camera; the body stands behind it, turned with the camera's
-// heading and kept upright, and the right arm is solved each frame (two-bone IK) so the hand
-// reaches the phone. Everything sits behind the camera's near plane, so it never appears in
-// the direct view.
+// The raised forearm, the hand and the phone are modelled (cut out of the picture): they reach
+// forward from the elbow on the card to the camera, so the arm stands out from the body in the
+// reflection as in the photo.
+//
+// The card stands upright on the floor, turned with the camera's heading, a little behind the
+// camera, placed sideways so that the phone in the picture is in line with the camera. Shots
+// lower or higher than the picture's phone (1.52 m) are a person holding it lower or raising
+// the arm; the figure doesn't move up or down.
 
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
-const EYE_HEIGHT = 1.64;		// standing eye height of a ~1.75 m person
-const REACH_BACK = 0.36;		// eyes behind the phone (horizontal)
-const UPPER_ARM = 0.30, FOREARM = 0.27;
-const FLAT = 0.6;				// depth squash: flattened figure
+const URL = import.meta.env.BASE_URL + 'person/';
+const BEHIND = 0.3;				// m, card plane behind the camera (between the phone and the face)
 
-const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _up = new THREE.Vector3( 0, 1, 0 );
+const ELBOW_FORWARD = 0.06;		// m, elbow in front of the card
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _e = new THREE.Vector3(), _up = new THREE.Vector3( 0, 1, 0 );
 
 function mat( color, roughness, extra = {} ) {
 
@@ -25,24 +29,46 @@ function mat( color, roughness, extra = {} ) {
 
 }
 
-// a segment mesh (unit length along +y, centred) that can be stretched between two points
-function limb( radius, material ) {
+// a capsule between two points (end to end, caps included); `taper` < 1 narrows it towards b
+function limb( radius, material, taper = 1 ) {
 
-	const g = new THREE.CapsuleGeometry( radius, 1, 4, 10 );
-	const m = new THREE.Mesh( g, material );
-	m.userData.radius = radius;
+	const m = new THREE.Mesh( new THREE.BufferGeometry(), material );
+	m.userData = { radius, taper, length: - 1 };
 	return m;
 
 }
 
 function placeLimb( m, a, b ) {
 
-	_v.subVectors( b, a );
-	const len = _v.length();
+	_w.subVectors( b, a );
+	const len = _w.length(), { radius, taper } = m.userData;
+	// rebuilt when the length changes (cheap): scaling would squash the round ends
+	if ( Math.abs( len - m.userData.length ) > 0.004 ) {
+
+		m.geometry.dispose();
+		const g = new THREE.CapsuleGeometry( radius, Math.max( 0.001, len - 2 * radius ), 6, 14 );
+		if ( taper !== 1 ) {
+
+			const p = g.attributes.position;
+			for ( let i = 0; i < p.count; ++ i ) {
+
+				const k = THREE.MathUtils.lerp( 1, taper, THREE.MathUtils.clamp( p.getY( i ) / len + 0.5, 0, 1 ) );
+				p.setX( i, p.getX( i ) * k );
+				p.setZ( i, p.getZ( i ) * k );
+
+			}
+
+			g.computeVertexNormals();
+
+		}
+
+		m.geometry = g;
+		m.userData.length = len;
+
+	}
+
 	m.position.addVectors( a, b ).multiplyScalar( 0.5 );
-	m.quaternion.setFromUnitVectors( _up, _v.normalize() );
-	// capsule body is 1 long plus two radius caps; scale the straight part only (approx.)
-	m.scale.set( 1, Math.max( 0.01, len - m.userData.radius ) , 1 );
+	m.quaternion.setFromUnitVectors( _up, _w.normalize() );
 
 }
 
@@ -50,118 +76,104 @@ export class Person {
 
 	constructor() {
 
-		const sweater = mat( '#141414', 0.95, { sheen: 0.5, sheenColor: new THREE.Color( '#3a3a3a' ), sheenRoughness: 0.8 } );
-		const trousers = mat( '#101010', 0.9 );
-		const skin = mat( '#7a5a48', 0.55, { sheen: 0.3, sheenColor: new THREE.Color( '#b08a70' ) } );
-		const hair = mat( '#0b0a09', 0.7 );
-		const phone = mat( '#0c0c0e', 0.25, { clearcoat: 1, clearcoatRoughness: 0.08 } );
+		this.info = null;
+		this.material = new THREE.MeshStandardMaterial( { color: '#ffffff', roughness: 0.95, metalness: 0, alphaTest: 0.5, side: THREE.DoubleSide } );
+		this.card = new THREE.Mesh( new THREE.PlaneGeometry( 1, 1 ), this.material );
+		this.card.castShadow = false;		// behind the camera; would force shadow re-renders every frame
+		this.card.receiveShadow = true;
+		this.card.visible = false;			// until the picture has loaded
+		this.root = new THREE.Group();		// at the camera's floor point, turned with its heading
+		this.root.add( this.card );
+		this.group = new THREE.Group();
+		this.group.name = 'handheldPerson';
+		this.group.add( this.root );
 
-		const root = new THREE.Group();				// at the eyes, turned with the camera heading
-		root.name = 'person';
-		this.root = root;
-		const body = new THREE.Group();				// flattened in depth
-		body.scale.z = FLAT;
-		root.add( body );
+		// the raised arm; albedo from cutout.json (the photo's colours corrected the same way)
+		const skin = this.skin = mat( '#7c6a5d', 0.6, { sheen: 0.3, sheenColor: new THREE.Color( '#8a7464' ) } );
+		const sleeve = this.sleeve = mat( '#34363a', 0.95, { sheen: 0.5, sheenColor: new THREE.Color( '#3a3a3c' ), sheenRoughness: 0.8 } );
+		this.forearm = limb( 0.036, skin, 0.72 );			// thicker below the elbow, slim at the wrist
+		this.cuff = limb( 0.044, sleeve, 0.9 );			// sleeve pushed up, bunched at the elbow
+		this.phone = new THREE.Mesh( new RoundedBoxGeometry( 0.075, 0.155, 0.009, 3, 0.006 ), mat( '#0a0a0c', 0.55 ) );		// matte back: dark, as in the photo
+		// right hand, in phone space (x = the person's right, +z = towards the person, the lens at
+		// the top of the back, -z): as in the photo, the palm against the right edge, four
+		// fingers wrapped round the back below the lens, the thumb across the screen side
+		this.hand = new THREE.Group();
+		const palm = new THREE.Mesh( new RoundedBoxGeometry( 0.032, 0.085, 0.05, 3, 0.014 ), skin );
+		palm.position.set( 0.05, - 0.035, 0.012 );
+		palm.rotation.z = - 0.12;
+		this.hand.add( palm );
+		const joints = [ [ - 0.004, 0.058 ], [ - 0.025, 0.064 ], [ - 0.046, 0.06 ], [ - 0.065, 0.05 ] ];
+		for ( const [ y, length ] of joints ) {
 
-		const add = ( geo, m, pos, parent = body ) => {
-
-			const mesh = new THREE.Mesh( geo, m );
-			mesh.position.set( ...pos );
-			mesh.castShadow = false;		// behind the camera; would force shadow re-renders every frame
-			mesh.receiveShadow = true;
-			parent.add( mesh );
-			return mesh;
-
-		};
-
-		// head and hair (eyes at the root origin, +z = behind, -z = forward)
-		const head = add( new THREE.SphereGeometry( 0.095, 24, 18 ), skin, [ 0, 0.02, 0.02 ] );
-		head.scale.set( 0.82, 1.12, 0.95 );
-		const hairCap = add( new THREE.SphereGeometry( 0.1, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.55 ), hair, [ 0, 0.05, 0.03 ] );
-		hairCap.scale.set( 0.88, 1.05, 1.0 );
-		hairCap.rotation.x = - 0.25;
-		add( new THREE.CylinderGeometry( 0.05, 0.058, 0.12, 16 ), skin, [ 0, - 0.12, 0.03 ] );
-
-		// torso (crew-neck sweater), shoulders at y ~ -0.20 below the eyes
-		add( new RoundedBoxGeometry( 0.44, 0.62, 0.26, 4, 0.08 ), sweater, [ 0, - 0.50, 0.04 ] );
-		add( new RoundedBoxGeometry( 0.40, 0.14, 0.24, 4, 0.06 ), sweater, [ 0, - 0.24, 0.04 ] );
-		// hips and legs down to the floor
-		add( new RoundedBoxGeometry( 0.38, 0.22, 0.24, 4, 0.06 ), trousers, [ 0, - 0.86, 0.04 ] );
-		for ( const sx of [ - 1, 1 ] ) add( new RoundedBoxGeometry( 0.16, 0.86, 0.18, 3, 0.06 ), trousers, [ sx * 0.1, - 1.36, 0.05 ] );
-
-		// left arm hanging, hand in the pocket
-		const sL = new THREE.Vector3( - 0.23, - 0.27, 0.04 );
-		const eL = new THREE.Vector3( - 0.26, - 0.56, 0.06 );
-		const hL = new THREE.Vector3( - 0.2, - 0.82, 0.0 );
-		const upL = limb( 0.052, sweater ), foL = limb( 0.046, sweater );
-		placeLimb( upL, sL, eL );
-		placeLimb( foL, eL, hL );
-		body.add( upL, foL );
-
-		// right arm: solved every frame (in root space) to reach the phone
-		this.shoulder = new THREE.Vector3( 0.23, - 0.27, 0.0 );
-		this.upper = limb( 0.052, sweater );
-		this.fore = limb( 0.045, sweater );
-		this.hand = new THREE.Mesh( new THREE.SphereGeometry( 0.045, 16, 12 ), skin );
-		this.hand.scale.set( 0.9, 1.25, 0.7 );
-		for ( const m of [ this.upper, this.fore, this.hand ] ) {
-
-			m.receiveShadow = true;
-			root.add( m );
+			const f = limb( 0.0085, skin, 0.85 );
+			placeLimb( f, new THREE.Vector3( 0.048, y, - 0.012 ), new THREE.Vector3( 0.048 - length, y + 0.006, - 0.0135 ) );
+			this.hand.add( f );
 
 		}
 
-		// the phone: back (camera side) faces the scene; placed at the camera each frame
-		this.phone = new THREE.Mesh( new RoundedBoxGeometry( 0.075, 0.155, 0.009, 3, 0.006 ), phone );
-		this.phone.receiveShadow = true;
+		const thumb = limb( 0.0105, skin, 0.85 );
+		placeLimb( thumb, new THREE.Vector3( 0.05, - 0.07, 0.022 ), new THREE.Vector3( 0.0, - 0.02, 0.012 ) );
+		this.hand.add( thumb );
+		this.phone.add( this.hand );
+		for ( const m of [ this.forearm, this.cuff, this.phone, ...this.hand.children ] ) {
 
-		this.group = new THREE.Group();
-		this.group.name = 'handheldPerson';
-		this.group.add( root, this.phone );
+			m.castShadow = false;
+			m.receiveShadow = true;
+
+		}
+
+		this.group.add( this.forearm, this.cuff, this.phone );
+
+		Promise.all( [
+			fetch( URL + 'cutout.json' ).then( r => r.json() ),
+			new THREE.TextureLoader().loadAsync( URL + 'cutout.png' ),
+		] ).then( ( [ info, map ] ) => {
+
+			map.colorSpace = THREE.SRGBColorSpace;
+			map.anisotropy = 4;
+			this.material.map = map;
+			this.material.needsUpdate = true;
+			this.info = info;
+			this.skin.color.set( info.skin );
+			this.sleeve.color.set( info.sleeve );
+			// card faces forward (-z of the root), origin at the phone
+			this.card.geometry.dispose();
+			this.card.geometry = new THREE.PlaneGeometry( info.width, info.height )
+				.translate( info.width / 2 - info.phone[ 0 ], info.height / 2 - info.phone[ 1 ], 0 )
+				.rotateY( Math.PI );
+			this.card.visible = true;
+
+		} ).catch( e => console.warn( 'person cut-out failed to load', e ) );
 
 	}
 
-	/**
-	 * Pose the figure for a camera (phone) at `position` with orientation `quaternion`.
-	 * Returns nothing; the group is updated in place.
-	 */
+	/** Place the figure for a camera (phone) at `position` with orientation `quaternion`. */
 	update( position, quaternion ) {
 
-		// phone: at the lens, slightly behind it so the camera is never inside the phone body
-		this.phone.quaternion.copy( quaternion );
-		this.phone.position.copy( position ).add( _w.set( 0, - 0.06, 0.006 ).applyQuaternion( quaternion ) );
-
-		// heading of the camera (yaw only); the body stays upright
+		// heading of the camera (yaw only); the figure stays upright
 		_v.set( 0, 0, - 1 ).applyQuaternion( quaternion );
 		const yaw = Math.atan2( - _v.x, - _v.z );
 		const root = this.root;
 		root.rotation.set( 0, yaw, 0 );
-
-		// eyes behind the phone and a little above it; never above standing eye height
-		// (higher shots are taken with the arm raised, not by a taller person)
-		const back = _w.set( Math.sin( yaw ), 0, Math.cos( yaw ) );
-		root.position.copy( position ).addScaledVector( back, REACH_BACK );
-		root.position.y = Math.min( position.y + 0.12, EYE_HEIGHT );
+		// feet on the floor (y = 0): the card's origin is at the phone
+		root.position.set( position.x + Math.sin( yaw ) * BEHIND, this.info ? this.info.phone[ 1 ] : position.y, position.z + Math.cos( yaw ) * BEHIND );
 		root.updateMatrixWorld( true );
 
-		// right arm IK in root space: shoulder -> elbow -> hand (at the phone's lower half)
-		const target = this.phone.localToWorld( _v.set( 0.02, - 0.03, 0.02 ) );
-		root.worldToLocal( target );
-		const s = this.shoulder;
-		const d = target.clone().sub( s );
-		const dist = Math.min( d.length(), UPPER_ARM + FOREARM - 1e-3 );
-		d.normalize();
-		// elbow bends down and outward
-		const a = ( UPPER_ARM * UPPER_ARM - FOREARM * FOREARM + dist * dist ) / ( 2 * dist );
-		const h = Math.sqrt( Math.max( 0, UPPER_ARM * UPPER_ARM - a * a ) );
-		const hint = new THREE.Vector3( 0.6, - 1, 0.3 ).normalize();
-		const perp = hint.sub( d.clone().multiplyScalar( hint.dot( d ) ) ).normalize();
-		const elbow = s.clone().addScaledVector( d, a ).addScaledVector( perp, h );
-		const hand = s.clone().addScaledVector( d, dist );
-		placeLimb( this.upper, s, elbow );
-		placeLimb( this.fore, elbow, hand );
-		this.hand.position.copy( hand );
-		this.hand.quaternion.setFromUnitVectors( _up, _w.subVectors( hand, elbow ).normalize() );
+		// phone at the lens (slightly behind it, so the camera is never inside the phone body)
+		this.phone.quaternion.copy( quaternion );
+		this.phone.position.copy( position ).add( _w.set( 0, - 0.06, 0.006 ).applyQuaternion( quaternion ) );
+		this.phone.updateMatrixWorld( true );
+		if ( ! this.info ) return;
+
+		// forearm: from the elbow (on the card, a little forward; raised for high shots) to the wrist
+		const { elbow, phone } = this.info;
+		const wrist = this.phone.localToWorld( _v.set( 0.058, - 0.085, 0.03 ) );
+		const local = root.worldToLocal( wrist.clone() );
+		_e.set( - ( elbow[ 0 ] - phone[ 0 ] ), Math.max( elbow[ 1 ] - phone[ 1 ], local.y - 0.3 ), - ELBOW_FORWARD );
+		root.localToWorld( _e );
+		placeLimb( this.forearm, _e, wrist );
+		const elbowPt = _e.clone(), cuffEnd = _w.subVectors( wrist, _e ).normalize().multiplyScalar( 0.11 ).add( _e ).clone();
+		placeLimb( this.cuff, elbowPt.addScaledVector( _w.subVectors( cuffEnd, elbowPt ).normalize(), - 0.03 ), cuffEnd );
 
 	}
 

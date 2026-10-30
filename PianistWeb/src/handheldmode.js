@@ -1,7 +1,8 @@
 // Handheld camera mode: the user still drives the camera with the mouse / touch (OrbitControls),
 // but what renders is a phone held by a person standing there.
-//  - hand shake from the model fitted to a real handheld video (handheld.js, shakeAt): about
-//    0.2° while the camera holds still, 3x that while it moves or pans
+//  - hand shake from the model fitted to a real handheld video (handheld.js, shakeAt), limited
+//    to 2.5 Hz (above that the measurement is noise), at 6% of the video's level (0.18° held
+//    still); 3x while walking, 1.5x while turning
 //  - left drag turns the view in place (the orbit centre is kept just ahead of the lens)
 //  - walking: when the camera travels, a vertical dip per step, sideways sway per stride, a
 //    little roll and nod, fading in with speed
@@ -11,8 +12,10 @@
 //    faster); right-drag panning is off. The camera and its orbit target move together and
 //    stay inside the room
 //  - wheel / middle drag change the field of view (zoom by focal length) instead of dollying
-//  - a person model (person.js) behind the camera, seen in glossy reflections: the mirror probe
-//    is re-captured from just in front of the camera (throttled) while the camera moves
+//  - a person (person.js, a cut-out of the reference photo) behind the camera, seen in glossy
+//    reflections: the mirror probe is re-captured as the camera moves (on a flat screen from the
+//    camera's mirror image, an exact planar reflection; elsewhere from just ahead of the camera). On
+//    leaving the mode the person stays where it stood, to be inspected
 // In path tracing the shake is paused (it would restart the accumulation every frame); the
 // person is still placed, and the scene is rebuilt once the camera has settled.
 
@@ -26,7 +29,12 @@ const FOV_RANGE = [ 12, 70 ];
 const STEP_HZ = 1.8;							// walking cadence (steps per second)
 const BOB = 0.008, SWAY = 0.006;				// m, at full walking speed (phone held, so damped)
 const ROLL = 0.35, NOD = 0.25;					// deg
-const TURN_RADIUS = 0.01;						// orbit centre kept just ahead of the lens: drag turns in place
+const TURN_RADIUS = 0.01;
+const SHAKE_CUTOFF = 2.5;						// Hz
+// shake gain: the 2.5 Hz-limited generator gives 0.91° RMS at gain 1. The video (CameraTrack)
+// held still at 0.18° below 3 Hz (gain 0.2) and, walking about, 3x that (0.57°). Played back at
+// 6% of that (0.011° holding still): the full level reads as far too shaky on screen
+const HOLD_GAIN = 0.2 * 0.06, WALK_FACTOR = 3, TURN_FACTOR = 1.5;
 const D = THREE.MathUtils.DEG2RAD;
 const WALK_SPEED = 0.7, RUN_SPEED = 1.2;		// m/s
 const WALK_EASE = 0.3;							// s to reach speed / to stop
@@ -39,7 +47,7 @@ const _v = new THREE.Vector3(), _o = new THREE.Vector3();
 export class HandheldMode {
 
 	/**
-	 * @param ctx { camera, controls, scene, renderer, isPathTracing(), specularCapture(position),
+	 * @param ctx { camera, controls, scene, renderer, isPathTracing(), specularCapture(eye, ahead), specularRestore(),
 	 *              bounds() -> { minX, maxX, minZ, maxZ } (room floor) }
 	 */
 	constructor( ctx ) {
@@ -49,7 +57,9 @@ export class HandheldMode {
 		this.intensity = 1;			// shake gain
 		this.walk = 1;				// walking motion gain
 		this.showPerson = true;
-		this.shaker = new HandheldCamera( params, { seed: 11 } );
+		// spectra cut above 2.5 Hz: beyond that the video's measurement is a flat noise floor
+		// (tracking jitter, blur, rolling shutter), not hand motion
+		this.shaker = new HandheldCamera( params, { seed: 11, cutoff: SHAKE_CUTOFF } );
 		this.person = new Person();
 		this.intended = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), valid: false };
 		this.lastPos = new THREE.Vector3();
@@ -98,7 +108,7 @@ export class HandheldMode {
 			window.addEventListener( 'blur', this._onKey );
 			el.addEventListener( 'wheel', this._onWheel, { passive: false, capture: true } );
 			el.addEventListener( 'pointerdown', this._onDown, { capture: true } );
-			if ( this.showPerson ) scene.add( this.person.group );
+			if ( this.showPerson ) scene.add( this.person.group ); else this._removePerson();
 			this.intended.valid = false;
 			this.probeAt.set( 1e9, 0, 0 );
 
@@ -128,7 +138,8 @@ export class HandheldMode {
 			controls.mouseButtons.MIDDLE = this.savedMiddle ?? THREE.MOUSE.DOLLY;
 			el.removeEventListener( 'wheel', this._onWheel, { capture: true } );
 			el.removeEventListener( 'pointerdown', this._onDown, { capture: true } );
-			scene.remove( this.person.group );
+			// the person stays where it stood, for inspection; reflections back to the room's own
+			this.ctx.specularRestore?.();
 			this.rebuild = true;
 			controls.dispatchEvent( { type: 'change' } );
 
@@ -139,10 +150,22 @@ export class HandheldMode {
 	setShowPerson( on ) {
 
 		this.showPerson = on;
+		if ( ! on ) {
+
+			this._removePerson();
+			this.ctx.specularRestore?.();
+
+		}
 		if ( ! this.enabled ) return;
-		if ( on ) this.ctx.scene.add( this.person.group ); else this.ctx.scene.remove( this.person.group );
+		if ( on ) this.ctx.scene.add( this.person.group );
 		this.probeAt.set( 1e9, 0, 0 );
 		this.rebuild = true;
+
+	}
+
+	_removePerson() {
+
+		this.ctx.scene.remove( this.person.group );
 
 	}
 
@@ -249,9 +272,11 @@ export class HandheldMode {
 		if ( ! pt ) {
 
 			this.time += dt;
-			// hand shake (camera axes). At gain 1 the synthesised noise (which includes the slow
-			// 0.6-1 Hz sway) is ~1° RMS; here ~0.2° holding still, 3x that moving
-			const g = this.intensity * ( 0.18 + 0.36 * moving );
+			// hand shake (camera axes), at the levels measured in the video: walking raises it to 3x,
+			// turning the view alone to 1.5x
+			const walkAct = THREE.MathUtils.smoothstep( this.speed, 0.04, 0.35 );
+			const turnAct = THREE.MathUtils.smoothstep( this.turn, 0.07, 0.4 );
+			const g = this.intensity * HOLD_GAIN * Math.max( 1 + ( WALK_FACTOR - 1 ) * walkAct, 1 + ( TURN_FACTOR - 1 ) * turnAct );
 			const { rotation, offset } = this.shaker.shakeAt( this.time, g, _q, _o );
 
 			// walking: steps advance with speed; dip per step, sway per stride
@@ -267,22 +292,19 @@ export class HandheldMode {
 
 		}
 
-		// the person holding the phone
-		if ( this.showPerson ) {
+		// the person holding the phone (placed from the intended pose: shake moves the hand, not
+		// the whole figure)
+		if ( this.showPerson ) this.person.update( I.position, I.quaternion );
 
-			this.person.update( camera.position, camera.quaternion );
-			this.person.group.updateMatrixWorld( true );
-
-		}
-
-		// reflections: re-capture the mirror probe from just in front of the camera
+		// reflections: re-capture the mirror probe for the camera's position (a flat screen: from
+		// the camera's mirror image, exact; otherwise from just in front of the camera). Only the
+		// position matters, so turning needs no capture
 		this.probeTime += dt;
-		const movedFar = I.position.distanceTo( this.probeAt ) > 0.03;
-		if ( this.showPerson && ! pt && movedFar && this.probeTime > 0.25 ) {
+		const movedFar = I.position.distanceTo( this.probeAt ) > 0.01;
+		if ( this.showPerson && ! pt && movedFar && this.probeTime > 1 / 30 ) {
 
-			const ahead = 0.3;
-			_v.set( 0, 0, - ahead ).applyQuaternion( I.quaternion ).add( I.position );
-			this.ctx.specularCapture( _v );
+			_v.set( 0, 0, - 0.3 ).applyQuaternion( I.quaternion ).add( I.position );
+			this.ctx.specularCapture( I.position, _v );
 			this.probeAt.copy( I.position );
 			this.probeTime = 0;
 
