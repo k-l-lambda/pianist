@@ -23,6 +23,9 @@ import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
 // start downloading the piano sound right away, in parallel with building the scene
 prefetchSoundfont();
 
+// let the loading screen paint before the (blocking) scene build starts
+await new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
+
 const params = new URLSearchParams( location.search );
 
 const settings = {
@@ -738,6 +741,6 @@ function frame() {
 applyQuality( false );
 setStyle( settings.style );
 setMode( settings.mode );
-document.getElementById( 'loading' ).classList.add( 'hidden' );
+if ( ! params.has( 'loading' ) ) document.getElementById( 'loading' ).classList.add( 'hidden' );		// ?loading keeps it (design preview)
 window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, composer, synth, midiPlayer, get piano() { return piano; } };
 requestAnimationFrame( frame );
