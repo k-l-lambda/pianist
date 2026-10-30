@@ -5,9 +5,10 @@
 // person shows up in a black screen. The card is unlit-looking only because the photo is dark;
 // it is an ordinary diffuse surface lit by the room.
 //
-// The raised forearm, the hand and the phone are modelled (cut out of the picture): they reach
-// forward from the elbow on the card to the camera, so the arm stands out from the body in the
-// reflection as in the photo.
+// The raised arm, the hand and the phone are modelled (cut out of the picture): a two-bone arm
+// from the shoulder on the card to the phone at the camera, the elbow hanging down and a little
+// out, so the arm stays attached to the body at any shooting height and stands out from it in
+// the reflection, as in the photo.
 //
 // The card stands upright on the floor, turned with the camera's heading, a little behind the
 // camera, placed sideways so that the phone in the picture is in line with the camera. Shots
@@ -20,8 +21,10 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 const URL = import.meta.env.BASE_URL + 'person/';
 const BEHIND = 0.3;				// m, card plane behind the camera (between the phone and the face)
 
-const ELBOW_FORWARD = 0.06;		// m, elbow in front of the card
-const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _e = new THREE.Vector3(), _up = new THREE.Vector3( 0, 1, 0 );
+const UPPER_ARM = 0.29, FOREARM = 0.27;		// m, shoulder -> elbow, elbow -> wrist
+const SHOULDER_IN = 0.035;						// m, joint inside the shoulder's outline (towards the neck)
+const ELBOW_POLE = new THREE.Vector3( 0.45, - 1, 0.25 ).normalize();	// elbow: down, out to the right, back
+const _v = new THREE.Vector3(), _s = new THREE.Vector3(), _w = new THREE.Vector3(), _e = new THREE.Vector3(), _up = new THREE.Vector3( 0, 1, 0 );
 
 function mat( color, roughness, extra = {} ) {
 
@@ -90,7 +93,9 @@ export class Person {
 
 		// the raised arm; albedo from cutout.json (the photo's colours corrected the same way)
 		const skin = this.skin = mat( '#7c6a5d', 0.6, { sheen: 0.3, sheenColor: new THREE.Color( '#8a7464' ) } );
+		const sweater = this.sweater = mat( '#2e3034', 0.95, { sheen: 0.5, sheenColor: new THREE.Color( '#3a3a3c' ), sheenRoughness: 0.8 } );
 		const sleeve = this.sleeve = mat( '#34363a', 0.95, { sheen: 0.5, sheenColor: new THREE.Color( '#3a3a3c' ), sheenRoughness: 0.8 } );
+		this.upperArm = limb( 0.052, sweater, 0.85 );		// shoulder -> elbow
 		this.forearm = limb( 0.036, skin, 0.72 );			// thicker below the elbow, slim at the wrist
 		this.cuff = limb( 0.044, sleeve, 0.9 );			// sleeve pushed up, bunched at the elbow
 		this.phone = new THREE.Mesh( new RoundedBoxGeometry( 0.075, 0.155, 0.009, 3, 0.006 ), mat( '#0a0a0c', 0.55 ) );		// matte back: dark, as in the photo
@@ -115,14 +120,14 @@ export class Person {
 		placeLimb( thumb, new THREE.Vector3( 0.05, - 0.07, 0.022 ), new THREE.Vector3( 0.0, - 0.02, 0.012 ) );
 		this.hand.add( thumb );
 		this.phone.add( this.hand );
-		for ( const m of [ this.forearm, this.cuff, this.phone, ...this.hand.children ] ) {
+		for ( const m of [ this.upperArm, this.forearm, this.cuff, this.phone, ...this.hand.children ] ) {
 
 			m.castShadow = false;
 			m.receiveShadow = true;
 
 		}
 
-		this.group.add( this.forearm, this.cuff, this.phone );
+		this.group.add( this.upperArm, this.forearm, this.cuff, this.phone );
 
 		Promise.all( [
 			fetch( URL + 'cutout.json' ).then( r => r.json() ),
@@ -136,6 +141,7 @@ export class Person {
 			this.info = info;
 			this.skin.color.set( info.skin );
 			this.sleeve.color.set( info.sleeve );
+			if ( info.sweater ) this.sweater.color.set( info.sweater );
 			// card faces forward (-z of the root), origin at the phone
 			this.card.geometry.dispose();
 			this.card.geometry = new THREE.PlaneGeometry( info.width, info.height )
@@ -165,16 +171,29 @@ export class Person {
 		this.phone.updateMatrixWorld( true );
 		if ( ! this.info ) return;
 
-		// forearm: from the elbow (on the card, a little forward; raised for high shots) to the wrist
-		const { elbow, phone } = this.info;
-		const wrist = this.phone.localToWorld( _v.set( 0.058, - 0.085, 0.03 ) );
-		const local = root.worldToLocal( wrist.clone() );
-		_e.set( - ( elbow[ 0 ] - phone[ 0 ] ), Math.max( elbow[ 1 ] - phone[ 1 ], local.y - 0.3 ), - ELBOW_FORWARD );
-		root.localToWorld( _e );
-		placeLimb( this.forearm, _e, wrist );
-		const elbowPt = _e.clone(), cuffEnd = _w.subVectors( wrist, _e ).normalize().multiplyScalar( 0.11 ).add( _e ).clone();
-		placeLimb( this.cuff, elbowPt.addScaledVector( _w.subVectors( cuffEnd, elbowPt ).normalize(), - 0.03 ), cuffEnd );
-
+		// arm: shoulder (on the card) -> elbow -> wrist (at the phone), two-bone IK in root space.
+		// Root space: +x the person's right, -z forward; the card is mirrored, so its x runs the
+		// other way from the picture
+		const { shoulder, phone } = this.info;
+		const S = _s.set( - ( shoulder[ 0 ] - phone[ 0 ] ) - SHOULDER_IN, shoulder[ 1 ] - phone[ 1 ], 0 );
+		const W = root.worldToLocal( this.phone.localToWorld( _v.set( 0.058, - 0.085, 0.03 ) ) );
+		const d = _w.subVectors( W, S );
+		const dist = Math.min( d.length(), UPPER_ARM + FOREARM - 1e-3 );
+		d.normalize();
+		const a = ( UPPER_ARM * UPPER_ARM - FOREARM * FOREARM + dist * dist ) / ( 2 * dist );
+		const h = Math.sqrt( Math.max( 0, UPPER_ARM * UPPER_ARM - a * a ) );
+		const perp = _e.copy( ELBOW_POLE ).addScaledVector( d, - ELBOW_POLE.dot( d ) ).normalize();
+		const E = perp.multiplyScalar( h ).addScaledVector( d, a ).add( S );
+		W.copy( d ).multiplyScalar( dist ).add( S );			// the wrist, pulled in if out of reach
+		root.localToWorld( S );
+		root.localToWorld( E );
+		root.localToWorld( W );
+		placeLimb( this.upperArm, S, E );
+		placeLimb( this.forearm, E, W );
+		// pushed-up sleeve bunched just below the elbow
+		const c0 = _w.subVectors( W, E ).normalize().multiplyScalar( - 0.02 ).add( E ).clone();
+		const c1 = _w.subVectors( W, E ).normalize().multiplyScalar( 0.09 ).add( E ).clone();
+		placeLimb( this.cuff, c0, c1 );
 	}
 
 }

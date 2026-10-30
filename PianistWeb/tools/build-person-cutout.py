@@ -5,12 +5,12 @@
 #                extended down to the floor, mirrored left-right: the photo shows what a mirror
 #                shows, the card must show the person as seen from the front, so its reflection
 #                in the piano's screen reads like the photo again
-#                The raised forearm, hand and phone are cut out (filled with the sweater behind
-#                them): person.js models them in 3D, reaching forward from the elbow to the camera
+#                The whole raised arm (upper arm, forearm, hand, phone) is cut out, the torso behind
+#                it filled in: person.js models it in 3D, from the shoulder to the camera
 #                Colours are corrected from the backlit photo (exposed for the white background,
 #                the figure 5-15x too dark) to plausible albedo: skin ~0.25, black knit ~0.035
-#   cutout.json  size in metres, where the phone (the camera), the eyes and the elbow are on the
-#                card, and the albedo of the modelled arm's skin and sleeve (same correction)
+#   cutout.json  size in metres, where the phone (the camera), the eyes and the right shoulder
+#                joint are on the card, and the albedo of the modelled arm's skin and sleeve (same correction)
 # Run: python3 tools/build-person-cutout.py
 
 import json, os
@@ -25,12 +25,19 @@ OUT = os.path.join( HERE, '../public/person' )
 M_PER_PX = 0.00072			# head with hair ~265 px wide -> 0.19 m
 EYES = ( 515, 245 )			# px in the photo, between the eyes
 PHONE = ( 617, 405 )		# px, the phone's lens (the camera)
-ELBOW = ( 875, 895 )		# px, the raised arm's elbow
+SHOULDER = ( 785, 560 )		# px, the raised arm's shoulder joint
+# upper arm (sleeve) outline: shoulder top, round the elbow, back up the torso side
+UPPER_ARM = [ ( 700, 470 ), ( 760, 500 ), ( 850, 575 ), ( 895, 700 ), ( 930, 830 ), ( 930, 892 ), ( 902, 948 ), ( 856, 984 ), ( 790, 994 ), ( 700, 994 ) ]
+# the figure's right outline behind the raised arm (px, y increasing): neck under the jaw, collar,
+# shoulder, then the torso side straight down (as it shows below the elbow)
+COLLAR_Y = 450				# px, neck above, sweater below
+TORSO_RIGHT = [ ( 560, 376 ), ( 585, 430 ), ( 600, 445 ), ( 700, 478 ), ( 745, 495 ), ( 772, 515 ), ( 786, 545 ), ( 792, 620 ), ( 790, 960 ), ( 800, 1010 ) ]
 # forearm + hand + phone outline (px), replaced by the sweater / neck behind it
 ARM = [ ( 540, 376 ), ( 692, 376 ), ( 694, 470 ), ( 735, 560 ), ( 790, 650 ), ( 850, 735 ), ( 872, 800 ),
 	( 880, 868 ), ( 852, 905 ), ( 800, 880 ), ( 720, 790 ), ( 640, 715 ), ( 560, 650 ), ( 528, 560 ), ( 532, 470 ) ]
 SKIN = ( 58, 47, 39 )		# px colour of the raised forearm (photo, sRGB)
 SLEEVE = ( 17, 18, 22 )		# its pushed-up sleeve
+SWEATER = ( 9, 10, 13 )		# the upper arm's sweater (as the torso)
 EYE_HEIGHT = 1.64			# m above the floor
 BG = 240.0					# background grey
 OUT_W = 512
@@ -44,24 +51,36 @@ alpha = np.clip( ( BG - 8 - lum ) / 90, 0, 1 )
 a = np.maximum( alpha, 1e-3 )[ ..., None ]
 rgb = np.clip( ( img - ( 1 - alpha[ ..., None ] ) * BG ) / a, 0, 255 )
 
-# the raised arm out: the sweater and neck behind it filled in from around the hole (inpainting),
-# the background right of the neck above the shoulder line
+# the raised arm out: inside the figure's outline (TORSO_RIGHT) the neck and sweater behind it are
+# filled in from around the hole (inpainting), outside it becomes background
 hole = Image.new( 'L', ( w, h ), 0 )
 ImageDraw.Draw( hole ).polygon( ARM, fill = 255 )
-hole = np.asarray( hole ) > 0
+ImageDraw.Draw( hole ).polygon( UPPER_ARM, fill = 255 )
+hole = cv2.dilate( np.asarray( hole ), np.ones( ( 9, 9 ), np.uint8 ) ) > 0		# swallow the sleeve's edge fringe
 ys, xs = np.mgrid[ 0:h, 0:w ]
-shoulder = 440 + np.maximum( xs - 600, 0 ) * 0.27			# collar -> shoulder line, sloping down
-air = hole & ( xs >= 600 ) & ( ys < shoulder )
-fill = ( hole & ~ air ).astype( np.uint8 ) * 255
-# the background's colour is meaningless (un-mixed white): extend the figure's colours into it
-# first, so the hole is filled from the figure only
-src = rgb.round().astype( np.uint8 )
-bgmask = ( ( ( alpha < 0.995 ) & ~ hole ) | air ).astype( np.uint8 ) * 255
-near = cv2.dilate( fill, np.ones( ( 61, 61 ), np.uint8 ) ) > 0		# only around the hole (fast)
-src_ext = cv2.inpaint( src, ( bgmask * near ).astype( np.uint8 ), 5, cv2.INPAINT_TELEA )
-filled = cv2.inpaint( src_ext, cv2.dilate( fill, np.ones( ( 5, 5 ), np.uint8 ) ), 9, cv2.INPAINT_TELEA )
-grow = cv2.dilate( fill, np.ones( ( 5, 5 ), np.uint8 ) ) > 0
-rgb[ grow ] = filled[ grow ]
+edge = np.interp( ys, [ p[ 1 ] for p in TORSO_RIGHT ], [ p[ 0 ] for p in TORSO_RIGHT ] )
+# everything right of the outline down to the hip goes (the sleeve's top above the polygon too)
+air = ( xs > edge ) & ( ( hole & ( ys < 1000 ) ) | ( ( ys > 376 ) & ( ys < 1000 ) ) )
+hole |= air
+fill = hole & ~ air
+# fill only from the figure outside the hole: the whole hole (arm, phone, hand) and the
+# background are masked together, and the background (un-mixed white, meaningless) is set to the
+# sweater first, so neither the arm's skin nor the white leaks in as streaks
+src = rgb.copy()
+src[ ( alpha < 0.995 ) & ~ hole ] = np.median( rgb[ 1000:1100, 300:700 ].reshape( - 1, 3 ), axis = 0 )
+near = cv2.dilate( hole.astype( np.uint8 ), np.ones( ( 41, 41 ), np.uint8 ) ) > 0
+mask = ( hole | ( ( alpha < 0.995 ) & near ) ).astype( np.uint8 ) * 255
+# the neck (above the collar) from the skin around it; the sweater from the sweater only, so the
+# neck's skin doesn't flood down over the shoulder as a light patch
+neck = fill & ( ys < COLLAR_Y ) & ( xs < 612 )
+filled = cv2.inpaint( src.round().astype( np.uint8 ), mask, 9, cv2.INPAINT_TELEA ).astype( np.float32 )
+rgb[ neck ] = filled[ neck ]
+# sources: solid sweater only. The figure's anti-aliased outline (lum up to ~140 still counts as
+# alpha 1) and the neck would otherwise spread as light patches
+solid = cv2.erode( ( alpha >= 0.995 ).astype( np.uint8 ), np.ones( ( 13, 13 ), np.uint8 ) ) > 0
+src[ ~ solid | ( ys < COLLAR_Y ) ] = src[ ( alpha < 0.995 ) & ~ hole ][ 0 ]		# the sweater median set above
+filled = cv2.inpaint( src.round().astype( np.uint8 ), mask, 9, cv2.INPAINT_TELEA ).astype( np.float32 )
+rgb[ fill & ~ neck ] = filled[ fill & ~ neck ]
 alpha[ hole ] = 1
 alpha[ air ] = 0
 
@@ -102,6 +121,6 @@ Image.fromarray( rgba, 'RGBA' ).resize( ( OUT_W, out_h ), Image.LANCZOS ).save( 
 
 # positions in metres on the card, from its bottom-left corner (after mirroring)
 m = lambda p: [ round( ( w - p[ 0 ] ) * M_PER_PX, 4 ), round( ( H - p[ 1 ] ) * M_PER_PX, 4 ) ]
-info = { 'width': round( w * M_PER_PX, 4 ), 'height': round( H * M_PER_PX, 4 ), 'phone': m( PHONE ), 'eyes': m( EYES ), 'elbow': m( ELBOW ), 'skin': hexc( SKIN ), 'sleeve': hexc( SLEEVE ) }
+info = { 'width': round( w * M_PER_PX, 4 ), 'height': round( H * M_PER_PX, 4 ), 'phone': m( PHONE ), 'eyes': m( EYES ), 'shoulder': m( SHOULDER ), 'skin': hexc( SKIN ), 'sleeve': hexc( SLEEVE ), 'sweater': hexc( SWEATER ) }
 json.dump( info, open( os.path.join( OUT, 'cutout.json' ), 'w' ) )
 print( info, ( OUT_W, out_h ) )
