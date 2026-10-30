@@ -356,6 +356,8 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		action: new PianoAction( { dampers, pedals, softShift: keyboard.group, softShiftAmount: 0.003 } ),
 		depth: LENGTH,
 		camera: { position: v3( 1.55, 1.55, 1.65 ), target: v3( 0.0, 0.85, - 0.65 ) },
+		// MIDI roll plane (pianoroll.js): a vertical sheet rising from the key backs, in front of the fallboard
+		roll: { origin: v3( 0, 0.737, - 0.146 ), up: v3( 0, 1, 0 ), height: 0.34 },
 	};
 
 }

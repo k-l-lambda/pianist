@@ -266,6 +266,8 @@ export function buildUpright( M, { renderer = null } = {} ) {
 		action: new PianoAction( { ...interior.userData.action, pedals: caseGroup.userData.pedals, softShift: [ keyboard.group, interior.userData.hammerRack ], softShiftAmount: 0.003 } ),
 		depth: - BACK,
 		camera: { position: v3( - 0.2, 1.35, 2.6 ), target: v3( 0, 0.78, - 0.25 ) },
+		// MIDI roll plane (pianoroll.js): the tilted screen, from the key backs up to the rail
+		roll: { origin: PANEL_BOTTOM.clone(), up: PANEL_TOP.clone().sub( PANEL_BOTTOM ).normalize(), height: PANEL_TOP.distanceTo( PANEL_BOTTOM ) },
 	};
 
 }

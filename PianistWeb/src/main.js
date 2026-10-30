@@ -18,6 +18,7 @@ import { KeyShadow } from './keyshadow.js';
 import { Synth } from './synth.js';
 import { prefetchSoundfont, soundfontStatus } from './soundfont.js';
 import { MidiFilePlayer } from './midi.js';
+import { PianoRoll, excludeFromGTAO } from './pianoroll.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
 
 // start downloading the piano sound right away, in parallel with building the scene
@@ -97,6 +98,7 @@ const composerTarget = new THREE.WebGLRenderTarget( 1, 1, { type: THREE.HalfFloa
 const composer = new EffectComposer( renderer, composerTarget );
 const renderPass = new RenderPass( scene, camera );
 const gtaoPass = new GTAOPass( scene, camera, 1, 1 );
+excludeFromGTAO( gtaoPass );		// the additive MIDI roll must not occlude
 gtaoPass.output = GTAOPass.OUTPUT.Default;
 const bloomPass = new UnrealBloomPass( new THREE.Vector2( 1, 1 ), settings.bloom, 0.6, 0.92 );
 const outputPass = new OutputPass();
@@ -152,6 +154,7 @@ function setStyle( id ) {
 	applyGlass( M.glass, settings.gi || settings.mode === 'pathtrace' );
 	scene.add( piano.group );
 	keyShadow.attach( piano, [ M.keyWhite, M.keyBlack ], settings.gi && ! keyShadow.broken );
+	roll.attach( piano );
 	scene.updateMatrixWorld( true );
 
 	const off = piano.group.position;
@@ -518,6 +521,9 @@ const midiPlayer = new MidiFilePlayer( synth, {
 	onEnd: () => midiUI.updateDisplay(),
 } );
 
+// falling-notes roll drawn while a MIDI file is loaded (raster only; hidden while path tracing)
+const roll = new PianoRoll();
+
 const midiState = {
 	file: '(none)',
 	position: 0,
@@ -582,6 +588,10 @@ const positionCtrl = fMidi.add( midiState, 'position', 0, 1, 0.1 ).name( 'Positi
 
 	} );
 fMidi.add( midiState, 'tempo', 0.25, 2, 0.05 ).name( 'Tempo' ).onChange( v => midiPlayer.setRate( v ) );
+fMidi.add( roll, 'enabled' ).name( 'Piano roll' );
+fMidi.addColor( { color: '#' + roll.color.getHexString() }, 'color' ).name( 'Roll colour' ).onChange( v => roll.setColor( v ) );
+fMidi.add( roll, 'lookahead', 0.8, 6, 0.1 ).name( 'Look-ahead (s)' );
+fMidi.add( roll, 'particles' ).name( 'Particles' );
 
 function updateMidiUI() {
 
@@ -688,6 +698,7 @@ function frame() {
 	cameraMoving = false;
 	controls.update();
 	keysMoving = piano.keyboard.update( dt );
+	roll.update( midiPlayer, dt, camera, renderer, room.mode !== 'pathtrace' );
 	if ( piano.action?.update( dt ) ) keysMoving = true;
 	// re-render shadow maps only when something moved or the lighting changed
 	if ( keysMoving || shadowsDirty ) {
@@ -742,5 +753,5 @@ applyQuality( false );
 setStyle( settings.style );
 setMode( settings.mode );
 if ( ! params.has( 'loading' ) ) document.getElementById( 'loading' ).classList.add( 'hidden' );		// ?loading keeps it (design preview)
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, composer, synth, midiPlayer, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, synth, midiPlayer, get piano() { return piano; } };
 requestAnimationFrame( frame );
