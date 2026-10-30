@@ -16,8 +16,12 @@ import { GIProbe } from './gi.js';
 import { PathTracer } from './pathtracer.js';
 import { KeyShadow } from './keyshadow.js';
 import { Synth } from './synth.js';
+import { prefetchSoundfont, soundfontStatus } from './soundfont.js';
 import { MidiFilePlayer } from './midi.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
+
+// start downloading the piano sound right away, in parallel with building the scene
+prefetchSoundfont();
 
 const params = new URLSearchParams( location.search );
 
@@ -630,6 +634,21 @@ synth.load();
 // loop
 
 const hud = document.getElementById( 'hud' );
+
+function pianoStatus() {
+
+	const st = soundfontStatus;
+	switch ( st.phase ) {
+
+		case 'download': return st.total ? `piano sound ${ Math.floor( 100 * st.received / st.total ) }%` : 'piano sound loading…';
+		case 'decode': return 'piano sound decoding…';
+		case 'ready': return 'piano ready';
+		case 'failed': return 'piano sound failed, using synth';
+		default: return 'piano sound loading…';
+
+	}
+
+}
 const timer = new THREE.Timer();
 let cameraMoving = false;
 let fps = 60;
@@ -700,12 +719,12 @@ function frame() {
 
 		}
 
-		hud.textContent = `Path tracing · ${ Math.floor( pathTracer.samples ) } spp · drag to orbit · keys A–' play · Z/X octave · pedals Q/R/Space`;
+		hud.textContent = `Path tracing · ${ Math.floor( pathTracer.samples ) } spp · ${ pianoStatus() } · drag to orbit · keys A–' play · Z/X octave · pedals Q/R/Space`;
 
 	} else {
 
 		composer.render();
-		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
+		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
 
 	}
 

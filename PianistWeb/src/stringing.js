@@ -11,7 +11,6 @@
 // Coordinates: x along the keyboard, y up (absolute), strings in planes of constant z.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { v3, merge, rod, beam, woodBox, planarUV1, boxProjectUV } from './geometry.js';
 import { ShadowBaker } from './shadowbake.js';
 
@@ -328,16 +327,18 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 			const felt = woodBox( v3( x - w / 2, y - h / 2, zf ), v3( x + w / 2, y + h / 2, zf + 0.018 ), { radius: 0.0025 } );
 			const molding = woodBox( v3( x - w / 2 + 0.0005, y - h / 2 + 0.004, zf + 0.016 ), v3( x + w / 2 - 0.0005, y + h / 2 - 0.006, zf + 0.028 ), { radius: 0.002, grain: 'z' } );
 			const shank = boxProjectUV( rod( pivot, v3( x, y - h / 2 + 0.004, zf + 0.022 ), 0.0023, 6 ), { grain: 'y' } );
-			const wood = merge( [ molding, shank ] );
-			const geo = mergeGeometries( [ merge( [ felt ] ), wood ], true );
-			geo.translate( - pivot.x, - pivot.y, - pivot.z );
-
+			// one material per mesh: the path tracer maps materials per mesh, not per group
 			const node = new THREE.Group();
 			node.position.copy( pivot );
-			const m = new THREE.Mesh( geo, mats );
-			m.castShadow = true;
-			m.receiveShadow = true;
-			node.add( m );
+			[ [ merge( [ felt ] ), mats[ 0 ] ], [ merge( [ molding, shank ] ), mats[ 1 ] ] ].forEach( ( [ geo, mat ] ) => {
+
+				geo.translate( - pivot.x, - pivot.y, - pivot.z );
+				const m = new THREE.Mesh( geo, mat );
+				m.castShadow = true;
+				m.receiveShadow = true;
+				node.add( m );
+
+			} );
 			hammerRack.add( node );
 
 			// rotation about x at which the felt's nearest point just touches the string
@@ -388,15 +389,17 @@ export function buildStringing( M, { yStrike, zPlate, zTenor, zBass, top, halfWi
 			const felt = boxProjectUV( new THREE.BoxGeometry( w, h, 0.006 ).translate( 0, 0, o.dia / 2 + 0.003 ) );
 			const head = boxProjectUV( new THREE.BoxGeometry( w - 0.001, h - 0.002, 0.010 ).translate( 0, 0, o.dia / 2 + 0.011 ), { grain: 'y' } );
 			const wire = rod( v3( 0, - 0.004, o.dia / 2 + 0.016 ), v3( 0, - 0.07, o.dia / 2 + 0.03 ), 0.0008, 5 );
-			const geo = mergeGeometries( [ merge( [ felt ] ), merge( [ head, wire ] ) ], true );
-
 			const node = new THREE.Group();
 			node.position.set( c.x, c.y + yStrike, zs );
 			node.rotation.z = - Math.atan2( o.dir.x, o.dir.y );
-			const m = new THREE.Mesh( geo, mats );
-			m.castShadow = true;
-			m.receiveShadow = true;
-			node.add( m );
+			[ [ merge( [ felt ] ), mats[ 0 ] ], [ merge( [ head, wire ] ), mats[ 1 ] ] ].forEach( ( [ geo, mat ] ) => {
+
+				const m = new THREE.Mesh( geo, mat );
+				m.castShadow = true;
+				m.receiveShadow = true;
+				node.add( m );
+
+			} );
 			g.add( node );
 			dampers.set( o.n + 20, { node, axis: 'z', lift: 0.008 } );
 

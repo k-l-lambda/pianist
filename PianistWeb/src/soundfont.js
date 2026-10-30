@@ -16,6 +16,121 @@ const WORKLET_URL = BASE + 'fluid/js-synthesizer.worklet.js';
 
 export const LIVE_CHANNEL = 15;
 
+// ---- soundfont download: started at page load, streamed with progress, retried, cached ----
+// Bump SOUNDFONT_VERSION whenever piano.sf3 changes, so cached copies are replaced.
+const SOUNDFONT_VERSION = '1';
+const CACHE_NAME = 'pianist-soundfont';
+const CACHE_KEY = SOUNDFONT_URL + '?v=' + SOUNDFONT_VERSION;
+
+/** Loading state of the piano sound, for the UI. phase: idle | download | decode | ready | failed */
+export const soundfontStatus = { phase: 'idle', received: 0, total: 0, fromCache: false, error: null };
+
+let prefetch = null;
+
+async function openCache() {
+
+	try {
+
+		return 'caches' in self ? await caches.open( CACHE_NAME ) : null;
+
+	} catch {
+
+		return null;		// e.g. insecure context, private mode
+
+	}
+
+}
+
+async function download() {
+
+	const res = await fetch( SOUNDFONT_URL, { cache: 'no-cache' } );
+	if ( ! res.ok ) throw new Error( `${ SOUNDFONT_URL }: HTTP ${ res.status }` );
+	soundfontStatus.total = Number( res.headers.get( 'content-length' ) ) || 0;
+	if ( ! res.body ) return res.arrayBuffer();
+	const reader = res.body.getReader();
+	const chunks = [];
+	soundfontStatus.received = 0;
+	for ( ;; ) {
+
+		const { done, value } = await reader.read();
+		if ( done ) break;
+		chunks.push( value );
+		soundfontStatus.received += value.length;
+
+	}
+
+	const out = new Uint8Array( soundfontStatus.received );
+	let o = 0;
+	for ( const c of chunks ) {
+
+		out.set( c, o );
+		o += c.length;
+
+	}
+
+	return out.buffer;
+
+}
+
+/**
+ * Fetch piano.sf3 once per page (safe to call repeatedly). Served from the Cache API when a
+ * previous visit stored it; otherwise downloaded (one retry) and then stored.
+ */
+export function prefetchSoundfont() {
+
+	if ( prefetch ) return prefetch;
+	prefetch = ( async () => {
+
+		soundfontStatus.phase = 'download';
+		const cache = await openCache();
+		const hit = cache && await cache.match( CACHE_KEY );
+		if ( hit ) {
+
+			soundfontStatus.fromCache = true;
+			const buf = await hit.arrayBuffer();
+			soundfontStatus.received = soundfontStatus.total = buf.byteLength;
+			return buf;
+
+		}
+
+		let buf, lastErr;
+		for ( let attempt = 0; attempt < 2 && ! buf; ++ attempt ) {
+
+			try {
+
+				buf = await download();
+
+			} catch ( err ) {
+
+				lastErr = err;
+				if ( attempt === 0 ) await new Promise( r => setTimeout( r, 1500 ) );
+
+			}
+
+		}
+
+		if ( ! buf ) throw lastErr;
+		if ( cache ) {
+
+			// store a copy; drop older versions of the file
+			cache.put( CACHE_KEY, new Response( buf.slice( 0 ), { headers: { 'content-type': 'application/octet-stream' } } ) ).catch( () => {} );
+			cache.keys().then( keys => keys.forEach( k => k.url.endsWith( CACHE_KEY.split( '/' ).pop() ) || cache.delete( k ) ) ).catch( () => {} );
+
+		}
+
+		return buf;
+
+	} )();
+	prefetch.catch( err => {
+
+		soundfontStatus.phase = 'failed';
+		soundfontStatus.error = String( err );
+
+	} );
+	return prefetch;
+
+}
+
 export class FluidPiano {
 
 	constructor( ctx, destination ) {
@@ -46,9 +161,9 @@ export class FluidPiano {
 			const node = synth.createAudioNode( ctx, { initialGain: 1.8 } );		// before any other call
 			node.connect( this.destination );
 
-			const res = await fetch( SOUNDFONT_URL );
-			if ( ! res.ok ) throw new Error( `${ SOUNDFONT_URL }: HTTP ${ res.status }` );
-			this.sfont = await synth.loadSFont( await res.arrayBuffer() );
+			const buf = await prefetchSoundfont();
+			soundfontStatus.phase = 'decode';
+			this.sfont = await synth.loadSFont( buf );
 
 			// every channel plays the piano, including GM channel 10 (drums)
 			for ( let ch = 0; ch < 16; ++ ch ) {
@@ -66,10 +181,13 @@ export class FluidPiano {
 			this.seq = seq;
 			this.node = node;
 			this.ready = true;
+			soundfontStatus.phase = 'ready';
 
 		} )().catch( err => {
 
 			this.error = err;
+			soundfontStatus.phase = 'failed';
+			soundfontStatus.error = String( err );
 			console.warn( 'FluidSynth piano unavailable, using the built-in synth:', err );
 
 		} );

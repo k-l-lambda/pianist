@@ -5,7 +5,6 @@
 
 import * as THREE from 'three';
 import { Keyboard } from './keyboard.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { woodBox, v3, extrudeTop, merge, beam, rod, boxProjectUV } from './geometry.js';
 import { PianoAction } from './action.js';
 import { pedalShape } from './upright.js';
@@ -181,8 +180,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			const node = new THREE.Group();
 			node.position.set( p.x, p.y + r, p.z );
 			node.rotation.y = Math.atan2( b.x - a.x, b.z - a.z );
-			const m = mesh( mergeGeometries( [ merge( [ felt ] ), merge( [ block ] ) ], true ), damperMats );
-			node.add( m );
+			node.add( mesh( merge( [ felt ] ), damperMats[ 0 ] ), mesh( merge( [ block ] ), damperMats[ 1 ] ) );
 			group.add( node );
 			dampers.set( i + 21, { node, axis: 'y', lift: 0.010 } );
 
