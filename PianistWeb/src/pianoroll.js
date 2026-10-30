@@ -264,7 +264,7 @@ const BAR_FS = /* glsl */`
 		// solid fill with a faint lighter edge; brighter while the note sounds
 		float rim = smoothstep( - 0.0025, 0.0, d ) * core;
 		float lit = 0.8 + 0.2 * vInfo.x + 0.3 * vInfo.y;
-		vec3 col = uColor * core * lit * ( 1.0 + 0.12 * rim ) + uColor * glow * ( 0.38 + 0.4 * vInfo.y ) * 0.3;		// halo at 30%
+		vec3 col = uColor * core * lit * ( 1.0 + 0.12 * rim ) + uColor * glow * ( 0.38 + 0.4 * vInfo.y ) * 0.15;		// halo at 15%
 		// fade in at the top of the plane, clip below the hit line
 		col *= smoothstep( uHeight, uHeight - 0.04, vY ) * step( 0.0, vY );
 		gl_FragColor = vec4( col * uIntensity, 1.0 );
@@ -291,9 +291,9 @@ const FLARE_FS = /* glsl */`
 	varying vec2 vUv;
 	varying float vS;
 	void main() {
-		float f = exp( - dot( vUv * vec2( 2.2, 2.6 ), vUv * vec2( 2.2, 2.6 ) ) );
+		float f = exp( - dot( vUv * vec2( 4.4, 5.2 ), vUv * vec2( 4.4, 5.2 ) ) );		// outer halo at half the reach
 		float core = exp( - dot( vUv * vec2( 4.0, 9.0 ), vUv * vec2( 4.0, 9.0 ) ) );
-		vec3 col = mix( uColor, vec3( 1.0 ), 0.65 ) * core * 2.6 + uColor * f * 1.1 * 0.3;		// outer halo at 30%
+		vec3 col = mix( uColor, vec3( 1.0 ), 0.65 ) * core * 2.6 + uColor * f * 1.1 * 0.15;		// outer halo at 15%
 		gl_FragColor = vec4( col * vS * uIntensity, 1.0 );
 	}
 `;
@@ -336,7 +336,7 @@ const PART_VS = /* glsl */`
 		float z = 0.002 + 0.03 * h( s * 4.1 ) * age;
 		vec4 mv = modelViewMatrix * vec4( x, y, z, 1.0 );
 		gl_Position = projectionMatrix * mv;
-		float size = kind > 0.5 ? 0.03 : mix( 0.0014, 0.003, h( s * 6.7 ) );
+		float size = kind > 0.5 ? 0.015 : mix( 0.0014, 0.003, h( s * 6.7 ) );		// glow puffs at half the reach
 		gl_PointSize = max( 1.0, size * uScale / - mv.z );
 		vA = aSpawn.w * smoothstep( 0.0, 0.06, age ) * pow( 1.0 - age / life, 1.4 ) * ( kind > 0.5 ? 0.06 : 1.0 );
 	}
@@ -354,7 +354,7 @@ const PART_FS = /* glsl */`
 		if ( r2 > 1.0 ) discard;
 		float fall = vKind > 0.5 ? ( 1.0 - r2 ) * ( 1.0 - r2 ) : exp( - r2 * 3.0 );
 		// sparks start white-hot and cool to the roll colour
-		vec3 col = vKind > 0.5 ? uColor * 0.7 : mix( mix( uColor, vec3( 1.0, 0.97, 0.92 ), 0.75 ), uColor, smoothstep( 0.15, 0.85, vAge ) ) * 3.0;
+		vec3 col = vKind > 0.5 ? uColor * 0.35 : mix( mix( uColor, vec3( 1.0, 0.97, 0.92 ), 0.75 ), uColor, smoothstep( 0.15, 0.85, vAge ) ) * 3.0;
 		gl_FragColor = vec4( col * fall * vA * uIntensity, 1.0 );
 	}
 `;
@@ -420,7 +420,7 @@ export class PianoRoll {
 			geo.setAttribute( 'aRect', this.rect );
 			geo.setAttribute( 'aInfo', this.info );
 			geo.instanceCount = 0;
-			this.barUniforms = { uColor: { value: this.color }, uGlow: { value: 0.012 }, uHeight: { value: 0.3 }, uIntensity: { value: 1 } };
+			this.barUniforms = { uColor: { value: this.color }, uGlow: { value: 0.006 }, uHeight: { value: 0.3 }, uIntensity: { value: 1 } };
 			this.bars = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: BAR_VS, fragmentShader: BAR_FS, uniforms: this.barUniforms, ...common } ) );
 			this.bars.frustumCulled = false;
 			this.bars.renderOrder = 10;
