@@ -3,7 +3,8 @@
 // (together with the MIDI files it names) or loaded from public/scripts/ (?script=name.yaml).
 //
 //   title: Evening etude
-//   midi:                          # aliases -> files (picked alongside, or next to the script)
+//   midi:                          # aliases -> files: picked alongside, else a bare name from the
+//                                  # site's midi/ folder, a path relative to the script
 //     etude: beyer05.mid
 //   timeline:
 //     - at: 0                      # seconds, or "1:05.5"; `after: 2` (or at: +2) = 2 s after
@@ -88,10 +89,11 @@ export class ScriptPlayer {
 	}
 
 	/**
-	 * Load a script. `files`: other picked files (MIDI), matched by name; `baseURL`: where to
-	 * fetch names not among them.
+	 * Load a script. MIDI names are looked up among `files` (other picked files) first; then a
+	 * bare name is fetched from `midiURL` (the site's midi/ folder), a path relative to `baseURL`
+	 * (where the script came from).
 	 */
-	async load( text, { name = 'script', files = [], baseURL = null } = {} ) {
+	async load( text, { name = 'script', files = [], baseURL = null, midiURL = null } = {} ) {
 
 		// YAML reads an unquoted `at: +2` as the number 2: keep the sign as a string
 		const doc = parse( text.replace( /^(\s*(?:-\s+)?at:\s*)\+(\d[\d.]*)\s*$/gm, '$1"+$2"' ) );
@@ -116,10 +118,11 @@ export class ScriptPlayer {
 
 			const base = file.split( /[\\/]/ ).pop().toLowerCase();
 			let buffer;
+			const from = /[\\/:]/.test( file ) ? baseURL : midiURL ?? baseURL;
 			if ( byName.has( base ) ) buffer = await byName.get( base ).arrayBuffer();
-			else if ( baseURL ) {
+			else if ( from ) {
 
-				const res = await fetch( new URL( file, baseURL ) );
+				const res = await fetch( new URL( file, from ) );
 				if ( ! res.ok ) throw new Error( `MIDI "${ file }": ${ res.status }` );
 				buffer = await res.arrayBuffer();
 

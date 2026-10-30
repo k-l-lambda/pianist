@@ -721,7 +721,7 @@ async function loadScriptFile( file, others = [] ) {
 
 	try {
 
-		await scriptPlayer.load( await file.text(), { name: file.name, files: others.filter( f => f !== file ) } );
+		await scriptPlayer.load( await file.text(), { name: file.name, files: others.filter( f => f !== file ), midiURL: new URL( 'midi/', new URL( import.meta.env.BASE_URL, location.href ) ) } );
 		scriptState.file = scriptPlayer.title;
 		await synth.resume();
 		scriptPlayer.play();
@@ -768,7 +768,7 @@ if ( params.has( 'script' ) ) {
 
 	} ).then( async text => {
 
-		await scriptPlayer.load( text, { name, baseURL: url } );
+		await scriptPlayer.load( text, { name, baseURL: url, midiURL: new URL( 'midi/', base ) } );
 		scriptState.file = scriptPlayer.title;
 		await synth.resume();
 		scriptPlayer.play();
