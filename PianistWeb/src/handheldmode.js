@@ -1,7 +1,7 @@
 // Handheld camera mode: the user still drives the camera with the mouse / touch (OrbitControls),
 // but what renders is a phone held by a person standing there.
 //  - hand shake from the model fitted to a real handheld video (handheld.js, shakeAt), limited
-//    to 2.5 Hz (above that the measurement is noise), at 6% of the video's level (0.18° held
+//    to 2.5 Hz (above that the measurement is noise), at 10.8% of the video's level (0.18° held
 //    still); 3x while walking, 1.5x while turning
 //  - left drag turns the view in place (the orbit centre is kept just ahead of the lens)
 //  - walking = body + arm. The body bobs once per step and sways once per stride; steps keep a
@@ -13,8 +13,9 @@
 //  - height capped at what a person can reach holding a phone (1.85 m; standing eye height of a
 //    1.75 m person is 1.64 m, higher means the arm is raised)
 //  - arrow keys walk (up/down forward/back along the heading, left/right sidestep; Shift
-//    faster); right-drag panning is off. The camera and its orbit target move together and
-//    stay inside the room
+//    faster). The camera and its orbit target move together and stay inside the room
+//  - right drag moves the phone in the hand, relative to the body (which stays where it stands):
+//    sideways within ±8 cm, up / down within -18…+15 cm; the arm follows by IK (person.js)
 //  - wheel / middle drag change the field of view (zoom by focal length) instead of dollying
 //  - a person (person.js, a cut-out of the reference photo) behind the camera, seen in glossy
 //    reflections: the mirror probe is re-captured as the camera moves (on a flat screen from the
@@ -40,12 +41,14 @@ const TURN_RADIUS = 0.01;
 const SHAKE_CUTOFF = 2.5;						// Hz
 // shake gain: the 2.5 Hz-limited generator gives 0.91° RMS at gain 1. The video (CameraTrack)
 // held still at 0.18° below 3 Hz (gain 0.2) and, walking about, 3x that (0.57°). Played back at
-// 6% of that (0.011° holding still): the full level reads as far too shaky on screen
-const HOLD_GAIN = 0.2 * 0.06, WALK_FACTOR = 3, TURN_FACTOR = 1.5;
+// 10.8% of that (0.02° holding still): the full level reads as far too shaky on screen
+const HOLD_GAIN = 0.2 * 0.108, WALK_FACTOR = 3, TURN_FACTOR = 1.5;
 const D = THREE.MathUtils.DEG2RAD;
 const WALK_SPEED = 0.7, RUN_SPEED = 1.2;		// m/s
 const WALK_EASE = 0.3;							// s to reach speed / to stop
 const WALL_MARGIN = 0.3;						// m kept from the walls
+const ARM_X = [ - 0.08, 0.08 ], ARM_Y = [ - 0.18, 0.15 ];	// m, phone offset in the hand (sideways, up)
+const ARM_DRAG = 0.0012;						// m per pixel of right drag
 const KEYS = { ArrowUp: [ 0, 1 ], ArrowDown: [ 0, - 1 ], ArrowLeft: [ - 1, 0 ], ArrowRight: [ 1, 0 ] };
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.Euler();
@@ -83,6 +86,8 @@ export class HandheldMode {
 		this.pressed = new Set();
 		this.shift = false;
 		this.walkVel = new THREE.Vector3();
+		this.armOffset = new THREE.Vector2();		// phone relative to the body's resting hold (m: sideways, up)
+		this._armDrag = new THREE.Vector2();		// right-drag not yet applied
 
 		this._onWheel = this._onWheel.bind( this );
 		this._onDown = this._onDown.bind( this );
@@ -119,6 +124,8 @@ export class HandheldMode {
 			if ( this.showPerson ) scene.add( this.person.group ); else this._removePerson();
 			this.intended.valid = false;
 			this.probeAt.set( 1e9, 0, 0 );
+			this.armOffset.set( 0, 0 );
+			this._armDrag.set( 0, 0 );
 
 		} else {
 
@@ -242,6 +249,24 @@ export class HandheldMode {
 
 		}
 
+		// right drag: the phone moves in the hand (limited), the body stays; not counted as travel
+		if ( this._armDrag.lengthSq() > 0 ) {
+
+			const o = this.armOffset;
+			const nx = THREE.MathUtils.clamp( o.x + this._armDrag.x, ARM_X[ 0 ], ARM_X[ 1 ] );
+			const ny = THREE.MathUtils.clamp( o.y + this._armDrag.y, ARM_Y[ 0 ], ARM_Y[ 1 ] );
+			_v.set( 0, 0, - 1 ).applyQuaternion( camera.quaternion ).setY( 0 );
+			if ( _v.lengthSq() < 1e-6 ) _v.set( 0, 0, - 1 );
+			_v.normalize();
+			const move = _o.set( - _v.z * ( nx - o.x ), ny - o.y, _v.x * ( nx - o.x ) );
+			camera.position.add( move );
+			controls.target.add( move );
+			this.lastPos.add( move );
+			o.set( nx, ny );
+			this._armDrag.set( 0, 0 );
+
+		}
+
 		// height a person can hold the phone at (the orbit centre moves with it)
 		const yc = THREE.MathUtils.clamp( camera.position.y, MIN_HEIGHT, MAX_HEIGHT );
 		if ( yc !== camera.position.y ) {
@@ -322,7 +347,7 @@ export class HandheldMode {
 
 		// the person holding the phone (placed from the intended pose: shake moves the hand, not
 		// the whole figure)
-		if ( this.showPerson ) this.person.update( I.position, I.quaternion );
+		if ( this.showPerson ) this.person.update( I.position, I.quaternion, this.armOffset );
 
 		// reflections: re-capture the mirror probe for the camera's position (a flat screen: from
 		// the camera's mirror image, exact; otherwise from just in front of the camera). Only the
@@ -391,11 +416,14 @@ export class HandheldMode {
 
 	}
 
+	// middle drag: FOV zoom; right drag: the phone in the hand
 	_onDown( e ) {
 
-		if ( e.button !== 1 ) return;
+		if ( e.button !== 1 && e.button !== 2 ) return;
 		e.preventDefault();
 		e.stopImmediatePropagation();
+		this.dragButton = e.button;
+		this.dragX = e.clientX;
 		this.dragY = e.clientY;
 		window.addEventListener( 'pointermove', this._onMove );
 		window.addEventListener( 'pointerup', this._onUp );
@@ -404,7 +432,9 @@ export class HandheldMode {
 
 	_onMove( e ) {
 
-		this._zoom( Math.exp( ( e.clientY - this.dragY ) * 0.004 ) );
+		if ( this.dragButton === 2 ) this._armDrag.x += ( e.clientX - this.dragX ) * ARM_DRAG, this._armDrag.y -= ( e.clientY - this.dragY ) * ARM_DRAG;
+		else this._zoom( Math.exp( ( e.clientY - this.dragY ) * 0.004 ) );
+		this.dragX = e.clientX;
 		this.dragY = e.clientY;
 
 	}

@@ -153,8 +153,12 @@ export class Person {
 
 	}
 
-	/** Place the figure for a camera (phone) at `position` with orientation `quaternion`. */
-	update( position, quaternion ) {
+	/**
+	 * Place the figure for a camera (phone) at `position` with orientation `quaternion`.
+	 * `hold` (m: sideways, up): where the phone is in the hand relative to the resting hold; the
+	 * body stands that much to the other side, the arm reaches (IK).
+	 */
+	update( position, quaternion, hold = null ) {
 
 		// heading of the camera (yaw only); the figure stays upright
 		_v.set( 0, 0, - 1 ).applyQuaternion( quaternion );
@@ -162,7 +166,8 @@ export class Person {
 		const root = this.root;
 		root.rotation.set( 0, yaw, 0 );
 		// feet on the floor (y = 0): the card's origin is at the phone
-		root.position.set( position.x + Math.sin( yaw ) * BEHIND, this.info ? this.info.phone[ 1 ] : position.y, position.z + Math.cos( yaw ) * BEHIND );
+		const side = hold?.x ?? 0;
+		root.position.set( position.x + Math.sin( yaw ) * BEHIND - Math.cos( yaw ) * side, this.info ? this.info.phone[ 1 ] : position.y, position.z + Math.cos( yaw ) * BEHIND + Math.sin( yaw ) * side );
 		root.updateMatrixWorld( true );
 
 		// phone at the lens (slightly behind it, so the camera is never inside the phone body)
