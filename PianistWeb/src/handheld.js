@@ -141,6 +141,8 @@ function sampleLoop( buf, t ) {
 
 }
 
+const _rv = new THREE.Vector3();
+
 // ---------------------------------------------------------------------------------------
 export class HandheldCamera {
 
@@ -308,6 +310,33 @@ export class HandheldCamera {
 	}
 
 	/**
+	 * Hand shake at time t with gain g, relative to the intended pose, in three.js camera axes:
+	 * `rotation` to post-multiply onto the camera quaternion, `offset` (metres) in camera space.
+	 * Usable on its own, e.g. on top of an interactively driven camera.
+	 */
+	shakeAt( t, g = this.intensity, rotation = new THREE.Quaternion(), offset = new THREE.Vector3() ) {
+
+		const D = THREE.MathUtils.DEG2RAD;
+		// rotation about the phone's own axes (OpenCV axes; deg)
+		const tilt = sampleLoop( this.rot[ 0 ], t ) * g;
+		const pan = sampleLoop( this.rot[ 1 ], t ) * g;
+		const roll = sampleLoop( this.rot[ 2 ], t ) * g + this.rollFromPan * pan;
+		// OpenCV (x right, y down, z forward) -> three.js camera (x right, y up, z backward)
+		_rv.set( tilt, - pan, - roll ).multiplyScalar( D );
+		const angle = _rv.length();
+		if ( angle > 0 ) rotation.setFromAxisAngle( _rv.divideScalar( angle ), angle );
+		else rotation.identity();
+
+		// translation (mm, OpenCV axes): lever-arm part follows the rotation, plus independent drift
+		const right = sampleLoop( this.trans[ 0 ], t ) * g + this.leverMmPerDeg.pan * pan;
+		const down = sampleLoop( this.trans[ 1 ], t ) * g + this.leverMmPerDeg.tilt * tilt;
+		const forward = sampleLoop( this.trans[ 2 ], t ) * g;
+		offset.set( right, - down, - forward ).multiplyScalar( 0.001 );
+		return { rotation, offset };
+
+	}
+
+	/**
 	 * Camera pose at time t (seconds). Call with increasing t for the follow filter; a jump
 	 * backwards restarts it. Writes into `camera` (position + quaternion) if given.
 	 */
@@ -325,23 +354,9 @@ export class HandheldCamera {
 		const base = new THREE.Quaternion().setFromRotationMatrix( m )
 			.multiply( new THREE.Quaternion().setFromAxisAngle( new THREE.Vector3( 0, 0, 1 ), this.rollAt( t ) * D ) );
 
-		// rotation shake about the phone's own axes (OpenCV axes; deg)
-		const tilt = sampleLoop( this.rot[ 0 ], t ) * g;
-		const pan = sampleLoop( this.rot[ 1 ], t ) * g;
-		const roll = sampleLoop( this.rot[ 2 ], t ) * g + this.rollFromPan * pan;
-		// OpenCV (x right, y down, z forward) -> three.js camera (x right, y up, z backward)
-		const rv = new THREE.Vector3( tilt, - pan, - roll ).multiplyScalar( D );
-		const angle = rv.length();
-		const q = base.clone();
-		if ( angle > 0 ) q.multiply( new THREE.Quaternion().setFromAxisAngle( rv.divideScalar( angle ), angle ) );
-
-		// translation shake (mm, OpenCV axes): lever-arm part follows the rotation, plus
-		// independent hand drift
-		const right = sampleLoop( this.trans[ 0 ], t ) * g + this.leverMmPerDeg.pan * pan;
-		const down = sampleLoop( this.trans[ 1 ], t ) * g + this.leverMmPerDeg.tilt * tilt;
-		const forward = sampleLoop( this.trans[ 2 ], t ) * g;
-		const local = new THREE.Vector3( right, - down, - forward ).multiplyScalar( 0.001 );
-		const pos = this._pos.clone().add( local.applyQuaternion( base ) );
+		const { rotation, offset } = this.shakeAt( t, g );
+		const q = base.clone().multiply( rotation );
+		const pos = this._pos.clone().add( offset.applyQuaternion( base ) );
 
 		if ( camera ) {
 

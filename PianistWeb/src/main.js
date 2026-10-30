@@ -15,6 +15,7 @@ import { Room, LIGHT_PRESETS } from './room.js';
 import { GIProbe } from './gi.js';
 import { PathTracer } from './pathtracer.js';
 import { KeyShadow } from './keyshadow.js';
+import { HandheldMode } from './handheldmode.js';
 import { Synth } from './synth.js';
 import { prefetchSoundfont, soundfontStatus } from './soundfont.js';
 import { MidiFilePlayer } from './midi.js';
@@ -75,6 +76,13 @@ const baker = new TextureBaker( renderer );
 const room = new Room( scene, baker );
 const probe = new GIProbe( renderer, scene );
 const keyShadow = new KeyShadow( renderer );
+// handheld camera mode (handheldmode.js): shake, walking, height cap, FOV zoom, person in reflections
+const handheld = new HandheldMode( {
+	camera, controls, scene, renderer,
+	isPathTracing: () => settings.mode === 'pathtrace',
+	specularCapture: position => probe.updateSpecular( position, piano ? [ piano.group ] : [], { lights: [ room.sun ], objects: [ room.foliage ].filter( Boolean ) } ),
+	bounds: () => ( { minX: - room.params.width / 2, maxX: room.params.width / 2, minZ: room.backWallZ, maxZ: room.backWallZ + room.params.depth } ),
+} );
 renderer.debug.onShaderError = ( gl, program, vs, fs ) => {
 
 	const log = gl.getProgramInfoLog( program ) + '\n' + gl.getShaderInfoLog( vs ) + '\n' + gl.getShaderInfoLog( fs );
@@ -443,6 +451,11 @@ navigator.requestMIDIAccess?.().then( access => {
 const gui = new GUI( { title: 'Pianist' } );
 gui.add( settings, 'style', Object.fromEntries( STYLES.map( s => [ s.name, s.id ] ) ) ).name( 'Piano' ).onChange( setStyle );
 gui.add( settings, 'gi' ).name( 'Global illumination' ).onChange( () => applyQuality() );
+const fHand = gui.addFolder( 'Handheld camera' );
+fHand.add( { on: false }, 'on' ).name( 'Handheld' ).onChange( v => handheld.setEnabled( v ) );
+fHand.add( handheld, 'intensity', 0, 3, 0.05 ).name( 'Shake' );
+fHand.add( handheld, 'walk', 0, 2, 0.05 ).name( 'Walking motion' );
+fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
 gui.add( settings, 'mode', { 'Real-time (probe GI + GTAO)': 'realtime', 'Path traced': 'pathtrace' } ).name( 'Renderer' ).onChange( setMode );
 
 const fLight = gui.addFolder( 'Lighting' );
@@ -696,7 +709,10 @@ function frame() {
 	const dt = Math.min( raw, 0.05 );
 	if ( raw > 0 ) fps += ( 1 / raw - fps ) * 0.05;
 	cameraMoving = false;
+	handheld.restore();
 	controls.update();
+	handheld.apply( dt );
+	if ( handheld.consumeRebuild() ) ptDirty = true;
 	keysMoving = piano.keyboard.update( dt );
 	roll.update( midiPlayer, dt, camera, renderer, room.mode !== 'pathtrace' );
 	if ( piano.action?.update( dt ) ) keysMoving = true;
@@ -753,5 +769,5 @@ applyQuality( false );
 setStyle( settings.style );
 setMode( settings.mode );
 if ( ! params.has( 'loading' ) ) document.getElementById( 'loading' ).classList.add( 'hidden' );		// ?loading keeps it (design preview)
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, synth, midiPlayer, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, synth, midiPlayer, get piano() { return piano; } };
 requestAnimationFrame( frame );

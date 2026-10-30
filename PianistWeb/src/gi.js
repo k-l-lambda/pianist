@@ -87,6 +87,38 @@ export class GIProbe {
 
 	}
 
+	/**
+	 * Re-capture only the specular (mirror) map, from `position` (e.g. the viewer, so things
+	 * near the camera — the person holding it — show up in glossy reflections). Cheap enough to
+	 * call a few times a second; uses the same exclusions as update().
+	 */
+	updateSpecular( position, hide = [], { lights = [], objects = [] } = {} ) {
+
+		if ( ! this.specTarget ) return;
+		const r = this.renderer, scene = this.scene;
+		const prev = { toneMapping: r.toneMapping, shadowAuto: r.shadowMap.autoUpdate, background: scene.background, env: scene.environment };
+		const hv = hide.map( o => o.visible ), ov = objects.map( o => o.visible ), li = lights.map( l => l.intensity );
+		hide.forEach( o => o.visible = false );
+		objects.forEach( o => o.visible = false );
+		lights.forEach( l => l.intensity = 0 );
+		r.toneMapping = THREE.NoToneMapping;
+		r.shadowMap.autoUpdate = false;
+		scene.background = null;
+		this.cubeCamera.position.copy( position );
+		scene.add( this.cubeCamera );
+		this.cubeCamera.update( r, scene );
+		scene.remove( this.cubeCamera );
+		this.pmrem.fromCubemap( this.cubeRT.texture, this.specTarget );
+		hide.forEach( ( o, i ) => o.visible = hv[ i ] );
+		objects.forEach( ( o, i ) => o.visible = ov[ i ] );
+		lights.forEach( ( l, i ) => l.intensity = li[ i ] );
+		r.toneMapping = prev.toneMapping;
+		r.shadowMap.autoUpdate = prev.shadowAuto;
+		scene.background = prev.background;
+		scene.environment = prev.env;
+
+	}
+
 	dispose() {
 
 		this.cubeRT.dispose();
