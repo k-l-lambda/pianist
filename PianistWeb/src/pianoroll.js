@@ -21,6 +21,204 @@ const MAX_PARTICLES = 8192;
 const PARTICLE_LIFE = 1.5;			// s
 const WHITE_TOP = 0.0222, BLACK_TOP = 0.0345;	// key-mesh local heights of the key tops
 const LIFT = 0.0025;				// roll plane offset towards the player (above the screen surface)
+const MAX_LIVE = 256;				// live (played) note bars
+const POWER_FADE = 0.35;			// s, screen on / off fade
+const BOOT_FADE = 0.6;				// s, boot animation -> roll crossfade
+
+// ---- power-on animation: the loading-screen artwork (tools/build-loading-svg.mjs) drawn into a
+// canvas texture on the screen. Timing mirrors the CSS in index.html.
+const BASE = import.meta.env.BASE_URL + 'loading/';
+const AMBER = '#d9b26f';
+
+function bezier( x1, y1, x2, y2 ) {
+
+	// CSS cubic-bezier timing function
+	const a = ( p1, p2 ) => 1 - 3 * p2 + 3 * p1, b = ( p1, p2 ) => 3 * p2 - 6 * p1, c = p1 => 3 * p1;
+	const at = ( t, p1, p2 ) => ( ( a( p1, p2 ) * t + b( p1, p2 ) ) * t + c( p1 ) ) * t;
+	const slope = ( t, p1, p2 ) => 3 * a( p1, p2 ) * t * t + 2 * b( p1, p2 ) * t + c( p1 );
+	return x => {
+
+		let t = x;
+		for ( let i = 0; i < 6; ++ i ) {
+
+			const d = slope( t, x1, x2 );
+			if ( Math.abs( d ) < 1e-6 ) break;
+			t -= ( at( t, x1, x2 ) - x ) / d;
+
+		}
+
+		return at( Math.min( 1, Math.max( 0, t ) ), y1, y2 );
+
+	};
+
+}
+
+const EASE = bezier( .4, 0, .6, 1 );
+
+// value of a keyframed property at cycle fraction u: frames [[u, value], ...], eased per interval
+function keyed( frames, u ) {
+
+	if ( u <= frames[ 0 ][ 0 ] ) return frames[ 0 ][ 1 ];
+	for ( let i = 1; i < frames.length; ++ i ) {
+
+		const [ u0, v0 ] = frames[ i - 1 ], [ u1, v1 ] = frames[ i ];
+		if ( u <= u1 ) return v0 + ( v1 - v0 ) * EASE( ( u - u0 ) / ( u1 - u0 ) );
+
+	}
+
+	return frames[ frames.length - 1 ][ 1 ];
+
+}
+
+// light sweeps (artwork units, 400 x 280): strings rise 14..56%, streamlines 39..81%
+const SWEEP_STRINGS = { y: [ [ 0, 170 ], [ .14, 170 ], [ .56, - 40 ], [ 1, - 40 ] ], a: [ [ 0, 0 ], [ .14, 0 ], [ .20, 1 ], [ .50, 1 ], [ .56, 0 ], [ 1, 0 ] ] };
+const SWEEP_FLOW = { x: [ [ 0, 20 ], [ .39, 20 ], [ .81, 340 ], [ 1, 340 ] ], a: [ [ 0, 0 ], [ .39, 0 ], [ .45, 1 ], [ .75, 1 ], [ .81, 0 ], [ 1, 0 ] ] };
+
+class BootAnimation {
+
+	constructor() {
+
+		this.canvas = document.createElement( 'canvas' );
+		this.ctx = this.canvas.getContext( '2d' );
+		this.scratch = document.createElement( 'canvas' );
+		this.sctx = this.scratch.getContext( '2d' );
+		this.texture = new THREE.CanvasTexture( this.canvas );
+		this.texture.colorSpace = THREE.SRGBColorSpace;
+		this.ready = false;
+		this.load();
+
+	}
+
+	async load() {
+
+		try {
+
+			const img = src => new Promise( ( ok, fail ) => {
+
+				const i = new Image();
+				i.onload = () => ok( i );
+				i.onerror = fail;
+				i.src = BASE + src;
+
+			} );
+			const [ anim, base, strings, flow ] = await Promise.all( [ fetch( BASE + 'anim.json' ).then( r => r.json() ), img( 'base.svg' ), img( 'mask-strings.svg' ), img( 'mask-flow.svg' ) ] );
+			Object.assign( this, { anim, base, strings, flow } );
+			this.cycle = anim.cycle;
+			this.ready = true;
+
+		} catch ( err ) {
+
+			console.warn( 'boot animation unavailable:', err );
+
+		}
+
+	}
+
+	/** Size the canvas to the screen's aspect ratio. */
+	resize( aspect ) {
+
+		const w = 2048, h = Math.max( 64, Math.round( w / aspect ) );
+		this.canvas.width = this.scratch.width = w;
+		this.canvas.height = this.scratch.height = h;
+		// artwork fitted to 88% of the screen height, centred
+		const ah = h * 0.88, aw = ah * 400 / 280;
+		this.fit = { x: ( w - aw ) / 2, y: ( h - ah ) / 2, s: ah / 280 };
+
+	}
+
+	/** Draw the frame at time t (s) into the texture. */
+	draw( t ) {
+
+		const { ctx, sctx, canvas, fit } = this;
+		ctx.globalCompositeOperation = 'source-over';
+		ctx.globalAlpha = 1;
+		ctx.fillStyle = '#000';
+		ctx.fillRect( 0, 0, canvas.width, canvas.height );
+		if ( ! this.ready || ! fit ) {
+
+			this.texture.needsUpdate = true;
+			return;
+
+		}
+
+		const u = ( t / this.cycle ) % 1;
+		const aw = 400 * fit.s, ah = 280 * fit.s;
+		const X = x => fit.x + x * fit.s, Y = y => fit.y + y * fit.s;
+
+		// base drawing, breathing
+		ctx.globalAlpha = 0.91 - 0.09 * Math.cos( 2 * Math.PI * u );
+		ctx.drawImage( this.base, fit.x, fit.y, aw, ah );
+		ctx.globalAlpha = 1;
+
+		// a light sweep: gradient band clipped to a line mask
+		const sweep = ( mask, a, grad ) => {
+
+			if ( a <= 0.001 ) return;
+			sctx.globalCompositeOperation = 'source-over';
+			sctx.clearRect( 0, 0, canvas.width, canvas.height );
+			sctx.drawImage( mask, fit.x, fit.y, aw, ah );
+			sctx.globalCompositeOperation = 'source-in';
+			grad( sctx );
+			ctx.globalAlpha = a;
+			ctx.drawImage( this.scratch, 0, 0 );
+			ctx.globalAlpha = 1;
+
+		};
+
+		const band = ( g, x0, y0, x1, y1 ) => {
+
+			g.addColorStop( 0, 'rgba(217,178,111,0)' );
+			g.addColorStop( 0.5, AMBER );
+			g.addColorStop( 1, 'rgba(217,178,111,0)' );
+			return g;
+
+		};
+
+		const sy = keyed( SWEEP_STRINGS.y, u );
+		sweep( this.strings, keyed( SWEEP_STRINGS.a, u ), g => {
+
+			g.fillStyle = band( g.createLinearGradient( 0, Y( sy + 120 ), 0, Y( sy ) ) );
+			g.fillRect( X( 100 ), Y( sy ), 200 * fit.s, 120 * fit.s );
+
+		} );
+		const fx = keyed( SWEEP_FLOW.x, u );
+		sweep( this.flow, keyed( SWEEP_FLOW.a, u ), g => {
+
+			g.fillStyle = band( g.createLinearGradient( X( fx ), 0, X( fx + 160 ), 0 ) );
+			g.fillRect( X( fx ), fit.y, 160 * fit.s, ah );
+
+		} );
+
+		// played keys: each flashes as a whole (rise 1.5% of the cycle, fade by 10%)
+		ctx.fillStyle = AMBER;
+		for ( const k of this.anim.keys ) {
+
+			const d = u - k.start;
+			if ( d < 0 || d > 0.1 ) continue;
+			ctx.globalAlpha = d < 0.015 ? d / 0.015 : 1 - ( d - 0.015 ) / 0.085;
+			ctx.beginPath();
+			k.pts.forEach( ( p, i ) => ( i ? ctx.lineTo( X( p[ 0 ] ), Y( p[ 1 ] ) ) : ctx.moveTo( X( p[ 0 ] ), Y( p[ 1 ] ) ) ) );
+			ctx.closePath();
+			ctx.fill();
+
+		}
+
+		ctx.globalAlpha = 1;
+
+		// the streamlines end at the artwork's right edge: on a wide screen let them fade out
+		// instead of stopping in the middle of the display
+		const fade = ctx.createLinearGradient( X( 320 ), 0, X( 400 ), 0 );
+		fade.addColorStop( 0, 'rgba(0,0,0,0)' );
+		fade.addColorStop( 1, 'rgba(0,0,0,1)' );
+		ctx.globalCompositeOperation = 'destination-out';
+		ctx.fillStyle = fade;
+		ctx.fillRect( X( 320 ), 0, X( 400 ) - X( 320 ) + 1, canvas.height );
+		ctx.globalCompositeOperation = 'source-over';
+		this.texture.needsUpdate = true;
+
+	}
+
+}
 
 // ---------------------------------------------------------------------------------------------
 const BAR_VS = /* glsl */`
@@ -66,7 +264,7 @@ const BAR_FS = /* glsl */`
 		// solid fill with a faint lighter edge; brighter while the note sounds
 		float rim = smoothstep( - 0.0025, 0.0, d ) * core;
 		float lit = 0.8 + 0.2 * vInfo.x + 0.3 * vInfo.y;
-		vec3 col = uColor * core * lit * ( 1.0 + 0.12 * rim ) + uColor * glow * ( 0.38 + 0.4 * vInfo.y );
+		vec3 col = uColor * core * lit * ( 1.0 + 0.12 * rim ) + uColor * glow * ( 0.38 + 0.4 * vInfo.y ) * 0.3;		// halo at 30%
 		// fade in at the top of the plane, clip below the hit line
 		col *= smoothstep( uHeight, uHeight - 0.04, vY ) * step( 0.0, vY );
 		gl_FragColor = vec4( col * uIntensity, 1.0 );
@@ -95,7 +293,7 @@ const FLARE_FS = /* glsl */`
 	void main() {
 		float f = exp( - dot( vUv * vec2( 2.2, 2.6 ), vUv * vec2( 2.2, 2.6 ) ) );
 		float core = exp( - dot( vUv * vec2( 4.0, 9.0 ), vUv * vec2( 4.0, 9.0 ) ) );
-		vec3 col = mix( uColor, vec3( 1.0 ), 0.65 ) * core * 2.6 + uColor * f * 1.1;
+		vec3 col = mix( uColor, vec3( 1.0 ), 0.65 ) * core * 2.6 + uColor * f * 1.1 * 0.3;		// outer halo at 30%
 		gl_FragColor = vec4( col * vS * uIntensity, 1.0 );
 	}
 `;
@@ -200,7 +398,11 @@ export class PianoRoll {
 		this.particles = true;
 		this.lookahead = 2.5;			// s of file time visible above the hit line
 		this.color = new THREE.Color( '#1a5cff' );
+		this.liveColor = new THREE.Color( '#ff2a36' );	// notes played on the keyboard, rising
 		this.intensity = 1.0;
+		this.power = false;				// screen on/off: the roll only shows while on
+		this.powerLevel = 0;			// faded 0..1
+		this.bootT = - 1;				// time into the power-on animation (s), -1 = not booting
 
 		this.group = new THREE.Group();
 		this.group.name = 'pianoRoll';
@@ -224,6 +426,41 @@ export class PianoRoll {
 			this.bars.renderOrder = 10;
 			this.bars.userData.noAO = true;
 			this.group.add( this.bars );
+
+		}
+
+		// live bars: same shader, own instances and colour, rising from the hit line
+		{
+
+			const geo = quadCorners( new THREE.InstancedBufferGeometry() );
+			this.liveRect = new THREE.InstancedBufferAttribute( new Float32Array( MAX_LIVE * 4 ), 4 ).setUsage( THREE.DynamicDrawUsage );
+			this.liveInfo = new THREE.InstancedBufferAttribute( new Float32Array( MAX_LIVE * 2 ), 2 ).setUsage( THREE.DynamicDrawUsage );
+			geo.setAttribute( 'aRect', this.liveRect );
+			geo.setAttribute( 'aInfo', this.liveInfo );
+			geo.instanceCount = 0;
+			this.liveUniforms = { uColor: { value: this.liveColor }, uGlow: this.barUniforms.uGlow, uHeight: this.barUniforms.uHeight, uIntensity: { value: 1 } };
+			this.liveBars = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: BAR_VS, fragmentShader: BAR_FS, uniforms: this.liveUniforms, ...common } ) );
+			this.liveBars.frustumCulled = false;
+			this.liveBars.renderOrder = 10;
+			this.liveBars.userData.noAO = true;
+			this.group.add( this.liveBars );
+			this.liveNotes = [];
+			this.liveTime = 0;
+
+		}
+
+		// power-on animation plane (screens only)
+		{
+
+			this.bootAnim = new BootAnimation();
+			this.bootMesh = new THREE.Mesh( new THREE.PlaneGeometry( 1, 1 ).translate( 0, 0.5, - 0.0006 ), new THREE.MeshBasicMaterial( {
+				map: this.bootAnim.texture, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+			} ) );
+			this.bootMesh.frustumCulled = false;
+			this.bootMesh.renderOrder = 9;
+			this.bootMesh.visible = false;
+			this.bootMesh.userData.noAO = true;
+			this.group.add( this.bootMesh );
 
 		}
 
@@ -321,6 +558,12 @@ export class PianoRoll {
 			.setPosition( R.origin.clone().addScaledVector( normal, LIFT ) );
 		this.height = R.height;
 		this.barUniforms.uHeight.value = R.height;
+		this.screen = !! R.screen;
+		this.bootMesh.scale.set( R.width ?? 1.3, R.height, 1 );
+		this.bootAnim.resize( ( R.width ?? 1.3 ) / R.height );
+		this.bootT = - 1;
+		this.bootMesh.visible = false;
+		this.liveNotes.length = 0;
 		this.guides.scale.y = R.height;
 		this.guides.matrixAutoUpdate = true;
 		piano.group.add( this.group );
@@ -380,6 +623,33 @@ export class PianoRoll {
 
 	}
 
+	/** Screen power: the roll (file and live notes) only shows while on. */
+	setPower( on ) {
+
+		this.power = on;
+		// screens play the loading artwork as their power-on animation
+		this.bootT = on && this.screen ? 0 : - 1;
+		if ( ! on ) this.bootMesh.visible = false;
+		if ( ! on ) for ( const n of this.liveNotes ) if ( n.off === null ) n.off = this.liveTime;
+
+	}
+
+	/** A note played on the keyboard (not from the file): a red bar rising from the hit line. */
+	liveOn( pitch, velocity = 0.8 ) {
+
+		if ( ! this.power || pitch < PITCH_MIN || pitch > PITCH_MAX ) return;
+		this.liveOff( pitch );
+		if ( this.liveNotes.length >= MAX_LIVE ) this.liveNotes.shift();
+		this.liveNotes.push( { pitch, vel: velocity, on: this.liveTime, off: null, x: pitchX( pitch ), w: isBlack( pitch ) ? 0.0098 : WHITE_PITCH * 0.74 } );
+
+	}
+
+	liveOff( pitch ) {
+
+		for ( const n of this.liveNotes ) if ( n.pitch === pitch && n.off === null ) n.off = this.liveTime;
+
+	}
+
 	setColor( c ) {
 
 		this.color.set( c );
@@ -397,16 +667,58 @@ export class PianoRoll {
 	update( player, dt, camera, renderer, show ) {
 
 		if ( player.events !== this.events ) this._build( player.events );
-		const active = show && this.enabled && this.notes && this.notes.length > 0 && this.piano;
+		const target = this.power ? 1 : 0;
+		this.powerLevel = target > this.powerLevel ? Math.min( 1, this.powerLevel + dt / POWER_FADE ) : Math.max( 0, this.powerLevel - dt / POWER_FADE );
+		const active = show && this.enabled && this.piano && this.powerLevel > 0;
 		this.group.visible = !! active;
+		this.liveTime += dt;
 		if ( ! active ) {
 
+			this._fadeKeys( dt, true );
+			if ( ! this.power ) this.liveNotes.length = 0;
+			return;
+
+		}
+
+		// power-on animation, then crossfade to the roll
+		let rollLevel = 1;
+		if ( this.bootT >= 0 ) {
+
+			this.bootT += dt;
+			const cycle = this.bootAnim.cycle ?? 5.35;
+			const end = cycle + BOOT_FADE;
+			if ( this.bootT >= end ) {
+
+				this.bootT = - 1;
+				this.bootMesh.visible = false;
+
+			} else {
+
+				this.bootAnim.draw( Math.min( this.bootT, cycle - 1e-3 ) );
+				this.bootMesh.visible = true;
+				this.bootMesh.material.opacity = this.powerLevel * ( 1 - THREE.MathUtils.smoothstep( this.bootT, cycle - 0.1, end ) );
+				rollLevel = THREE.MathUtils.smoothstep( this.bootT, cycle - 0.2, end );
+
+			}
+
+		}
+
+		const level = this.powerLevel * rollLevel;
+		this.barUniforms.uIntensity.value = this.flareUniforms.uIntensity.value = this.partUniforms.uIntensity.value = this.liveUniforms.uIntensity.value = level;
+		this.guides.material.opacity = 0.035 * level;
+		this._updateLive();
+
+		this.time += dt;
+		if ( ! this.notes || this.notes.length === 0 ) {
+
+			this.bars.geometry.instanceCount = this.flares.geometry.instanceCount = 0;
+			this._flushParticles();
+			this.partUniforms.uTime.value = this.time;
 			this._fadeKeys( dt, true );
 			return;
 
 		}
 
-		this.time += dt;
 		const pos = player.position;
 		const speed = this.height / ( this.lookahead * 1000 );		// plane metres per file ms
 		const notes = this.notes;
@@ -492,6 +804,40 @@ export class PianoRoll {
 
 	}
 
+	// live bars: bottom pinned to the hit line while the key is held, then the bar rises at the
+	// file notes' falling speed and leaves through the top
+	_updateLive() {
+
+		const speed = this.height / this.lookahead;		// m/s
+		const t = this.liveTime, rect = this.liveRect.array, info = this.liveInfo.array;
+		let n = 0, keep = 0;
+		for ( const note of this.liveNotes ) {
+
+			const y1 = ( t - note.on ) * speed;
+			const y0 = note.off === null ? 0 : ( t - note.off ) * speed;
+			if ( y0 > this.height + 0.05 ) continue;		// gone through the top
+			this.liveNotes[ keep ++ ] = note;
+			if ( y1 - y0 < 1e-4 ) continue;
+			rect[ n * 4 ] = note.x - note.w / 2;
+			rect[ n * 4 + 1 ] = y0;
+			rect[ n * 4 + 2 ] = note.x + note.w / 2;
+			rect[ n * 4 + 3 ] = Math.min( y1, this.height + 0.05 );
+			info[ n * 2 ] = note.vel;
+			info[ n * 2 + 1 ] = note.off === null ? 1 : 0;
+			++ n;
+
+		}
+
+		this.liveNotes.length = keep;
+		this.liveRect.needsUpdate = this.liveInfo.needsUpdate = true;
+		this.liveRect.clearUpdateRanges();
+		this.liveInfo.clearUpdateRanges();
+		this.liveRect.addUpdateRange( 0, n * 4 );
+		this.liveInfo.addUpdateRange( 0, n * 2 );
+		this.liveBars.geometry.instanceCount = n;
+
+	}
+
 	_rand() {
 
 		this.seed = ( this.seed * 16807 ) % 2147483647;
@@ -549,7 +895,7 @@ export class PianoRoll {
 			l += ( target - l ) * Math.min( 1, dt * ( target > l ? 30 : 7 ) );
 			if ( Math.abs( target - l ) < 0.01 ) l = target;
 			g.userData.level = l;
-			g.material.opacity = l * 0.85 * this.intensity;
+			g.material.opacity = l * 0.85 * this.intensity * this.powerLevel * ( this.bootT >= 0 ? 0 : 1 );
 			g.visible = l > 0;
 
 		}

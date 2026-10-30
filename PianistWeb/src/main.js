@@ -266,7 +266,10 @@ let pointerPitch = null;
 const keysDown = new Set();
 
 // `sound: false` animates only (MIDI file playback schedules its own sound)
-function noteOn( pitch, velocity = 0.8, { sound = true } = {} ) {
+// `live`: played by the user (mouse, computer keys, MIDI keyboard), not the MIDI file
+function noteOn( pitch, velocity = 0.8, { sound = true, live = true } = {} ) {
+
+	if ( live ) roll.liveOn( pitch, velocity );
 
 	if ( pitch < PITCH_MIN || pitch > PITCH_MAX ) {
 
@@ -281,7 +284,9 @@ function noteOn( pitch, velocity = 0.8, { sound = true } = {} ) {
 
 }
 
-function noteOff( pitch, { sound = true } = {} ) {
+function noteOff( pitch, { sound = true, live = true } = {} ) {
+
+	if ( live ) roll.liveOff( pitch );
 
 	if ( pitch >= PITCH_MIN && pitch <= PITCH_MAX ) {
 
@@ -390,6 +395,7 @@ window.addEventListener( 'keydown', event => {
 
 	if ( event.repeat || event.target.closest?.( '.lil-gui' ) ) return;
 	const k = event.key.toLowerCase();
+	if ( event.key === '`' ) { setScreenPower( ! roll.power ); return; }
 	if ( k === 'z' ) { octaveShift = Math.max( - 3, octaveShift - 1 ); return; }
 	if ( k === 'x' ) { octaveShift = Math.min( 3, octaveShift + 1 ); return; }
 	if ( k === ' ' ) { pedal( 'sustain', 'key', true ); event.preventDefault(); return; }
@@ -447,6 +453,23 @@ navigator.requestMIDIAccess?.().then( access => {
 
 // ---------------------------------------------------------------------------
 // GUI
+
+// screen power: the piano roll (file notes falling, played notes rising in red) only shows
+// while the screen is on. Toggled by the power icon (bottom left) or the ` key.
+const powerButton = document.getElementById( 'power' );
+function setScreenPower( on ) {
+
+	roll.setPower( on );
+	powerButton?.setAttribute( 'aria-pressed', String( on ) );
+
+}
+
+powerButton?.addEventListener( 'click', () => {
+
+	setScreenPower( ! roll.power );
+	powerButton.blur();		// keep Space etc. for the piano
+
+} );
 
 const gui = new GUI( { title: 'Pianist' } );
 gui.add( settings, 'style', Object.fromEntries( STYLES.map( s => [ s.name, s.id ] ) ) ).name( 'Piano' ).onChange( setStyle );
@@ -528,8 +551,8 @@ gui.add( settings, 'volume', 0, 1, 0.01 ).name( 'Volume' ).onChange( v => synth.
 // MIDI file player: open / drop a .mid file; playback animates keys, hammers, dampers and pedals
 
 const midiPlayer = new MidiFilePlayer( synth, {
-	noteOn: ( pitch, velocity, opts ) => noteOn( pitch, velocity, opts ),
-	noteOff: ( pitch, opts ) => noteOff( pitch, opts ),
+	noteOn: ( pitch, velocity, opts ) => noteOn( pitch, velocity, { ...opts, live: false } ),
+	noteOff: ( pitch, opts ) => noteOff( pitch, { ...opts, live: false } ),
 	pedal: ( name, on ) => pedal( name, 'midi-file', on ),
 	onEnd: () => midiUI.updateDisplay(),
 } );
@@ -769,5 +792,5 @@ applyQuality( false );
 setStyle( settings.style );
 setMode( settings.mode );
 if ( ! params.has( 'loading' ) ) document.getElementById( 'loading' ).classList.add( 'hidden' );		// ?loading keeps it (design preview)
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, synth, midiPlayer, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, setScreenPower, synth, midiPlayer, get piano() { return piano; } };
 requestAnimationFrame( frame );

@@ -187,6 +187,13 @@ fs.writeFileSync( path.join( out, 'base.svg' ), svg( baseInner ) );
 fs.writeFileSync( path.join( out, 'mask-strings.svg' ), svg( stroke( strings, '#fff', 1.6 ) ) );
 for ( const old of [ 'mask-keys.svg', 'mask-black.svg' ] ) fs.rmSync( path.join( out, old ), { force: true } );
 
+// timing + key outlines for the screen's power-on animation (pianoroll.js draws the same
+// artwork into a canvas texture: base.svg, mask-strings.svg, mask-flow.svg and these keys)
+fs.writeFileSync( path.join( out, 'anim.json' ), JSON.stringify( {
+	width: W, height: H, cycle: CYCLE,
+	keys: litKeys.map( k => ( { start: +k.start.toFixed( 4 ), pts: k.pts.map( p => p.map( v => +v.toFixed( 2 ) ) ) } ) ),
+} ) );
+
 // ---- the played keys, written into index.html between markers: one element per key, only its
 // opacity animates (composited), positioned in % of the 400 x 280 artwork and cut with clip-path
 {
