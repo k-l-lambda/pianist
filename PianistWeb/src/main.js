@@ -501,8 +501,28 @@ navigator.requestMIDIAccess?.().then( access => {
 // screen power: the piano roll (file notes falling, played notes rising in red) only shows
 // while the screen is on. Toggled by the power icon (bottom left) or the ` key.
 const powerButton = document.getElementById( 'power' );
+// power-on chime (public/midi/open.mid) with the boot animation, which plays in the chime's length
+// less BOOT_SHORTER (the roll fades in under the chime's tail): sound only, its own player, so no
+// keys move and no roll shows
+const BOOT_SHORTER = 1.7;		// s: 5.0 s chime -> 3.3 s artwork
+const bootSound = new MidiFilePlayer( synth, {
+	noteOn: ( pitch, velocity, { sound } ) => sound && synth.noteOn( pitch, velocity ),
+	noteOff: ( pitch, { sound } ) => sound && synth.noteOff( pitch ),
+	pedal: () => {},
+} );
+fetch( new URL( 'midi/open.mid', new URL( import.meta.env.BASE_URL, location.href ) ) )
+	.then( r => r.ok ? r.arrayBuffer() : Promise.reject( new Error( r.status ) ) )
+	.then( buffer => roll.bootLength = Math.max( 1, bootSound.load( buffer, 'open.mid' ).duration / 1000 - BOOT_SHORTER ) )
+	.catch( err => console.warn( 'power-on sound unavailable:', err ) );
+
 function setScreenPower( on ) {
 
+	if ( on && ! roll.power ) {
+
+		bootSound.stop();
+		synth.resume().then( () => bootSound.play() );
+
+	} else if ( ! on && roll.power ) bootSound.stop();
 	roll.setPower( on );
 	powerButton?.setAttribute( 'aria-pressed', String( on ) );
 

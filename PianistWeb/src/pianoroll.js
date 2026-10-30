@@ -402,7 +402,8 @@ export class PianoRoll {
 		this.intensity = 1.0;
 		this.power = false;				// screen on/off: the roll only shows while on
 		this.powerLevel = 0;			// faded 0..1
-		this.bootT = - 1;				// time into the power-on animation (s), -1 = not booting
+		this.bootT = - 1;				// time into the power-on animation (artwork s), -1 = not booting
+		this.bootLength = null;			// s the artwork's cycle is played in (the power-on chime's length)
 
 		this.group = new THREE.Group();
 		this.group.name = 'pianoRoll';
@@ -684,8 +685,8 @@ export class PianoRoll {
 		let rollLevel = 1;
 		if ( this.bootT >= 0 ) {
 
-			this.bootT += dt;
 			const cycle = this.bootAnim.cycle ?? 5.35;
+			this.bootT += dt * ( this.bootLength ? cycle / this.bootLength : 1 );
 			const end = cycle + BOOT_FADE;
 			if ( this.bootT >= end ) {
 
