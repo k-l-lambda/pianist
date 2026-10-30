@@ -50,6 +50,7 @@ export class Room {
 		this.highQuality = true;
 		this.params = { ...ROOM_DEFAULTS };
 		this.light = { ...LIGHT_PRESETS[ 'Sunlit afternoon' ] };
+		this._shell = new Map();			// material -> its no-draw twin for outward faces
 		this.group = new THREE.Group();
 		this.group.name = 'room';
 		scene.add( this.group );
@@ -115,11 +116,43 @@ export class Room {
 
 		};
 
-		const box = ( ax, ay, az, bx, by, bz, mat, uv = { grain: 'x' } ) => {
+		// walls and ceiling are seen from inside only: the face looking out of the room (`outward`:
+		// '+x' | '-x' | '+y' | '+z' | '-z') is split off into a mesh that still casts shadows and
+		// blocks light in path tracing, but draws nothing (no colour, no depth, no GTAO) in the
+		// raster view, so from outside the camera looks into the room
+		const shell = mat => {
+
+			let m = this._shell.get( mat );
+			if ( ! m ) this._shell.set( mat, m = Object.assign( mat.clone(), { colorWrite: false, depthWrite: false } ) );
+			m.color.copy( mat.color );
+			return m;
+
+		};
+		const FACE = { '+x': 0, '-x': 1, '+y': 2, '-y': 3, '+z': 4, '-z': 5 };		// BoxGeometry group order
+
+		const box = ( ax, ay, az, bx, by, bz, mat, uv = { grain: 'x' }, outward = null ) => {
 
 			const geo = new THREE.BoxGeometry( bx - ax, by - ay, bz - az );
 			geo.translate( ( ax + bx ) / 2, ( ay + by ) / 2, ( az + bz ) / 2 );
-			return add( boxProjectUV( geo, { ...uv, offset: [ 0, 0 ] } ), mat );
+			const project = g => boxProjectUV( g, { ...uv, offset: [ 0, 0 ] } );
+			if ( ! outward ) return add( project( geo ), mat );
+			const idx = geo.index.array, out = geo.groups[ FACE[ outward ] ];
+			const part = keep => {
+
+				const g = geo.clone();
+				const list = [];
+				for ( const gr of geo.groups ) if ( ( gr === out ) === keep ) list.push( ...idx.slice( gr.start, gr.start + gr.count ) );
+				g.setIndex( list );
+				g.clearGroups();
+				return project( g );
+
+			};
+
+			const inner = add( part( false ), mat );
+			const outer = add( part( true ), shell( mat ) );
+			outer.userData.noAO = true;
+			geo.dispose();
+			return inner;
 
 		};
 
@@ -133,14 +166,14 @@ export class Room {
 		}
 
 		// ceiling
-		box( x0 - T, H, z0 - T, x1 + T, H + T, z1 + T, M.ceiling );
+		box( x0 - T, H, z0 - T, x1 + T, H + T, z1 + T, M.ceiling, undefined, '+y' );
 
 		// walls; one may carry the window opening
 		const wallUV = { grain: 'x' };
 		const wallUVz = { grain: 'z' };
 		const win = this._windowRect();
 
-		const wall = ( axis, fixed0, fixed1, a0, a1, hasWindow ) => {
+		const wall = ( axis, fixed0, fixed1, a0, a1, hasWindow, outward ) => {
 
 			// axis: 'z' wall spans x (back/front); 'x' wall spans z (left/right)
 			const spans = [];
@@ -157,17 +190,17 @@ export class Room {
 			for ( const [ s0, s1, y0, y1 ] of spans ) {
 
 				if ( s1 - s0 < 1e-3 || y1 - y0 < 1e-3 ) continue;
-				if ( axis === 'z' ) box( s0, y0, fixed0, s1, y1, fixed1, M.wall, wallUV );
-				else box( fixed0, y0, s0, fixed1, y1, s1, M.wall, wallUVz );
+				if ( axis === 'z' ) box( s0, y0, fixed0, s1, y1, fixed1, M.wall, wallUV, outward );
+				else box( fixed0, y0, s0, fixed1, y1, s1, M.wall, wallUVz, outward );
 
 			}
 
 		};
 
-		wall( 'z', z0 - T, z0, x0 - T, x1 + T, false );
-		wall( 'z', z1, z1 + T, x0 - T, x1 + T, p.windowWall === 'front' );
-		wall( 'x', x0 - T, x0, z0, z1, p.windowWall === 'left' );
-		wall( 'x', x1, x1 + T, z0, z1, p.windowWall === 'right' );
+		wall( 'z', z0 - T, z0, x0 - T, x1 + T, false, '-z' );
+		wall( 'z', z1, z1 + T, x0 - T, x1 + T, p.windowWall === 'front', '+z' );
+		wall( 'x', x0 - T, x0, z0, z1, p.windowWall === 'left', '-x' );
+		wall( 'x', x1, x1 + T, z0, z1, p.windowWall === 'right', '+x' );
 
 		// baseboards
 		const bb = 0.1, bt = 0.015;
