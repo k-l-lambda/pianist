@@ -1,0 +1,72 @@
+{
+ "duration_s": 20.6,
+ "frames": 619,
+ "unregistered_frames": 0,
+ "path_length_m": 2.2060703834806232,
+ "position_range_m": [
+  0.568,
+  0.418,
+  0.795
+ ],
+ "distance_to_keyboard_m": [
+  0.29653782899549397,
+  1.0932277087680145
+ ],
+ "yaw_range_deg": [
+  -1.835749671913741,
+  67.00772393516947
+ ],
+ "pitch_range_deg": [
+  -49.806290937065775,
+  -29.835196240393824
+ ],
+ "roll_range_deg": [
+  -8.416797994945261,
+  4.637316763123638
+ ],
+ "intended_speed_mps": {
+  "median": 0.06637185830835604,
+  "p95": 0.34602092548456387
+ },
+ "intended_angular_speed_dps": {
+  "median": 9.048423894242315,
+  "p95": 19.760537742825033
+ },
+ "moving_fraction": 0.7233009708737864,
+ "shake_rms_deg": {
+  "tilt": 0.292,
+  "pan": 0.372,
+  "roll": 0.26
+ },
+ "shake_rms_mm": {
+  "right": 3.68,
+  "down": 3.24,
+  "forward": 2.67
+ },
+ "shake_rate_rms_dps": {
+  "tilt": 6.1,
+  "pan": 6.85,
+  "roll": 4.51
+ },
+ "shake_psd_slope_1_10Hz": {
+  "tilt": -1.71,
+  "pan": -1.94,
+  "roll": -2.02
+ },
+ "shake_corr_time_s": {
+  "tilt": 0.133,
+  "pan": 0.133,
+  "roll": 0.133
+ },
+ "lever_arm_m": {
+  "pan_to_lateral": -0.192228166640685,
+  "tilt_to_vertical": 0.2665891187907603,
+  "corr_pan": -0.3392446392543628,
+  "corr_tilt": 0.41954820856308067
+ },
+ "kurtosis_rate": [
+  10.459186823087808,
+  5.279898861828947,
+  5.301813864661256
+ ]
+}
