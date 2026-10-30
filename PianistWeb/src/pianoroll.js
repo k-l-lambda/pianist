@@ -261,10 +261,12 @@ const BAR_FS = /* glsl */`
 		float core = 1.0 - smoothstep( - aa, aa, d );
 		// halo fading to exactly zero at the quad edge (no visible box)
 		float glow = exp( - max( d, 0.0 ) / ( 0.3 * uGlow ) ) * ( 1.0 - core ) * ( 1.0 - smoothstep( 0.45 * uGlow, 0.95 * uGlow, d ) );
-		// solid fill with a faint lighter edge; brighter while the note sounds
+		// solid fill with a faint lighter edge; brighter while the note sounds. Opacity (additive:
+		// brightness) follows the velocity: ~0.22 at pp (0.3), ~0.58 at mf (0.6), ~0.89 at ff (0.9)
 		float rim = smoothstep( - 0.0025, 0.0, d ) * core;
-		float lit = 0.8 + 0.2 * vInfo.x + 0.3 * vInfo.y;
-		vec3 col = uColor * core * lit * ( 1.0 + 0.12 * rim ) + uColor * glow * ( 0.38 + 0.4 * vInfo.y ) * 0.15;		// halo at 15%
+		float opacity = 0.04 + 0.96 * pow( clamp( vInfo.x, 0.0, 1.0 ), 1.3 );
+		float lit = 0.85 + 0.3 * vInfo.y;
+		vec3 col = ( uColor * core * lit * ( 1.0 + 0.12 * rim ) + uColor * glow * ( 0.38 + 0.4 * vInfo.y ) * 0.15 ) * opacity;		// halo at 15%
 		// fade in at the top of the plane, clip below the hit line
 		col *= smoothstep( uHeight, uHeight - 0.04, vY ) * step( 0.0, vY );
 		gl_FragColor = vec4( col * uIntensity, 1.0 );
