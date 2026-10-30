@@ -1,10 +1,12 @@
 // Grand piano after the FIND GF smart grand (GF156C / F150G: 150 W x 156-160 D x 100 H cm;
 // Footages.local/find/GF-TYPE-*.jpg, MHGF*.jpg; diary-job memo/piano/grand-piano-design-
 // references.md): bentside rim with a wood-veneered inner face, open lid on a prop stick, gold
-// plate, overstrung strings, dampers, a full-width tilted display in place of the fallboard and
-// music desk (bezel 1343 x 320 mm, 117° to the keyboard plane), square tapered legs on gold
-// casters and, instead of a lyre, a metal pedal bar between the front legs with 7 pedals (the
-// 3 standard ones in the middle, 2 function pedals each side).
+// plate with struts, overstrung strings, dampers, a full-width tilted display in place of the
+// fallboard and music desk (bezel 1343 x 320 mm, 117° to the keyboard plane), a lid with its
+// front flap folded back, and the frame below after USD834638 (Figs. 1, 2, 5, 7): two flat front
+// legs set back under the case, flaring into its underside and joined at the floor by a
+// stretcher carrying 7 pedals grouped 2-3-2, a tapered tail leg, a frosted panel between the
+// front legs with the pedal rods, trapwork, belly braces and a speaker grille underneath.
 //
 // Frame: origin at floor below the keyboard center, key fronts at z = 0, body towards -z.
 
@@ -15,15 +17,16 @@ import { PianoAction } from './action.js';
 import { pedalShape } from './upright.js';
 
 const KEY_BOTTOM = 0.698;
-const RIM_BOTTOM = 0.62;
+// heights from the patent's side elevation (Fig. 5, rim top 1.00 m): the rim is 0.28 m deep,
+// its underside at 0.72 m; the keybed section in front (to z = -0.72) hangs lower, to 0.645
+const RIM_BOTTOM = 0.72;
+const FRONT_BOTTOM = 0.645;
+const FRONT_SECTION_Z = - 0.72;
 const RIM_TOP = 0.985;
 const RIM_T = 0.045;
 const HALF_W = 0.745;			// 1.49 m wide
 const FRONT_Z = - 0.20;			// rim front (behind the display)
 const LENGTH = 1.56;			// case length (F150G 1555 mm)
-// the curves below were drawn for a 1.90 m case; Z() maps their depth to LENGTH (front fixed)
-const K = ( LENGTH + FRONT_Z ) / ( 1.90 + FRONT_Z );
-const Z = z => FRONT_Z + ( z - FRONT_Z ) * K;
 
 // display: bezel 1343 x 320 mm leaning back 27° (117° to the keys), standing on the key-back
 // felt like the upright's screen
@@ -32,6 +35,22 @@ const SCREEN_LEAN = THREE.MathUtils.degToRad( 27 );
 const SCREEN_BOTTOM = v3( 0, 0.737, - 0.150 );
 // the lid's front edge: just behind the display's top (it stands above the rim top)
 const LID_FRONT_Z = SCREEN_BOTTOM.z - ( SCREEN_H * Math.sin( SCREEN_LEAN ) + SCREEN_T * Math.cos( SCREEN_LEAN ) ) - 0.008;
+// side profile after USD834638 Figs. 4/5: flat key blocks level with the white keys, then side
+// boards whose front edge follows the display's lean up to its top, a little above the rim
+// top; the straight rim sides start only behind the display
+const KEY_BLOCK_TOP = 0.722;					// white key top 0.720
+const SCREEN_TOP_Y = SCREEN_BOTTOM.y + SCREEN_H * Math.cos( SCREEN_LEAN );
+const screenFrontZ = y => SCREEN_BOTTOM.z - ( y - SCREEN_BOTTOM.y ) * Math.tan( SCREEN_LEAN );
+const RIM_START = LID_FRONT_Z;				// front of the straight rim sides
+// inside the shallower rim: soundboard, plate (strings and dampers stay below the rim top)
+const SOUNDBOARD_Y = RIM_BOTTOM + 0.10;
+const PLATE_Y = RIM_BOTTOM + 0.15;
+// the lid's front flap: hinged to the main lid along FOLD_Z, folded back onto it when open
+// (Fig. 5 shows it lying on the lid from z = -0.65 to -0.99)
+const FOLD_Z = - 0.65;
+const SCREEN_EDGE_X = SCREEN_W / 2;			// side boards between the display's ends and the case sides
+
+const v2 = ( x, y ) => new THREE.Vector2( x, y );
 
 const mesh = ( geo, mat, cast = true ) => {
 
@@ -42,18 +61,27 @@ const mesh = ( geo, mat, cast = true ) => {
 
 };
 
+// the rim's plan outline, measured on the patent's bottom view (Fig. 7, 956 px/m): the spine
+// straight back to z = -1.2, the tail apex at x = -0.36, and a full bentside, still 0.66 m out
+// at z = -0.86 and 0.44 m at z = -0.99, with the S-bend around z = -1.2 to -1.35
+const RIM_CURVE = [
+	[ - 0.745, - 1.10 ], [ - 0.745, - 1.20 ], [ - 0.735, - 1.27 ], [ - 0.705, - 1.36 ], [ - 0.657, - 1.441 ],
+	[ - 0.583, - 1.509 ], [ - 0.510, - 1.541 ], [ - 0.437, - 1.553 ], [ - 0.364, - 1.556 ], [ - 0.291, - 1.550 ],
+	[ - 0.217, - 1.539 ], [ - 0.144, - 1.525 ], [ - 0.071, - 1.505 ], [ 0.002, - 1.475 ], [ 0.076, - 1.428 ],
+	[ 0.149, - 1.357 ], [ 0.190, - 1.300 ], [ 0.225, - 1.240 ], [ 0.265, - 1.180 ], [ 0.300, - 1.135 ],
+	[ 0.368, - 1.055 ], [ 0.444, - 0.993 ], [ 0.515, - 0.957 ], [ 0.588, - 0.907 ], [ 0.661, - 0.857 ],
+	[ 0.703, - 0.804 ], [ 0.733, - 0.740 ], [ 0.745, - 0.66 ], [ 0.745, - 0.58 ],
+];
+
 /** Open polyline of the rim in (x, z) running from front-left round the tail to front-right. */
 function rimPath() {
 
 	const p = new THREE.Path();
-	p.moveTo( - HALF_W, FRONT_Z );
-	p.lineTo( - HALF_W, Z( - 1.62 ) );
-	p.quadraticCurveTo( - HALF_W, - LENGTH, - 0.48, - LENGTH );
-	p.bezierCurveTo( - 0.30, - LENGTH, - 0.20, Z( - 1.86 ), - 0.12, Z( - 1.72 ) );
-	p.bezierCurveTo( 0.02, Z( - 1.36 ), 0.30, Z( - 1.02 ), 0.56, Z( - 0.80 ) );
-	p.bezierCurveTo( 0.72, Z( - 0.64 ), HALF_W, Z( - 0.48 ), HALF_W, Z( - 0.34 ) );
-	p.lineTo( HALF_W, FRONT_Z );
-	return p.getSpacedPoints( 220 );
+	p.moveTo( - HALF_W, RIM_START );
+	p.lineTo( - HALF_W, RIM_CURVE[ 0 ][ 1 ] );
+	p.splineThru( RIM_CURVE.slice( 1 ).map( ( [ x, z ] ) => new THREE.Vector2( x, z ) ) );
+	p.lineTo( HALF_W, RIM_START );
+	return p.getSpacedPoints( 240 );
 
 }
 
@@ -153,6 +181,86 @@ function caseEndZ( pts, x ) {
 
 }
 
+/** Keep the part of polygon `poly` (Vector2[]) where n·p >= c (Sutherland–Hodgman, one plane). */
+function clipHalfPlane( poly, n, c ) {
+
+	const out = [];
+	for ( let i = 0; i < poly.length; ++ i ) {
+
+		const a = poly[ i ], b = poly[ ( i + 1 ) % poly.length ];
+		const da = n.dot( a ) - c, db = n.dot( b ) - c;
+		if ( da >= 0 ) out.push( a );
+		if ( ( da >= 0 ) !== ( db >= 0 ) ) out.push( a.clone().lerp( b, da / ( da - db ) ) );
+
+	}
+
+	return out;
+
+}
+
+/**
+ * A plate opening: the region of `area` on the same side as `inside` of every strut, each strut
+ * [a, b, halfWidth] a line through a and b widened by halfWidth.
+ */
+function plateOpening( area, struts, inside ) {
+
+	let poly = area;
+	for ( const [ a, b, w ] of struts ) {
+
+		const d = new THREE.Vector2().subVectors( b, a ).normalize();
+		let n = new THREE.Vector2( - d.y, d.x );
+		if ( n.dot( inside ) < n.dot( a ) ) n = n.negate();
+		poly = clipHalfPlane( poly, n, n.dot( a ) + w );
+		if ( poly.length < 3 ) return null;
+
+	}
+
+	return poly;
+
+}
+
+/** A box tapering linearly from (w0, d0) at y0 to (w1, d1) at y1, centred on (x, z). */
+function taperedBox( x, z, y0, y1, w0, d0, w1, d1 ) {
+
+	const g = new THREE.BoxGeometry( 1, 1, 1 ).toNonIndexed();
+	const p = g.attributes.position;
+	for ( let i = 0; i < p.count; ++ i ) {
+
+		const t = p.getY( i ) + 0.5;
+		p.setXYZ( i, x + p.getX( i ) * THREE.MathUtils.lerp( w0, w1, t ), THREE.MathUtils.lerp( y0, y1, t ), z + p.getZ( i ) * THREE.MathUtils.lerp( d0, d1, t ) );
+
+	}
+
+	g.computeVertexNormals();
+	return boxProjectUV( g );
+
+}
+
+/** Small dark perforated-metal texture (speaker grille). */
+function grilleMaterial() {
+
+	const c = document.createElement( 'canvas' );
+	c.width = c.height = 64;
+	const g = c.getContext( '2d' );
+	g.fillStyle = '#3a3b3e';
+	g.fillRect( 0, 0, 64, 64 );
+	g.fillStyle = '#050506';
+	for ( const [ x, y ] of [ [ 16, 16 ], [ 48, 16 ], [ 0, 48 ], [ 32, 48 ], [ 64, 48 ] ] ) {
+
+		g.beginPath();
+		g.arc( x, y, 9, 0, Math.PI * 2 );
+		g.fill();
+
+	}
+
+	const map = new THREE.CanvasTexture( c );
+	map.colorSpace = THREE.SRGBColorSpace;
+	map.wrapS = map.wrapT = THREE.RepeatWrapping;
+	map.anisotropy = 4;
+	return new THREE.MeshPhysicalMaterial( { map, metalness: 0.7, roughness: 0.55 } );
+
+}
+
 export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 	const group = new THREE.Group();
@@ -172,42 +280,85 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		s.closePath();
 		group.add( mesh( extrudeXZ( s, RIM_BOTTOM, RIM_TOP, 0.004 ), M.case ) );
 
-		// bottom board and soundboard
-		const closed = new THREE.Shape( outer );
+		// bottom board (on to the front of the case, under the keybed), and the deeper front
+		// section holding keybed and action, down to FRONT_BOTTOM back to z = -0.72 (Fig. 5)
+		const closed = new THREE.Shape( [ v2( - HALF_W, FRONT_Z ), ...outer, v2( HALF_W, FRONT_Z ) ] );
 		closed.closePath();
-		group.add( mesh( extrudeXZ( closed, RIM_BOTTOM - 0.06, RIM_BOTTOM, 0.006 ), M.case ) );
+		group.add( mesh( extrudeXZ( closed, RIM_BOTTOM - 0.03, RIM_BOTTOM, 0.006 ), M.case ) );
+		const front = new THREE.Shape( [ v2( - HALF_W, FRONT_Z ), ...outer.map( p => v2( p.x, Math.max( p.y, FRONT_SECTION_Z ) ) ), v2( HALF_W, FRONT_Z ) ] );
+		front.closePath();
+		group.add( mesh( extrudeXZ( front, FRONT_BOTTOM, RIM_BOTTOM - 0.03, 0.006 ), M.case ) );
 
 		const sb = new THREE.Shape( inner );
 		sb.closePath();
-		group.add( mesh( extrudeXZ( sb, RIM_BOTTOM + 0.15, RIM_BOTTOM + 0.16, 0 ), M.spruce ) );
+		group.add( mesh( extrudeXZ( sb, SOUNDBOARD_Y - 0.01, SOUNDBOARD_Y, 0 ), M.spruce ) );
 
-		// front belly rail closing the rim behind the display
-		group.add( mesh( woodBox( v3( - HALF_W, RIM_BOTTOM, FRONT_Z - RIM_T ), v3( HALF_W, 0.84, FRONT_Z ), { noUV: true } ), M.case ) );
+		// front belly rail closing the case under the display (kept below its face: at 0.84 m its
+		// top edge stood out of the screen as a ridge across the middle)
+		group.add( mesh( woodBox( v3( - HALF_W, RIM_BOTTOM, FRONT_Z - RIM_T ), v3( HALF_W, 0.78, FRONT_Z ), { noUV: true } ), M.case ) );
+
+		// side boards: from the key blocks up along the display's lean to its top, then back to
+		// the rim (USD834638 Figs. 1, 4, 5). Profile in (z, y), extruded across x
+		const zFoot = screenFrontZ( KEY_BLOCK_TOP ) + 0.002, zTop = screenFrontZ( SCREEN_TOP_Y ) + 0.002;
+		const prof = new THREE.Shape( [
+			v2( zFoot, FRONT_BOTTOM ), v2( zFoot, KEY_BLOCK_TOP ), v2( zTop, SCREEN_TOP_Y ),
+			v2( RIM_START, SCREEN_TOP_Y ), v2( RIM_START, FRONT_BOTTOM ),
+		] );
+		for ( const sx of [ - 1, 1 ] ) {
+
+			const w = HALF_W - SCREEN_EDGE_X;
+			const g = new THREE.ExtrudeGeometry( prof, { depth: w, bevelEnabled: false } );
+			// shape (z, y) on the xy plane, extruded along +z -> rotate so x <- extrusion
+			g.rotateY( - Math.PI / 2 );			// shape x -> world z, extrusion -> world -x
+			g.translate( sx < 0 ? - HALF_W + w : HALF_W, 0, 0 );
+			group.add( mesh( boxProjectUV( g.toNonIndexed() ), M.case ) );
+
+		}
 
 		// inner rim veneer (the photos show warm wood inside the lacquered case), from the
 		// soundboard up to just below the rim top
-		group.add( mesh( rimVeneer( offsetPolyline( inner, 0.0015 ), RIM_BOTTOM + 0.16, RIM_TOP - 0.012 ), M.rimInner ?? M.case, false ) );
+		group.add( mesh( rimVeneer( offsetPolyline( inner, 0.0015 ), SOUNDBOARD_Y, RIM_TOP - 0.012 ), M.rimInner ?? M.case, false ) );
 
 	}
 
 	// --- plate ------------------------------------------------------------
-	const plateY = RIM_BOTTOM + 0.20;
+	// A solid front bar (pin field, three round holes) and struts running back to the rim: a
+	// bass-break strut, a tenor strut and a treble strut (at x -0.21, 0.10, 0.40 behind the bar,
+	// as in the top view Fig. 6), with a cross bar from the spine to the tenor strut; the
+	// openings between them show the soundboard (Fig. 1, dashed; the crystal GF-TYPE-3 shows
+	// round holes in the front bar)
+	const plateY = PLATE_Y;
 	{
 
 		const plateOutline = offsetPolyline( inner, 0.02 );
 		const s = new THREE.Shape( plateOutline );
 		s.closePath();
-		const holes = [
-			[ - 0.40, - 0.62, 0.22, 0.13 ],
-			[ 0.10, - 0.55, 0.20, 0.12 ],
-			[ - 0.38, - 1.12, 0.18, 0.16 ],
-			[ 0.02, - 1.02, 0.12, 0.16 ],
-			[ - 0.32, - 1.55, 0.14, 0.12 ],
+		const area = offsetPolyline( inner, 0.075 );
+		const W = 0.024;
+		const bar = [ v2( - 1, - 0.58 ), v2( 1, - 0.58 ), 0 ];
+		const bass = [ v2( - 0.21, - 0.58 ), v2( - 0.32, - 1.52 ), W ];
+		const tenor = [ v2( 0.10, - 0.58 ), v2( 0.02, - 1.47 ), W ];
+		const treble = [ v2( 0.40, - 0.58 ), v2( 0.30, - 1.14 ), W ];
+		const cross = [ v2( - 0.75, - 1.00 ), v2( 0.03, - 1.12 ), W ];
+		const openings = [
+			[ [ bar, bass, cross ], v2( - 0.5, - 0.8 ) ],
+			[ [ bar, bass, cross ], v2( - 0.5, - 1.3 ) ],
+			[ [ bar, bass, tenor, cross ], v2( - 0.05, - 0.8 ) ],
+			[ [ bar, bass, tenor, cross ], v2( - 0.13, - 1.3 ) ],
+			[ [ bar, tenor, treble ], v2( 0.25, - 0.8 ) ],
+			[ [ bar, treble ], v2( 0.6, - 0.75 ) ],
 		];
-		for ( const [ cx, cz, rx, rz ] of holes ) {
+		for ( const [ struts, inside ] of openings ) {
+
+			const poly = plateOpening( area, struts, inside );
+			if ( poly && Math.abs( THREE.ShapeUtils.area( poly ) ) > 0.004 ) s.holes.push( new THREE.Path( poly ) );
+
+		}
+
+		for ( const cx of [ - 0.40, - 0.05, 0.27 ] ) {
 
 			const h = new THREE.Path();
-			h.absellipse( cx, Z( cz ), rx, rz * K, 0, Math.PI * 2, true );
+			h.absellipse( cx, - 0.47, 0.045, 0.045, 0, Math.PI * 2, true );
 			s.holes.push( h );
 
 		}
@@ -280,23 +431,45 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	}
 
 	// --- lid -------------------------------------------------------------
+	// main lid behind FOLD_Z and the front flap in front of it (to just behind the display).
+	// Open, the flap is folded back on top of the main lid (Figs. 1, 5); brass hinges along the
+	// fold (3) and on the spine (2)
 	{
 
-		const s = new THREE.Shape( outer.map( p => new THREE.Vector2( p.x, Math.min( p.y, LID_FRONT_Z ) ) ) );
-		s.closePath();
-		const geo = extrudeXZ( s, 0, 0.02, 0.004 );
-		// hinge along the straight (bass) side at x = -HALF_W
-		geo.translate( HALF_W, 0, 0 );
+		const T = 0.02;
+		const main = new THREE.Shape( outer.map( p => new THREE.Vector2( p.x, Math.min( p.y, FOLD_Z ) ) ) );
+		main.closePath();
+		const flapPts = [ v2( - HALF_W, LID_FRONT_Z ), v2( - HALF_W, FOLD_Z ), v2( bentsideX( outer, FOLD_Z ), FOLD_Z ) ];
+		for ( const p of outer ) if ( p.x > 0 && p.y > FOLD_Z && p.y < LID_FRONT_Z ) flapPts.push( p.clone() );
+		flapPts.push( v2( HALF_W, LID_FRONT_Z ) );
+		const flapShape = new THREE.Shape( flapPts );
+		flapShape.closePath();
+		const open = lidAngle > 2;
+		const lidGeo = extrudeXZ( main, 0, T, 0.004 );
+		const flapGeo = extrudeXZ( flapShape, 0, T, 0.004 );
+		if ( open ) {
+
+			// rotate 180° about the fold line at the lid's top face: the flap lies on the lid
+			flapGeo.translate( 0, - T, - FOLD_Z );
+			flapGeo.rotateX( Math.PI );
+			flapGeo.translate( 0, T, FOLD_Z );
+
+		}
+
+		const hinges = [];
+		for ( const x of [ - 0.5, 0.0, 0.5 ] ) hinges.push( woodBox( v3( x - 0.025, open ? 2 * T - 0.001 : T - 0.001, FOLD_Z - 0.02 ), v3( x + 0.025, open ? 2 * T + 0.001 : T + 0.001, FOLD_Z + 0.02 ), { noUV: true } ) );
+		for ( const z of [ - 0.75, - 1.21 ] ) hinges.push( woodBox( v3( - HALF_W - 0.002, - 0.035, z - 0.03 ), v3( - HALF_W + 0.001, T, z + 0.03 ), { noUV: true } ) );
+		for ( const g of [ lidGeo, flapGeo, ...hinges ] ) g.translate( HALF_W, 0, 0 );		// hinge along the spine at x = -HALF_W
 		const pivot = new THREE.Group();
 		pivot.position.set( - HALF_W, RIM_TOP, 0 );
 		pivot.rotation.z = THREE.MathUtils.degToRad( lidAngle );
-		pivot.add( mesh( geo, M.case ) );
+		pivot.add( mesh( lidGeo, M.case ), mesh( flapGeo, M.case ), mesh( merge( hinges ), M.brass ) );
 		group.add( pivot );
 
-		if ( lidAngle > 2 ) {
+		if ( open ) {
 
 			// prop stick from the bentside rim up to the lid
-			const zs = Z( - 0.95 );
+			const zs = - 0.88;
 			const bx = bentsideX( outer, zs ) - 0.06;
 			const base = v3( bx, RIM_TOP, zs );
 			const a = THREE.MathUtils.degToRad( lidAngle );
@@ -314,14 +487,15 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// keybed + keyslip
 		// key bed: top slab behind the keyslip, its front face hidden behind the keyslip
 		group.add( mesh( woodBox( v3( - 0.66, 0.655, - 0.25 ), v3( 0.66, 0.685, 0 ), { noUV: true } ), M.keybed ) );
-		group.add( mesh( woodBox( v3( - 0.66, 0.62, - 0.25 ), v3( 0.66, 0.655, - 0.012 ), { noUV: true } ), M.case ) );
+		group.add( mesh( woodBox( v3( - 0.66, FRONT_BOTTOM, - 0.25 ), v3( 0.66, 0.655, - 0.012 ), { noUV: true } ), M.case ) );
 		group.add( mesh( woodBox( v3( - 0.70, 0.655, - 0.01 ), v3( 0.70, 0.705, 0.022 ), { noUV: true, radius: 0.004 } ), M.case ) );
-		// cheek blocks
+		// key blocks: flat, level with the white key tops (USD834638 Figs. 4/5), from the key slip
+		// back to the side boards
 		for ( const sx of [ - 1, 1 ] ) {
 
-			const a = v3( sx < 0 ? - HALF_W : 0.618, 0.62, - 0.25 );
-			const b = v3( sx < 0 ? - 0.618 : HALF_W, 0.80, 0.022 );
-			group.add( mesh( woodBox( a, b, { noUV: true, radius: 0.008 } ), M.case ) );
+			const a = v3( sx < 0 ? - HALF_W : 0.618, FRONT_BOTTOM, screenFrontZ( KEY_BLOCK_TOP ) - 0.01 );
+			const b = v3( sx < 0 ? - 0.618 : HALF_W, KEY_BLOCK_TOP, 0.022 );
+			group.add( mesh( woodBox( a, b, { noUV: true, radius: 0.006 } ), M.case ) );
 
 		}
 
@@ -341,51 +515,138 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 	}
 
-	// --- legs ----------------------------------------------------------------
+	// --- legs and the frame below the case (USD834638 Figs. 1, 2, 5, 7) ------------------------
 	{
 
-		// square legs tapering to gold casters: two under the cheek blocks, one under the tail
-		const legs = [ v3( - 0.655, 0, - 0.11 ), v3( 0.655, 0, - 0.11 ), v3( - 0.36, 0, Z( - 1.70 ) ) ];
-		const brass = [];
-		const legGeos = [];
-		for ( const p of legs ) {
+		const caseParts = [], brass = [], steel = [];
 
-			const h = RIM_BOTTOM - 0.06 - 0.07;
-			const g = new THREE.CylinderGeometry( 0.066, 0.046, h, 4, 1 ).toNonIndexed();
-			g.rotateY( Math.PI / 4 );
+		// front legs: flat posts set back under the case (z = -0.32, outer face 13 mm inside the
+		// case side), 0.10 m wide tapering to 0.075 at the floor (outer face vertical), 0.08 m
+		// deep, flaring at the top into the case's underside, back to z = -0.50 and forward to
+		// -0.14 (the footprint drawn in Fig. 7)
+		const LEG_Z = - 0.318, LEG_OUT = HALF_W - 0.013, LEG_W0 = 0.075, LEG_W1 = 0.10, FOOT = 0.075;
+		const prof = new THREE.Shape();
+		prof.moveTo( LEG_Z - 0.038, FOOT );
+		prof.lineTo( LEG_Z + 0.038, FOOT );
+		prof.lineTo( LEG_Z + 0.042, 0.55 );
+		prof.quadraticCurveTo( LEG_Z + 0.042, FRONT_BOTTOM, - 0.14, FRONT_BOTTOM + 0.001 );
+		prof.lineTo( - 0.50, FRONT_BOTTOM + 0.001 );
+		prof.quadraticCurveTo( LEG_Z - 0.042, FRONT_BOTTOM, LEG_Z - 0.042, 0.48 );
+		prof.closePath();
+		for ( const sx of [ - 1, 1 ] ) {
+
+			const g = new THREE.ExtrudeGeometry( prof, { depth: 1, bevelEnabled: false, curveSegments: 16 } ).toNonIndexed();
+			g.rotateY( - Math.PI / 2 );			// profile (z, y) -> world (z, y); extrusion -> -x, 0..-1
+			const pos = g.attributes.position;
+			for ( let i = 0; i < pos.count; ++ i ) {
+
+				// width tapers towards the floor; the outer face stays vertical
+				const t = THREE.MathUtils.clamp( ( pos.getY( i ) - FOOT ) / ( FRONT_BOTTOM - FOOT ), 0, 1 );
+				const w = THREE.MathUtils.lerp( LEG_W0, LEG_W1, t );
+				pos.setX( i, sx * ( LEG_OUT + pos.getX( i ) * w ) );
+
+			}
+
+			if ( sx < 0 ) {
+
+				// mirrored: restore the winding
+				const idx = [];
+				for ( let i = 0; i < pos.count; i += 3 ) idx.push( i, i + 2, i + 1 );
+				g.setIndex( idx );
+
+			}
+
 			g.computeVertexNormals();
-			g.translate( p.x, 0.07 + h / 2, p.z );
-			legGeos.push( g );
-			// block at the top of the leg
-			legGeos.push( woodBox( v3( p.x - 0.075, RIM_BOTTOM - 0.10, p.z - 0.075 ), v3( p.x + 0.075, RIM_BOTTOM - 0.06, p.z + 0.075 ), { noUV: true, radius: 0.006 } ) );
-			brass.push( rod( v3( p.x, 0.04, p.z ), v3( p.x, 0.075, p.z ), 0.034, 24 ) );
+			caseParts.push( boxProjectUV( g.index ? g.toNonIndexed() : g ) );
+
+		}
+
+		// tail leg under the tail (x -0.265, z -1.456; Fig. 7), on a mounting plate across the
+		// bottom board; tapered, 0.085 x 0.097 m at the top to 0.06 x 0.07 at the floor (Fig. 5)
+		const TAIL = v2( - 0.265, - 1.456 );
+		const TAIL_TOP = RIM_BOTTOM - 0.06;
+		caseParts.push( woodBox( v3( - 0.448, TAIL_TOP, - 1.503 ), v3( - 0.065, RIM_BOTTOM - 0.03, - 1.397 ), { noUV: true, radius: 0.006 } ) );
+		caseParts.push( taperedBox( TAIL.x, TAIL.y, FOOT, TAIL_TOP, 0.06, 0.07, 0.085, 0.097 ) );
+
+		// casters, one under each leg
+		for ( const [ x, z ] of [ [ - LEG_OUT + 0.044, LEG_Z ], [ LEG_OUT - 0.044, LEG_Z ], [ TAIL.x, TAIL.y ] ] ) {
+
+			brass.push( rod( v3( x, 0.04, z ), v3( x, FOOT, z ), 0.03, 24 ) );
 			const wheel = new THREE.SphereGeometry( 0.03, 16, 12 );
-			wheel.translate( p.x, 0.03, p.z );
+			wheel.translate( x, 0.03, z );
 			brass.push( wheel );
 
 		}
 
-		group.add( mesh( merge( legGeos ), M.case ) );
+		// the stretcher joining the front legs just above the floor (Fig. 2: the full width between
+		// them, 6 cm high), with a deeper box in the middle holding the pedal pivots (Fig. 7)
+		const ST0 = 0.035, ST1 = 0.095, STZ0 = - 0.323, STZ1 = - 0.279;
+		caseParts.push( woodBox( v3( - LEG_OUT + 0.06, ST0, STZ0 ), v3( LEG_OUT - 0.06, ST1, STZ1 ), { noUV: true, radius: 0.008 } ) );
+		caseParts.push( woodBox( v3( - 0.11, ST0, - 0.41 ), v3( 0.11, ST1 + 0.01, STZ1 - 0.002 ), { noUV: true, radius: 0.008 } ) );
+
+		// frosted panel between the front legs, from the pedal box up to the keybed (Fig. 2: 0.30 m
+		// wide; GF-TYPE-2/3), the two pedal rods behind it
+		const panelMat = new THREE.MeshPhysicalMaterial( { color: '#b9bcc1', metalness: 0.75, roughness: 0.42 } );
+		group.add( mesh( woodBox( v3( - 0.15, ST1 + 0.01, - 0.375 ), v3( 0.15, FRONT_BOTTOM, - 0.365 ), { noUV: true } ), panelMat ) );
+		const RODS_Y = 0.585;
+		for ( const x of [ - 0.04, 0.05 ] ) steel.push( rod( v3( x, ST1, - 0.395 ), v3( x, RODS_Y, - 0.395 ), 0.006, 8 ) );
+
+		// trapwork under the case (Figs. 5, 7): rods from the pedal rods back to the trapwork
+		// block (sostenuto) and on to the damper lift, rising into the case
+		caseParts.push( woodBox( v3( - 0.265, 0.60, - 0.80 ), v3( 0.18, RIM_BOTTOM - 0.03, - 0.72 ), { noUV: true, radius: 0.006 } ) );
+		steel.push( rod( v3( - 0.04, RODS_Y, - 0.395 ), v3( - 0.04, RODS_Y, - 0.72 ), 0.006, 8 ) );
+		steel.push( rod( v3( 0.05, RODS_Y, - 0.395 ), v3( 0.205, RODS_Y, - 0.99 ), 0.006, 8 ) );
+		steel.push( rod( v3( 0.205, RODS_Y, - 0.99 ), v3( 0.205, RIM_BOTTOM - 0.03, - 0.99 ), 0.006, 8 ) );
+
+		// control box under the keybed, treble side (Figs. 2, 7)
+		caseParts.push( woodBox( v3( 0.325, FRONT_BOTTOM - 0.054, - 0.242 ), v3( 0.60, FRONT_BOTTOM, - 0.028 ), { noUV: true, radius: 0.004 } ) );
+
+		// belly braces under the bottom board (Fig. 7): two from the trapwork block towards the
+		// tail, two out to the bentside, and the cross beam in front of the tail leg
+		const BR0 = RIM_BOTTOM - 0.065, BR1 = RIM_BOTTOM - 0.03;
+		const brace = ( ax, az, bx, bz ) => {
+
+			const a = v3( ax, ( BR0 + BR1 ) / 2, az ), b = v3( bx, ( BR0 + BR1 ) / 2, bz );
+			caseParts.push( beam( a, b, 0.05, BR1 - BR0 ) );
+
+		};
+
+		brace( - 0.01, - 0.78, 0.09, - 1.30 );
+		brace( - 0.15, - 0.78, - 0.35, - 1.31 );
+		brace( 0.42, - 0.73, 0.55, - 0.90 );
+		brace( 0.24, - 0.73, 0.35, - 1.04 );
+		brace( 0.16, - 1.32, - 0.66, - 1.35 );
+
+		// speaker grille on the underside of the front section, between the front legs (Fig. 7)
+		{
+
+			const w = 2 * ( LEG_OUT - LEG_W1 ) - 0.02, d = 0.20;
+			const g = new THREE.PlaneGeometry( w, d );
+			g.rotateX( Math.PI / 2 );			// facing down
+			g.translate( 0, FRONT_BOTTOM - 0.002, - 0.40 );
+			const uv = g.attributes.uv;
+			for ( let i = 0; i < uv.count; ++ i ) uv.setXY( i, uv.getX( i ) * w / 0.04, uv.getY( i ) * d / 0.04 );
+			group.add( mesh( g, grilleMaterial(), false ) );
+
+		}
+
+		group.add( mesh( merge( caseParts ), M.case ) );
 		group.add( mesh( merge( brass ), M.brass ) );
+		group.add( mesh( merge( steel ), M.steel ) );
 
-		// no lyre: a metal pedal bar between the front legs (hollow alloy frame), a deeper box in
-		// the middle holding the pedal pivots
-		const bar = [];
-		bar.push( woodBox( v3( - 0.62, 0.075, - 0.13 ), v3( 0.62, 0.105, - 0.09 ), { noUV: true, radius: 0.006 } ) );
-		bar.push( woodBox( v3( - 0.235, 0.06, - 0.17 ), v3( 0.235, 0.12, - 0.08 ), { noUV: true, radius: 0.01 } ) );
-		group.add( mesh( merge( bar ), M.steel ) );
-
-		// 7 pedals: soft, sostenuto, sustain in the middle (clickable, animated) and the four
-		// function pedals (page turn, forward / back, tempo) beside them
-		const pedal = extrudeTop( pedalShape(), 0.081, 0.093, { bevel: 0.003 } );
-		const pivotY = 0.087, pivotZ = - 0.13;
-		pedal.translate( 0, - pivotY, 0.195 );
-		const PITCH = 0.062;
-		[ [ 'f1', - 3 ], [ 'f2', - 2 ], [ 'soft', - 1 ], [ 'sostenuto', 0 ], [ 'sustain', 1 ], [ 'f3', 2 ], [ 'f4', 3 ] ].forEach( ( [ name, i ] ) => {
+		// 7 brass pedals grouped 2-3-2 (Fig. 2): two function pedals left (page turn), soft,
+		// sostenuto and sustain in the middle (clickable, animated), two function pedals right
+		// (forward / back, tempo); pads reach 8 cm out of the stretcher (to z -0.20)
+		const pedal = extrudeTop( pedalShape(), - 0.006, 0.006, { bevel: 0.002 } );
+		pedal.scale( 0.9, 1, 0.62 );
+		pedal.computeBoundingBox();
+		const PIVOT_Y = 0.06, PIVOT_Z = - 0.31, TIP_Z = - 0.198;
+		pedal.translate( 0, 0, TIP_Z - PIVOT_Z - pedal.boundingBox.max.z );
+		[ [ 'f1', - 0.279 ], [ 'f2', - 0.198 ], [ 'soft', - 0.081 ], [ 'sostenuto', 0 ], [ 'sustain', 0.081 ], [ 'f3', 0.198 ], [ 'f4', 0.279 ] ].forEach( ( [ name, x ] ) => {
 
 			const pivot = new THREE.Group();
-			pivot.position.set( i * PITCH, pivotY, pivotZ );
-			const m = mesh( pedal, M.steel );
+			pivot.position.set( x, PIVOT_Y, PIVOT_Z );
+			const m = mesh( pedal, M.brass );
 			m.name = 'pedal-' + name;
 			pivot.add( m );
 			group.add( pivot );
