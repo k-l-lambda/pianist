@@ -39,12 +39,18 @@ const LID_FRONT_Z = SCREEN_BOTTOM.z - ( SCREEN_H * Math.sin( SCREEN_LEAN ) + SCR
 // boards whose front edge follows the display's lean up to its top, a little above the rim
 // top; the straight rim sides start only behind the display
 const KEY_BLOCK_TOP = 0.722;					// white key top 0.720
+const SIDE_STEP = 0.014;						// side boards stand this much above the key blocks
+const KEY_FRONT_Z = 0.022;						// front of the key slip and key blocks
 const SCREEN_TOP_Y = SCREEN_BOTTOM.y + SCREEN_H * Math.cos( SCREEN_LEAN );
 const screenFrontZ = y => SCREEN_BOTTOM.z - ( y - SCREEN_BOTTOM.y ) * Math.tan( SCREEN_LEAN );
 const RIM_START = LID_FRONT_Z;				// front of the straight rim sides
 // inside the shallower rim: soundboard, plate (strings and dampers stay below the rim top)
 const SOUNDBOARD_Y = RIM_BOTTOM + 0.10;
-const PLATE_Y = RIM_BOTTOM + 0.15;
+const PLATE_Y = RIM_BOTTOM + 0.15;			// top of the plate floor
+const PLATE_RIB = 0.043;						// struts' and front bar's height above the floor (web + flange)
+const PLATE_BAND = 0.035;						// the plate rim band along the case
+const STRING_Y = PLATE_RIB + 0.007;				// tenor / treble strings above the floor at the pins (0.004 lower at the hitch pins)
+const BASS_Y = STRING_Y + 0.018;				// overstrung bass, above the tenor
 // the lid's front flap: hinged to the main lid along FOLD_Z, folded back onto it when open
 // (Fig. 5 shows it lying on the lid from z = -0.65 to -0.99)
 const FOLD_Z = - 0.65;
@@ -219,6 +225,30 @@ function plateOpening( area, struts, inside ) {
 
 }
 
+/** The same surface seen from the other side (reversed triangles and normals), non-indexed. */
+function insideOut( geo ) {
+
+	const g = geo.toNonIndexed();
+	for ( const name of [ 'position', 'normal', 'uv' ] ) {
+
+		const at = g.attributes[ name ];
+		if ( ! at ) continue;
+		for ( let i = 0; i < at.count; i += 3 ) for ( let k = 0; k < at.itemSize; ++ k ) {
+
+			const t = at.array[ ( i + 1 ) * at.itemSize + k ];
+			at.array[ ( i + 1 ) * at.itemSize + k ] = at.array[ ( i + 2 ) * at.itemSize + k ];
+			at.array[ ( i + 2 ) * at.itemSize + k ] = t;
+
+		}
+
+	}
+
+	const n = g.attributes.normal;
+	for ( let i = 0; i < n.array.length; ++ i ) n.array[ i ] = - n.array[ i ];
+	return g;
+
+}
+
 /** A box tapering linearly from (w0, d0) at y0 to (w1, d1) at y1, centred on (x, z). */
 function taperedBox( x, z, y0, y1, w0, d0, w1, d1 ) {
 
@@ -297,13 +327,23 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// top edge stood out of the screen as a ridge across the middle)
 		group.add( mesh( woodBox( v3( - HALF_W, RIM_BOTTOM, FRONT_Z - RIM_T ), v3( HALF_W, 0.78, FRONT_Z ), { noUV: true } ), M.case ) );
 
-		// side boards: from the key blocks up along the display's lean to its top, then back to
-		// the rim (USD834638 Figs. 1, 4, 5). Profile in (z, y), extruded across x
-		const zFoot = screenFrontZ( KEY_BLOCK_TOP ) + 0.002, zTop = screenFrontZ( SCREEN_TOP_Y ) + 0.002;
-		const prof = new THREE.Shape( [
-			v2( zFoot, FRONT_BOTTOM ), v2( zFoot, KEY_BLOCK_TOP ), v2( zTop, SCREEN_TOP_Y ),
-			v2( RIM_START, SCREEN_TOP_Y ), v2( RIM_START, FRONT_BOTTOM ),
-		] );
+		// side boards: one board per side between the display's end and the case side (Fig. 6:
+		// a strip the display abuts), from the front of the keyboard back to the rim. Its top
+		// edge (Figs. 1, 5) runs forward just above the key blocks to a rounded front end, and
+		// back along the display's lean up to its top, a little above the rim. Profile in (z, y),
+		// extruded across x
+		const yLow = KEY_BLOCK_TOP + SIDE_STEP, R = 0.014, zF = KEY_FRONT_Z + 0.002;
+		const zFoot = screenFrontZ( yLow ) + 0.002, zTop = screenFrontZ( SCREEN_TOP_Y ) + 0.002;
+		const pts = [ v2( zF, FRONT_BOTTOM ) ];
+		for ( let i = 0; i <= 6; ++ i ) {
+
+			const a = i / 6 * Math.PI / 2;
+			pts.push( v2( zF - R + R * Math.cos( a ), yLow - R + R * Math.sin( a ) ) );
+
+		}
+
+		pts.push( v2( zFoot, yLow ), v2( zTop, SCREEN_TOP_Y ), v2( RIM_START, SCREEN_TOP_Y ), v2( RIM_START, FRONT_BOTTOM ) );
+		const prof = new THREE.Shape( pts );
 		for ( const sx of [ - 1, 1 ] ) {
 
 			const w = HALF_W - SCREEN_EDGE_X;
@@ -322,19 +362,20 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	}
 
 	// --- plate ------------------------------------------------------------
-	// A solid front bar (pin field, three round holes) and struts running back to the rim: a
-	// bass-break strut, a tenor strut and a treble strut (at x -0.21, 0.10, 0.40 behind the bar,
-	// as in the top view Fig. 6), with a cross bar from the spine to the tenor strut; the
-	// openings between them show the soundboard (Fig. 1, dashed; the crystal GF-TYPE-3 shows
-	// round holes in the front bar)
+	// A cast plate is ribs standing on edge, not a flat sheet: over a thin floor (with the
+	// openings that show the soundboard), the front bar is a hollow box whose top carries three
+	// round holes (GF-TYPE-3, Fig. 1); the bass-break, tenor and treble struts (at x -0.21, 0.10,
+	// 0.40 behind the bar, top view Fig. 6) and a cross bar from the spine to the tenor strut are
+	// T sections (a web with a flange on top); along the case the plate rim is a raised band
+	// carrying the hitch pins. The strings run just above the ribs (PLATE_RIB below them)
 	const plateY = PLATE_Y;
+	const area = offsetPolyline( inner, 0.06 );		// inside the plate rim band
 	{
 
 		const plateOutline = offsetPolyline( inner, 0.02 );
 		const s = new THREE.Shape( plateOutline );
 		s.closePath();
-		const area = offsetPolyline( inner, 0.075 );
-		const W = 0.024;
+		const W = 0.014;			// floor kept either side of a strut's centre line: just under its flange
 		const bar = [ v2( - 1, - 0.58 ), v2( 1, - 0.58 ), 0 ];
 		const bass = [ v2( - 0.21, - 0.58 ), v2( - 0.32, - 1.52 ), W ];
 		const tenor = [ v2( 0.10, - 0.58 ), v2( 0.02, - 1.47 ), W ];
@@ -355,22 +396,106 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
-		for ( const cx of [ - 0.40, - 0.05, 0.27 ] ) {
+		const HOLES = [ - 0.40, - 0.05, 0.27 ], HOLE_Z = - 0.47, HOLE_R = 0.045;
+		for ( const cx of HOLES ) {
 
 			const h = new THREE.Path();
-			h.absellipse( cx, - 0.47, 0.045, 0.045, 0, Math.PI * 2, true );
+			h.absellipse( cx, HOLE_Z, HOLE_R, HOLE_R, 0, Math.PI * 2, true );
 			s.holes.push( h );
 
 		}
 
-		group.add( mesh( extrudeXZ( s, plateY - 0.012, plateY, 0.004 ), M.plate ) );
+		const parts = [ extrudeXZ( s, plateY - 0.012, plateY, 0.004 ) ];
+		const top = plateY + PLATE_RIB;
+
+		// T rib along a -> b (plan, (x, z)): web `t` thick up to `h` below the top, flange `f`
+		// wide and `tf` thick on top
+		const rib = ( a, b, h, t, f, tf ) => {
+
+			const A = v3( a.x, 0, a.y ), B = v3( b.x, 0, b.y );
+			parts.push( beam( A.clone().setY( plateY + ( h - tf ) / 2 ), B.clone().setY( plateY + ( h - tf ) / 2 ), t, h - tf ) );
+			parts.push( beam( A.clone().setY( plateY + h - tf / 2 ), B.clone().setY( plateY + h - tf / 2 ), f, tf ) );
+
+		};
+
+		// a strut from its start on the bar, back to where it meets the rim band
+		const inside = p => {
+
+			let c = false;
+			for ( let i = 0, j = area.length - 1; i < area.length; j = i ++ ) {
+
+				const pi = area[ i ], pj = area[ j ];
+				if ( ( pi.y > p.y ) !== ( pj.y > p.y ) && p.x < ( pj.x - pi.x ) * ( p.y - pi.y ) / ( pj.y - pi.y ) + pi.x ) c = ! c;
+
+			}
+
+			return c;
+
+		};
+		const toRim = ( a, b ) => {
+
+			let end = a.clone();
+			for ( let k = 1; k <= 400; ++ k ) {
+
+				const p = a.clone().lerp( b, k / 400 * 1.3 );
+				if ( ! inside( p ) ) break;
+				end = p;
+
+			}
+
+			return end.addScaledVector( new THREE.Vector2().subVectors( b, a ).normalize(), 0.03 );		// into the band
+
+		};
+		for ( const [ a, b ] of [ bass, tenor, treble ] ) rib( a, toRim( a, b ), PLATE_RIB, 0.012, 0.024, 0.005 );
+		// cross bar: spine (inside the band) to the tenor strut
+		const tenorAt = x => tenor[ 0 ].clone().lerp( tenor[ 1 ], ( x - tenor[ 0 ].x ) / ( tenor[ 1 ].x - tenor[ 0 ].x ) );
+		const cA = cross[ 0 ].clone().lerp( cross[ 1 ], 0.02 ), cB = cross[ 1 ].clone();
+		cB.x = tenorAt( cB.x ).x;
+		rib( cA, cB, PLATE_RIB - 0.008, 0.011, 0.02, 0.004 );
+
+		// front bar: a hollow box from z -0.405 to -0.58, its top skin cut by the three holes
+		const zF = - 0.405, zB = - 0.58, xL = - HALF_W + RIM_T + 0.03, xR = HALF_W - RIM_T - 0.03;
+		rib( v2( xL, zB ), v2( xR, zB ), PLATE_RIB, 0.02, 0.02, 0.004 );
+		rib( v2( xL, zF ), v2( xR, zF ), PLATE_RIB - 0.004, 0.014, 0.014, 0.004 );
+		const skin = new THREE.Shape( [ v2( xL, zF ), v2( xR, zF ), v2( xR, zB ), v2( xL, zB ) ] );
+		for ( const cx of HOLES ) {
+
+			const h = new THREE.Path();
+			h.absellipse( cx, HOLE_Z, HOLE_R, HOLE_R, 0, Math.PI * 2, true );
+			skin.holes.push( h );
+			// raised collar round each hole
+			const ring = new THREE.Shape();
+			ring.absellipse( cx, HOLE_Z, HOLE_R + 0.008, HOLE_R + 0.008, 0, Math.PI * 2, false );
+			const bore = new THREE.Path();
+			bore.absellipse( cx, HOLE_Z, HOLE_R, HOLE_R, 0, Math.PI * 2, true );
+			ring.holes.push( bore );
+			parts.push( extrudeXZ( ring, top - 0.006, top + 0.003, 0.0015 ) );
+			// the hole's wall down to the floor (the box is hollow)
+			parts.push( insideOut( new THREE.CylinderGeometry( HOLE_R + 0.001, HOLE_R + 0.001, PLATE_RIB, 32, 1, true ).translate( cx, plateY + PLATE_RIB / 2, HOLE_Z ) ) );
+
+		}
+
+		parts.push( extrudeXZ( skin, top - 0.006, top, 0.002 ) );
+
+		// plate rim: a raised band along the case (sides and tail), from the case wall to the
+		// openings, its inner edge a web down to the floor; the hitch pins stand on it
+		const band = offsetPolyline( inner, 0.02 );
+		for ( let i = 0; i + 1 < band.length; ++ i ) {
+
+			if ( band[ i ].y > - 0.57 || band[ i + 1 ].y > - 0.57 ) continue;
+			const q = new THREE.Shape( [ band[ i ], band[ i + 1 ], area[ i + 1 ], area[ i ] ] );
+			parts.push( extrudeXZ( q, plateY - 0.001, plateY + PLATE_BAND, 0 ) );
+
+		}
+
+		group.add( mesh( merge( parts ), M.plate ) );
 
 	}
 
 	// --- strings, pins, dampers --------------------------------------------
 	{
 
-		const steel = [], copper = [], pins = [];
+		const steel = [], copper = [], pins = [], hitch = [];
 		const DAMPER_Z = - 0.385;
 		const damperMats = [ M.hammerFelt, M.keyBlack ];
 		// one damper per note, resting on the top of its string(s) at DAMPER_Z; lifts upwards
@@ -397,22 +522,26 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			const t = i / ( n - 1 );
 			const x = x0 + ( x1 - x0 ) * t;
 			const zPin = pinZ - ( i % 2 ) * 0.02;
-			pins.push( rod( v3( x - 0.004, plateY, zPin ), v3( x - 0.004, plateY + 0.03, zPin ), 0.0035, 8 ) );
-			pins.push( rod( v3( x + 0.004, plateY, zPin - 0.01 ), v3( x + 0.004, plateY + 0.03, zPin - 0.01 ), 0.0035, 8 ) );
+			// tuning pins up to just above their string
+			const pinTop = plateY + ( i < bassCount ? BASS_Y : STRING_Y ) + 0.008;
+			pins.push( rod( v3( x - 0.004, plateY, zPin ), v3( x - 0.004, pinTop, zPin ), 0.0035, 8 ) );
+			pins.push( rod( v3( x + 0.004, plateY, zPin - 0.01 ), v3( x + 0.004, pinTop, zPin - 0.01 ), 0.0035, 8 ) );
 
 			if ( i < bassCount ) {
 
 				// bass fan: from the left front diagonally towards the tail, above the tenor strings
-				const a = v3( x, plateY + 0.03, zPin );
+				const a = v3( x, plateY + BASS_Y, zPin );
 				const endX = - 0.55 + 0.45 * t * n / bassCount;
-				const b = v3( endX, plateY + 0.02, caseEndZ( inner, endX ) + 0.06 );
+				const b = v3( endX, plateY + BASS_Y - 0.006, caseEndZ( inner, endX ) + 0.06 );
+				hitch.push( rod( v3( endX, plateY + PLATE_BAND, b.z - 0.004 ), v3( endX, b.y + 0.004, b.z - 0.004 ), 0.0022, 6 ) );
 				copper.push( beam( a, b, 0.003, 0.003 ) );
 				addDamper( i, a, b, 0.0015, 0.011 );
 
 			} else {
 
 				const endZ = caseEndZ( inner, x ) + 0.06;
-				const a = v3( x - 0.003, plateY + 0.012, zPin ), b = v3( x - 0.003, plateY + 0.008, endZ );
+				const a = v3( x - 0.003, plateY + STRING_Y, zPin ), b = v3( x - 0.003, plateY + STRING_Y - 0.004, endZ );
+				hitch.push( rod( v3( x, plateY + PLATE_BAND, endZ - 0.004 ), v3( x, b.y + 0.004, endZ - 0.004 ), 0.0022, 6 ) );
 				steel.push( beam( a, b, 0.0012, 0.0012 ) );
 				steel.push( beam( a.clone().setX( x + 0.003 ), b.clone().setX( x + 0.003 ), 0.0012, 0.0012 ) );
 				if ( i < 68 ) addDamper( i, a.clone().setX( x ), b.clone().setX( x ), 0.0006, 0.012 );
@@ -424,6 +553,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		group.add( mesh( merge( steel ), M.steel ) );
 		group.add( mesh( merge( copper ), M.copper ) );
 		group.add( mesh( merge( pins ), M.steel ) );
+		group.add( mesh( merge( hitch ), M.steel ) );		// hitch pins on the plate rim band
 
 		// pin block cover / plate flange across the front
 		group.add( mesh( woodBox( v3( - HALF_W + RIM_T, plateY, - 0.33 ), v3( HALF_W - RIM_T, plateY + 0.006, - 0.245 ), { noUV: true } ), M.plate ) );
@@ -488,13 +618,13 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// key bed: top slab behind the keyslip, its front face hidden behind the keyslip
 		group.add( mesh( woodBox( v3( - 0.66, 0.655, - 0.25 ), v3( 0.66, 0.685, 0 ), { noUV: true } ), M.keybed ) );
 		group.add( mesh( woodBox( v3( - 0.66, FRONT_BOTTOM, - 0.25 ), v3( 0.66, 0.655, - 0.012 ), { noUV: true } ), M.case ) );
-		group.add( mesh( woodBox( v3( - 0.70, 0.655, - 0.01 ), v3( 0.70, 0.705, 0.022 ), { noUV: true, radius: 0.004 } ), M.case ) );
-		// key blocks: flat, level with the white key tops (USD834638 Figs. 4/5), from the key slip
-		// back to the side boards
+		group.add( mesh( woodBox( v3( - SCREEN_EDGE_X, 0.655, - 0.01 ), v3( SCREEN_EDGE_X, 0.705, KEY_FRONT_Z ), { noUV: true, radius: 0.004 } ), M.case ) );
+		// key blocks: flat, level with the white key tops (USD834638 Figs. 1, 4/5), between the
+		// keys and the side boards, from the key slip back to the display
 		for ( const sx of [ - 1, 1 ] ) {
 
-			const a = v3( sx < 0 ? - HALF_W : 0.618, FRONT_BOTTOM, screenFrontZ( KEY_BLOCK_TOP ) - 0.01 );
-			const b = v3( sx < 0 ? - 0.618 : HALF_W, KEY_BLOCK_TOP, 0.022 );
+			const a = v3( sx < 0 ? - SCREEN_EDGE_X : 0.618, FRONT_BOTTOM, screenFrontZ( KEY_BLOCK_TOP ) - 0.01 );
+			const b = v3( sx < 0 ? - 0.618 : SCREEN_EDGE_X, KEY_BLOCK_TOP, KEY_FRONT_Z );
 			group.add( mesh( woodBox( a, b, { noUV: true, radius: 0.006 } ), M.case ) );
 
 		}
