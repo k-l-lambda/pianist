@@ -1,0 +1,60 @@
+# Demo scene script for PianistWeb (load with ?script=demo.yaml, or pick it in the GUI:
+# Script / Open script…). Format: see src/script.js.
+title: Beyer No. 5 — screen on, handheld walk-in
+
+midi:
+  etude: beyer05.mid
+
+timeline:
+  # setup: afternoon light, handheld camera with a gentle shake, screen off, a wide view
+  - at: 0
+    set:
+      Lighting/Preset: Sunlit afternoon
+      Rendering/Bloom: 0.12
+    handheld: { enabled: true, shake: 0.6, walk: 1, person: true }
+    screen: off
+    camera: { position: [ -0.9, 1.45, 2.4 ], target: [ 0, 0.85, -0.2 ], fov: 40 }
+
+  # walk in towards the keyboard
+  - at: 0.5
+    camera:
+      duration: 5
+      ease: inOutSine
+      path:
+        - { position: [ -0.4, 1.38, 1.5 ], target: [ 0, 0.86, -0.2 ] }
+        - { position: [ 0.05, 1.3, 0.85 ], target: [ 0, 0.86, -0.22 ], fov: 34 }
+
+  # power the screen on (boot animation, ~6 s) and start the etude as it fades to the roll
+  - at: 5
+    screen: on
+  - at: 11
+    midi: { play: etude, from: 0, tempo: 1 }
+
+  # a slow drift to the right while it plays, then a closer look at the hands' end
+  - at: 13
+    camera:
+      duration: 10
+      path:
+        - { position: [ 0.35, 1.28, 0.8 ], target: [ 0.1, 0.86, -0.22 ], fov: 32 }
+  - at: 24
+    camera:
+      duration: 8
+      path:
+        - { position: [ 0.15, 1.2, 0.6 ], target: [ 0, 0.85, -0.22 ], fov: 28 }
+
+  # the light warms over 15 s (numbers tween; the preset itself switches at once)
+  - at: 20
+    duration: 15
+    set:
+      Lighting/Sun elevation: 4
+      Lighting/Sun intensity: 4
+
+  # when the piece is over (27.5 s from 11 s): pull back, screen off
+  - at: 40
+    camera:
+      duration: 6
+      path:
+        - { position: [ -0.6, 1.4, 2.0 ], target: [ 0, 0.85, -0.2 ], fov: 38 }
+  - after: 6
+    midi: stop
+    screen: off

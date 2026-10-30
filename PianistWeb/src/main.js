@@ -19,6 +19,7 @@ import { HandheldMode } from './handheldmode.js';
 import { Synth } from './synth.js';
 import { prefetchSoundfont, soundfontStatus } from './soundfont.js';
 import { MidiFilePlayer } from './midi.js';
+import { ScriptPlayer } from './script.js';
 import { PianoRoll, excludeFromGTAO } from './pianoroll.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
 
@@ -28,7 +29,22 @@ prefetchSoundfont();
 // let the loading screen paint before the (blocking) scene build starts
 await new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
 
+// scene parameters from the URL: the query (?gi&style=grand-black) and/or the hash, which wins:
+//   #?gi&grand-black&pathtrace&handheld&screen&script=path/to/scene.yaml
+// Bare words in the hash: a piano style id, `realtime` / `pathtrace`, or a flag (gi, handheld,
+// screen, loading, capture). key=value: style, mode, gi=0|1, exposure, shadow=vsm, preset, shake,
+// script (a name in public/scripts/, a path from the site root, or a URL). Changing the hash
+// reloads the scene with the new parameters.
 const params = new URLSearchParams( location.search );
+for ( const [ key, value ] of new URLSearchParams( location.hash.replace( /^#\??/, '' ) ) ) {
+
+	if ( value === '' && STYLES.some( s => s.id === key ) ) params.set( 'style', key );
+	else if ( value === '' && ( key === 'realtime' || key === 'pathtrace' ) ) params.set( 'mode', key );
+	else params.set( key, value );
+
+}
+
+window.addEventListener( 'hashchange', () => location.reload() );
 
 const settings = {
 	style: params.get( 'style' ) ?? 'upright-oak',
@@ -604,16 +620,24 @@ async function playMidi() {
 
 }
 
+// load into the player and the GUI (also used by scene scripts)
+function loadMidiBuffer( buffer, name ) {
+
+	const { duration, notes } = midiPlayer.load( buffer, name );
+	midiState.file = name;
+	midiState.position = 0;
+	positionCtrl.max( Math.max( 1, duration / 1000 ) );
+	console.log( `MIDI: ${ name }, ${ notes } notes, ${ ( duration / 1000 ).toFixed( 1 ) } s` );
+	fMidi.controllersRecursive().forEach( c => c.updateDisplay() );
+
+}
+
 async function loadMidiFile( file ) {
 
 	if ( ! file ) return;
 	try {
 
-		const { duration, notes } = midiPlayer.load( await file.arrayBuffer(), file.name );
-		midiState.file = file.name;
-		midiState.position = 0;
-		positionCtrl.max( Math.max( 1, duration / 1000 ) );
-		console.log( `MIDI: ${ file.name }, ${ notes } notes, ${ ( duration / 1000 ).toFixed( 1 ) } s` );
+		loadMidiBuffer( await file.arrayBuffer(), file.name );
 		await playMidi();
 
 	} catch ( err ) {
@@ -657,6 +681,107 @@ fMidi.addColor( { color: '#' + roll.color.getHexString() }, 'color' ).name( 'Rol
 fMidi.add( roll, 'lookahead', 0.8, 6, 0.1 ).name( 'Look-ahead (s)' );
 fMidi.add( roll, 'particles' ).name( 'Particles' );
 
+// ---------------------------------------------------------------------------
+// scene scripts (script.js): a YAML timeline of camera moves, screen power, MIDI and scene
+// parameters. Pick the .yaml together with the MIDI files it names, drop them on the page, or
+// load one shipped in public/scripts/ with ?script=name.yaml
+
+const scriptPlayer = new ScriptPlayer( {
+	camera, controls, gui, setScreenPower,
+	midi: {
+		load: loadMidiBuffer,
+		play: () => playMidi(),
+		pause: () => midiPlayer.pause(),
+		resume: () => playMidi(),
+		stop: () => midiPlayer.stop(),
+		seek: ms => midiPlayer.seek( ms ),
+		get playing() { return midiPlayer.playing; },
+	},
+} );
+const scriptState = {
+	file: '(none)',
+	state: '',
+	open: () => scriptInput.click(),
+	toggle: async () => {
+
+		if ( scriptPlayer.playing ) return scriptPlayer.stop();
+		await synth.resume();
+		scriptPlayer.play();
+
+	},
+};
+scriptPlayer.onState = text => {
+
+	scriptState.state = text;
+	fScript.controllersRecursive().forEach( c => c.updateDisplay() );
+
+};
+
+async function loadScriptFile( file, others = [] ) {
+
+	try {
+
+		await scriptPlayer.load( await file.text(), { name: file.name, files: others.filter( f => f !== file ) } );
+		scriptState.file = scriptPlayer.title;
+		await synth.resume();
+		scriptPlayer.play();
+
+	} catch ( err ) {
+
+		scriptState.file = file.name;
+		scriptState.state = `error: ${ err.message }`;
+		console.warn( 'script load failed:', err );
+
+	}
+
+	fScript.controllersRecursive().forEach( c => c.updateDisplay() );
+
+}
+
+const scriptInput = Object.assign( document.createElement( 'input' ), { type: 'file', multiple: true, accept: '.yaml,.yml,.mid,.midi' } );
+scriptInput.style.display = 'none';
+document.body.appendChild( scriptInput );
+scriptInput.addEventListener( 'change', () => {
+
+	const files = [ ...scriptInput.files ];
+	const yaml = files.find( f => /\.ya?ml$/i.test( f.name ) );
+	if ( yaml ) loadScriptFile( yaml, files );
+	scriptInput.value = '';
+
+} );
+
+const fScript = gui.addFolder( 'Script' );
+fScript.add( scriptState, 'open' ).name( 'Open script… (+ MIDI)' );
+fScript.add( scriptState, 'file' ).name( 'Script' ).disable();
+fScript.add( scriptState, 'toggle' ).name( 'Play / stop' );
+fScript.add( scriptState, 'state' ).name( 'State' ).disable();
+
+if ( params.has( 'script' ) ) {
+
+	// a bare name is one of public/scripts/; a path is from the site root; or a full URL
+	const name = params.get( 'script' ), base = new URL( import.meta.env.BASE_URL, location.href );
+	const url = new URL( /[/:]/.test( name ) ? name.replace( /^\//, '' ) : 'scripts/' + name, base );
+	fetch( url ).then( r => {
+
+		if ( ! r.ok ) throw new Error( `${ url }: ${ r.status }` );
+		return r.text();
+
+	} ).then( async text => {
+
+		await scriptPlayer.load( text, { name, baseURL: url } );
+		scriptState.file = scriptPlayer.title;
+		await synth.resume();
+		scriptPlayer.play();
+
+	} ).catch( err => {
+
+		scriptState.state = `error: ${ err.message }`;
+		console.warn( 'script load failed:', err );
+
+	} ).finally( () => fScript.controllersRecursive().forEach( c => c.updateDisplay() ) );
+
+}
+
 function updateMidiUI() {
 
 	if ( seeking || ! midiPlayer.duration ) return;
@@ -699,7 +824,10 @@ window.addEventListener( 'drop', e => {
 	e.preventDefault();
 	dragDepth = 0;
 	dropOverlay.classList.remove( 'show' );
-	const file = [ ...e.dataTransfer.files ].find( f => /\.midi?$/i.test( f.name ) || /midi/.test( f.type ) );
+	const files = [ ...e.dataTransfer.files ];
+	const yaml = files.find( f => /\.ya?ml$/i.test( f.name ) );
+	if ( yaml ) return loadScriptFile( yaml, files );
+	const file = files.find( f => /\.midi?$/i.test( f.name ) || /midi/.test( f.type ) );
 	if ( file ) loadMidiFile( file );
 
 } );
@@ -761,6 +889,7 @@ function frame() {
 	if ( raw > 0 ) fps += ( 1 / raw - fps ) * 0.05;
 	cameraMoving = false;
 	handheld.restore();
+	scriptPlayer.update( dt );
 	controls.update();
 	handheld.apply( dt );
 	if ( handheld.consumeRebuild() ) ptDirty = true;
@@ -820,5 +949,11 @@ applyQuality( false );
 setStyle( settings.style );
 setMode( settings.mode );
 if ( ! params.has( 'loading' ) ) document.getElementById( 'loading' ).classList.add( 'hidden' );		// ?loading keeps it (design preview)
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, synth, midiPlayer, get piano() { return piano; } };
+// URL flags applied once the scene exists (a script may change them again)
+const flag = k => params.has( k ) && params.get( k ) !== '0';
+if ( params.has( 'preset' ) ) gui.controllersRecursive().find( c => c.property === 'preset' )?.setValue( params.get( 'preset' ) );
+if ( params.has( 'shake' ) ) gui.controllersRecursive().find( c => c.object === handheld && c.property === 'intensity' )?.setValue( Number( params.get( 'shake' ) ) );
+if ( flag( 'handheld' ) ) gui.controllersRecursive().find( c => c._name === 'Handheld' )?.setValue( true );
+if ( flag( 'screen' ) ) setScreenPower( true );
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, get piano() { return piano; } };
 requestAnimationFrame( frame );
