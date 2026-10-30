@@ -4,8 +4,12 @@
 //    to 2.5 Hz (above that the measurement is noise), at 6% of the video's level (0.18° held
 //    still); 3x while walking, 1.5x while turning
 //  - left drag turns the view in place (the orbit centre is kept just ahead of the lens)
-//  - walking: when the camera travels, a vertical dip per step, sideways sway per stride, a
-//    little roll and nod, fading in with speed
+//  - walking = body + arm. The body bobs once per step and sways once per stride; steps keep a
+//    roughly fixed length, so the cadence follows the walking speed (0.55 m steps: 1.3 steps/s
+//    at 0.7 m/s, 2.2 at 1.2); the body's bob grows with speed. The arm holding the phone
+//    carries that to the camera as a damped spring (0.35 Hz, ζ 0.7): it soaks up most of the
+//    step bob (~40% gets through at 0.7 m/s, ~25% at 1.2) and lags it; the slower stride sway
+//    passes more. The hand's own shake comes on top
 //  - height capped at what a person can reach holding a phone (1.85 m; standing eye height of a
 //    1.75 m person is 1.64 m, higher means the arm is raised)
 //  - arrow keys walk (up/down forward/back along the heading, left/right sidestep; Shift
@@ -26,9 +30,12 @@ import params from '../../CameraTrack/handheld_params.json';
 
 const MAX_HEIGHT = 1.85, MIN_HEIGHT = 0.3;
 const FOV_RANGE = [ 12, 70 ];
-const STEP_HZ = 1.8;							// walking cadence (steps per second)
-const BOB = 0.008, SWAY = 0.006;				// m, at full walking speed (phone held, so damped)
-const ROLL = 0.35, NOD = 0.25;					// deg
+const STEP_LENGTH = 0.55;						// m: cadence = speed / step length
+const MAX_CADENCE = 2.6;						// steps / s
+const BODY_BOB = 0.04, BODY_SWAY = 0.03;		// m peak to peak at a brisk walk (1.2 / 1.0 m/s and up): the
+												// body's (head / shoulders') gait motion; less when slower
+const ARM_HZ = 0.35, ARM_ZETA = 0.7;			// the arm as a spring-damper between body and phone
+const ROLL = 0.3, NOD = 0.2;					// deg, the body's sway roll and step nod, as passed on
 const TURN_RADIUS = 0.01;
 const SHAKE_CUTOFF = 2.5;						// Hz
 // shake gain: the 2.5 Hz-limited generator gives 0.91° RMS at gain 1. The video (CameraTrack)
@@ -67,6 +74,7 @@ export class HandheldMode {
 		this.speed = 0;				// smoothed camera speed (m/s)
 		this.turn = 0;				// smoothed turn rate (rad/s)
 		this.stepPhase = 0;
+		this.arm = { x: 0, y: 0, vx: 0, vy: 0 };	// phone relative to the body's mean path (m, m/s)
 		this.probeAt = new THREE.Vector3( 1e9, 0, 0 );
 		this.probeTime = 0;
 		this.settle = 0;
@@ -279,15 +287,35 @@ export class HandheldMode {
 			const g = this.intensity * HOLD_GAIN * Math.max( 1 + ( WALK_FACTOR - 1 ) * walkAct, 1 + ( TURN_FACTOR - 1 ) * turnAct );
 			const { rotation, offset } = this.shaker.shakeAt( this.time, g, _q, _o );
 
-			// walking: steps advance with speed; dip per step, sway per stride
-			this.stepPhase += dt * 2 * Math.PI * STEP_HZ * ( 0.6 + 0.4 * walking ) * ( walking > 0.01 ? 1 : 0 );
-			const step = this.stepPhase, stride = this.stepPhase / 2;
-			offset.x += SWAY * walking * Math.sin( stride );
-			offset.y += BOB * walking * ( Math.cos( step ) - 1 ) / 2;		// dips by up to BOB
+			// walking: the body's gait at a cadence set by the speed (fixed step length), filtered by
+			// the arm (spring-damper), in world axes: vertical, and sideways across the heading
+			const cadence = Math.min( this.speed / STEP_LENGTH, MAX_CADENCE );
+			const w = 2 * Math.PI * cadence;
+			this.stepPhase += dt * w;
+			const step = this.stepPhase, stride = step / 2;
+			const av = BODY_BOB / 2 * walking * Math.min( 1, this.speed / 1.2 ), al = BODY_SWAY / 2 * walking * Math.min( 1, this.speed / 1.0 );
+			const by = av * Math.cos( step ), bvy = - av * w * Math.sin( step );
+			const bx = al * Math.sin( stride ), bvx = al * w / 2 * Math.cos( stride );
+			const arm = this.arm, w0 = 2 * Math.PI * ARM_HZ, n = Math.ceil( dt / 0.004 ), h = dt / n;
+			for ( let i = 0; i < n; ++ i ) {
+
+				arm.vx += h * ( w0 * w0 * ( bx - arm.x ) + 2 * ARM_ZETA * w0 * ( bvx - arm.vx ) );
+				arm.vy += h * ( w0 * w0 * ( by - arm.y ) + 2 * ARM_ZETA * w0 * ( bvy - arm.vy ) );
+				arm.x += h * arm.vx;
+				arm.y += h * arm.vy;
+
+			}
+
 			_e.set( NOD * D * walking * Math.cos( step ), 0, ROLL * D * walking * Math.sin( stride ) );
 			rotation.multiply( _q2.setFromEuler( _e ) );
 
 			camera.position.add( offset.applyQuaternion( I.quaternion ) );
+			_v.set( 0, 0, - 1 ).applyQuaternion( I.quaternion ).setY( 0 );
+			if ( _v.lengthSq() < 1e-6 ) _v.set( 0, 0, - 1 );
+			_v.normalize();
+			camera.position.x += - _v.z * arm.x;					// right of the heading
+			camera.position.z += _v.x * arm.x;
+			camera.position.y += arm.y;
 			camera.quaternion.copy( I.quaternion ).multiply( rotation );
 
 		}
