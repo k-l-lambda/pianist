@@ -94,16 +94,19 @@ export function makeMaterials( baker, style ) {
 			m.panel = screen();
 			break;
 
+		// FIND GF: lacquered case, the display's black glass, warm wood inside the rim
 		case 'grand-black':
 			m.case = lacquer( '#050505' );
 			m.trim = m.case;
-			m.panel = m.case;
+			m.panel = screen();
+			m.rimInner = woodMaterial( baker.walnut(), { clearcoat: 0.6, clearcoatRoughness: 0.2 } );
 			break;
 
 		case 'grand-white':
 			m.case = lacquer( '#ecebe6', { roughness: 0.22 } );
 			m.trim = m.case;
-			m.panel = m.case;
+			m.panel = screen();
+			m.rimInner = woodMaterial( baker.walnut(), { clearcoat: 0.6, clearcoatRoughness: 0.2 } );
 			break;
 
 		default:

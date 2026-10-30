@@ -1,5 +1,10 @@
-// Grand piano (~1.9 m): bentside rim, open lid on a prop stick, gold plate, overstrung
-// strings, dampers, music desk, three tapered legs and a lyre with pedals.
+// Grand piano after the FIND GF smart grand (GF156C / F150G: 150 W x 156-160 D x 100 H cm;
+// Footages.local/find/GF-TYPE-*.jpg, MHGF*.jpg; diary-job memo/piano/grand-piano-design-
+// references.md): bentside rim with a wood-veneered inner face, open lid on a prop stick, gold
+// plate, overstrung strings, dampers, a full-width tilted display in place of the fallboard and
+// music desk (bezel 1343 x 320 mm, 117° to the keyboard plane), square tapered legs on gold
+// casters and, instead of a lyre, a metal pedal bar between the front legs with 7 pedals (the
+// 3 standard ones in the middle, 2 function pedals each side).
 //
 // Frame: origin at floor below the keyboard center, key fronts at z = 0, body towards -z.
 
@@ -13,9 +18,20 @@ const KEY_BOTTOM = 0.698;
 const RIM_BOTTOM = 0.62;
 const RIM_TOP = 0.985;
 const RIM_T = 0.045;
-const HALF_W = 0.74;
-const FRONT_Z = - 0.20;			// rim front (behind the fallboard)
-const LENGTH = 1.90;
+const HALF_W = 0.745;			// 1.49 m wide
+const FRONT_Z = - 0.20;			// rim front (behind the display)
+const LENGTH = 1.56;			// case length (F150G 1555 mm)
+// the curves below were drawn for a 1.90 m case; Z() maps their depth to LENGTH (front fixed)
+const K = ( LENGTH + FRONT_Z ) / ( 1.90 + FRONT_Z );
+const Z = z => FRONT_Z + ( z - FRONT_Z ) * K;
+
+// display: bezel 1343 x 320 mm leaning back 27° (117° to the keys), standing on the key-back
+// felt like the upright's screen
+const SCREEN_W = 1.343, SCREEN_H = 0.32, SCREEN_T = 0.03;
+const SCREEN_LEAN = THREE.MathUtils.degToRad( 27 );
+const SCREEN_BOTTOM = v3( 0, 0.737, - 0.150 );
+// the lid's front edge: just behind the display's top (it stands above the rim top)
+const LID_FRONT_Z = SCREEN_BOTTOM.z - ( SCREEN_H * Math.sin( SCREEN_LEAN ) + SCREEN_T * Math.cos( SCREEN_LEAN ) ) - 0.008;
 
 const mesh = ( geo, mat, cast = true ) => {
 
@@ -31,11 +47,11 @@ function rimPath() {
 
 	const p = new THREE.Path();
 	p.moveTo( - HALF_W, FRONT_Z );
-	p.lineTo( - HALF_W, - 1.62 );
+	p.lineTo( - HALF_W, Z( - 1.62 ) );
 	p.quadraticCurveTo( - HALF_W, - LENGTH, - 0.48, - LENGTH );
-	p.bezierCurveTo( - 0.30, - LENGTH, - 0.20, - 1.86, - 0.12, - 1.72 );
-	p.bezierCurveTo( 0.02, - 1.36, 0.30, - 1.02, 0.56, - 0.80 );
-	p.bezierCurveTo( 0.72, - 0.64, HALF_W, - 0.48, HALF_W, - 0.34 );
+	p.bezierCurveTo( - 0.30, - LENGTH, - 0.20, Z( - 1.86 ), - 0.12, Z( - 1.72 ) );
+	p.bezierCurveTo( 0.02, Z( - 1.36 ), 0.30, Z( - 1.02 ), 0.56, Z( - 0.80 ) );
+	p.bezierCurveTo( 0.72, Z( - 0.64 ), HALF_W, Z( - 0.48 ), HALF_W, Z( - 0.34 ) );
 	p.lineTo( HALF_W, FRONT_Z );
 	return p.getSpacedPoints( 220 );
 
@@ -62,6 +78,38 @@ function offsetPolyline( pts, d ) {
 function extrudeXZ( shape, y0, y1, bevel = 0.003 ) {
 
 	return extrudeTop( shape, y0, y1, { bevel, curveSegments: 64 } );
+
+}
+
+/**
+ * Vertical ribbon along a polyline in (x, z) from y0 to y1, facing the polyline's left side
+ * (the inside of the rim); UVs in metres (u along the polyline, v up) for the wood textures.
+ */
+function rimVeneer( pts, y0, y1 ) {
+
+	const pos = [], uv = [];
+	let u = 0;
+	for ( let i = 1; i < pts.length; ++ i ) {
+
+		const a = pts[ i - 1 ], b = pts[ i ];
+		const du = a.distanceTo( b );
+		const quad = [ [ a, y0, u ], [ b, y0, u + du ], [ b, y1, u + du ], [ a, y0, u ], [ b, y1, u + du ], [ a, y1, u ] ];
+		for ( const [ p, y, uu ] of quad ) {
+
+			pos.push( p.x, y, p.y );
+			uv.push( uu, y );
+
+		}
+
+		u += du;
+
+	}
+
+	const g = new THREE.BufferGeometry();
+	g.setAttribute( 'position', new THREE.Float32BufferAttribute( pos, 3 ) );
+	g.setAttribute( 'uv', new THREE.Float32BufferAttribute( uv, 2 ) );
+	g.computeVertexNormals();
+	return g;
 
 }
 
@@ -133,8 +181,12 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		sb.closePath();
 		group.add( mesh( extrudeXZ( sb, RIM_BOTTOM + 0.15, RIM_BOTTOM + 0.16, 0 ), M.spruce ) );
 
-		// front belly rail closing the rim behind the fallboard
+		// front belly rail closing the rim behind the display
 		group.add( mesh( woodBox( v3( - HALF_W, RIM_BOTTOM, FRONT_Z - RIM_T ), v3( HALF_W, 0.84, FRONT_Z ), { noUV: true } ), M.case ) );
+
+		// inner rim veneer (the photos show warm wood inside the lacquered case), from the
+		// soundboard up to just below the rim top
+		group.add( mesh( rimVeneer( offsetPolyline( inner, 0.0015 ), RIM_BOTTOM + 0.16, RIM_TOP - 0.012 ), M.rimInner ?? M.case, false ) );
 
 	}
 
@@ -155,7 +207,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		for ( const [ cx, cz, rx, rz ] of holes ) {
 
 			const h = new THREE.Path();
-			h.absellipse( cx, cz, rx, rz, 0, Math.PI * 2, true );
+			h.absellipse( cx, Z( cz ), rx, rz * K, 0, Math.PI * 2, true );
 			s.holes.push( h );
 
 		}
@@ -230,7 +282,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	// --- lid -------------------------------------------------------------
 	{
 
-		const s = new THREE.Shape( outer );
+		const s = new THREE.Shape( outer.map( p => new THREE.Vector2( p.x, Math.min( p.y, LID_FRONT_Z ) ) ) );
 		s.closePath();
 		const geo = extrudeXZ( s, 0, 0.02, 0.004 );
 		// hinge along the straight (bass) side at x = -HALF_W
@@ -244,7 +296,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		if ( lidAngle > 2 ) {
 
 			// prop stick from the bentside rim up to the lid
-			const zs = - 0.95;
+			const zs = Z( - 0.95 );
 			const bx = bentsideX( outer, zs ) - 0.06;
 			const base = v3( bx, RIM_TOP, zs );
 			const a = THREE.MathUtils.degToRad( lidAngle );
@@ -273,40 +325,40 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
-		// fallboard (open, standing behind the key backs) and felt strip
-		group.add( mesh( woodBox( v3( - 0.618, 0.72, - 0.19 ), v3( 0.618, 0.86, - 0.155 ), { noUV: true, radius: 0.006 } ), M.case ) );
+		// felt strip along the key backs, under the display
 		group.add( mesh( woodBox( v3( - 0.618, 0.72, - 0.157 ), v3( 0.618, 0.737, - 0.146 ) ), M.redFelt ) );
 
-		// music desk
-		const desk = mesh( new THREE.BoxGeometry( 0.86, 0.30, 0.014 ), M.case );
-		desk.geometry.translate( 0, 0.15, 0 );
-		desk.position.set( 0, RIM_TOP + 0.005, - 0.36 );
-		desk.rotation.x = - THREE.MathUtils.degToRad( 16 );
-		group.add( desk );
-		const ledge = mesh( woodBox( v3( - 0.43, - 0.004, 0 ), v3( 0.43, 0.02, 0.035 ), { noUV: true } ), M.case );
-		ledge.position.copy( desk.position );
-		ledge.rotation.copy( desk.rotation );
-		group.add( ledge );
+		// the display, in place of fallboard and music desk: a glossy black slab leaning back
+		// from the felt, its front face the screen (M.panel: the piano roll plays on it, the
+		// handheld mode's planar mirror uses it)
+		const geo = new THREE.BoxGeometry( SCREEN_W, SCREEN_H, SCREEN_T );
+		geo.translate( 0, SCREEN_H / 2, - SCREEN_T / 2 - 0.0005 );
+		const screen = mesh( geo, M.panel );
+		screen.name = 'panel';
+		screen.position.copy( SCREEN_BOTTOM );
+		screen.rotation.x = - SCREEN_LEAN;
+		group.add( screen );
 
 	}
 
 	// --- legs ----------------------------------------------------------------
 	{
 
-		const legs = [ v3( - 0.64, 0, - 0.12 ), v3( 0.64, 0, - 0.12 ), v3( - 0.36, 0, - 1.70 ) ];
+		// square legs tapering to gold casters: two under the cheek blocks, one under the tail
+		const legs = [ v3( - 0.655, 0, - 0.11 ), v3( 0.655, 0, - 0.11 ), v3( - 0.36, 0, Z( - 1.70 ) ) ];
 		const brass = [];
 		const legGeos = [];
 		for ( const p of legs ) {
 
 			const h = RIM_BOTTOM - 0.06 - 0.07;
-			const g = new THREE.CylinderGeometry( 0.06, 0.042, h, 4, 1 ).toNonIndexed();
+			const g = new THREE.CylinderGeometry( 0.066, 0.046, h, 4, 1 ).toNonIndexed();
 			g.rotateY( Math.PI / 4 );
 			g.computeVertexNormals();
 			g.translate( p.x, 0.07 + h / 2, p.z );
 			legGeos.push( g );
 			// block at the top of the leg
-			legGeos.push( woodBox( v3( p.x - 0.07, RIM_BOTTOM - 0.10, p.z - 0.07 ), v3( p.x + 0.07, RIM_BOTTOM - 0.06, p.z + 0.07 ), { noUV: true, radius: 0.006 } ) );
-			brass.push( rod( v3( p.x, 0.04, p.z ), v3( p.x, 0.075, p.z ), 0.032, 24 ) );
+			legGeos.push( woodBox( v3( p.x - 0.075, RIM_BOTTOM - 0.10, p.z - 0.075 ), v3( p.x + 0.075, RIM_BOTTOM - 0.06, p.z + 0.075 ), { noUV: true, radius: 0.006 } ) );
+			brass.push( rod( v3( p.x, 0.04, p.z ), v3( p.x, 0.075, p.z ), 0.034, 24 ) );
 			const wheel = new THREE.SphereGeometry( 0.03, 16, 12 );
 			wheel.translate( p.x, 0.03, p.z );
 			brass.push( wheel );
@@ -314,30 +366,31 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		}
 
 		group.add( mesh( merge( legGeos ), M.case ) );
-
-		// lyre
-		const lyre = [];
-		for ( const x of [ - 0.09, 0.09 ] ) lyre.push( woodBox( v3( x - 0.018, 0.12, - 0.61 ), v3( x + 0.018, RIM_BOTTOM - 0.06, - 0.57 ), { noUV: true, radius: 0.006 } ) );
-		lyre.push( woodBox( v3( - 0.20, 0.035, - 0.66 ), v3( 0.20, 0.13, - 0.52 ), { noUV: true, radius: 0.01 } ) );
-		lyre.push( rod( v3( - 0.15, 0.10, - 0.66 ), v3( - 0.30, RIM_BOTTOM - 0.06, - 1.10 ), 0.008, 8 ) );
-		lyre.push( rod( v3( 0.15, 0.10, - 0.66 ), v3( 0.30, RIM_BOTTOM - 0.06, - 1.10 ), 0.008, 8 ) );
-		group.add( mesh( merge( lyre ), M.case ) );
-
 		group.add( mesh( merge( brass ), M.brass ) );
 
-		// soft, sostenuto, sustain, pivoting inside the pedal box
-		const pedal = extrudeTop( pedalShape(), 0.065, 0.077, { bevel: 0.003 } );
-		const pivotY = 0.071, pivotZ = - 0.60;
-		pedal.translate( 0, - pivotY, - 0.335 - pivotZ );
-		[ [ 'soft', - 0.075 ], [ 'sostenuto', 0 ], [ 'sustain', 0.075 ] ].forEach( ( [ name, x ] ) => {
+		// no lyre: a metal pedal bar between the front legs (hollow alloy frame), a deeper box in
+		// the middle holding the pedal pivots
+		const bar = [];
+		bar.push( woodBox( v3( - 0.62, 0.075, - 0.13 ), v3( 0.62, 0.105, - 0.09 ), { noUV: true, radius: 0.006 } ) );
+		bar.push( woodBox( v3( - 0.235, 0.06, - 0.17 ), v3( 0.235, 0.12, - 0.08 ), { noUV: true, radius: 0.01 } ) );
+		group.add( mesh( merge( bar ), M.steel ) );
+
+		// 7 pedals: soft, sostenuto, sustain in the middle (clickable, animated) and the four
+		// function pedals (page turn, forward / back, tempo) beside them
+		const pedal = extrudeTop( pedalShape(), 0.081, 0.093, { bevel: 0.003 } );
+		const pivotY = 0.087, pivotZ = - 0.13;
+		pedal.translate( 0, - pivotY, 0.195 );
+		const PITCH = 0.062;
+		[ [ 'f1', - 3 ], [ 'f2', - 2 ], [ 'soft', - 1 ], [ 'sostenuto', 0 ], [ 'sustain', 1 ], [ 'f3', 2 ], [ 'f4', 3 ] ].forEach( ( [ name, i ] ) => {
 
 			const pivot = new THREE.Group();
-			pivot.position.set( x, pivotY, pivotZ );
-			const m = mesh( pedal, M.brass );
+			pivot.position.set( i * PITCH, pivotY, pivotZ );
+			const m = mesh( pedal, M.steel );
 			m.name = 'pedal-' + name;
-			m.userData.pedal = name;
 			pivot.add( m );
 			group.add( pivot );
+			if ( name[ 0 ] === 'f' ) return;
+			m.userData.pedal = name;
 			pedals[ name ] = pivot;
 
 		} );
@@ -355,9 +408,9 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// Soft pedal: the whole keyboard and action shift right (una corda)
 		action: new PianoAction( { dampers, pedals, softShift: keyboard.group, softShiftAmount: 0.003 } ),
 		depth: LENGTH,
-		camera: { position: v3( 1.55, 1.55, 1.65 ), target: v3( 0.0, 0.85, - 0.65 ) },
-		// MIDI roll plane (pianoroll.js): a vertical sheet rising from the key backs, in front of the fallboard
-		roll: { origin: v3( 0, 0.737, - 0.146 ), up: v3( 0, 1, 0 ), height: 0.34 },
+		camera: { position: v3( 1.45, 1.5, 1.6 ), target: v3( 0.0, 0.85, - 0.5 ) },
+		// MIDI roll plane (pianoroll.js): the display's face
+		roll: { origin: SCREEN_BOTTOM.clone(), up: v3( 0, Math.cos( SCREEN_LEAN ), - Math.sin( SCREEN_LEAN ) ), height: SCREEN_H, width: SCREEN_W, screen: true },
 	};
 
 }
