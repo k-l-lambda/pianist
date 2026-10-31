@@ -27,7 +27,10 @@ const BOOT_FADE = 0.6;				// s, boot animation -> roll crossfade
 // roll modes: 'music' (default) and 'voice', for speech fitted to piano (talking MIDI: dense short
 // notes): falls 6x faster, green, no particles. Set by scene scripts only (no GUI).
 const KEY_GLOW = { music: 0.5, voice: 1 };	// how strongly a note arriving lights its key, per roll mode
-const GHOST_FADE = 0.5;				// s, bars left on the screen (a paused file) fading out when the next file loads
+const GHOST_FADE = 0.5;
+const MUSIC_FADE_IN = 0.6;			// s, a music (blue) file's roll fading in when it appears (it starts
+									// mid-file, its first look-ahead of bars all at once); voice files
+									// start with silence, their bars come in from the top				// s, bars left on the screen (a paused file) fading out when the next file loads
 const VOICE_SPEED = 6;				// fall speed vs music (shorter look-ahead: bars stretch, arrival times unchanged)
 const VOICE_COLOR = '#19e07a';
 // subtitle band at the top of the screen (voice MIDI): what the piano is saying, appearing as it
@@ -1239,6 +1242,7 @@ export class PianoRoll {
 
 			this._ghost();
 			this._build( player.events );
+			this.fadeIn = this.mode === 'voice' ? 1 : 0;
 
 		}
 		const target = this.power ? 1 : 0;
@@ -1278,7 +1282,10 @@ export class PianoRoll {
 		}
 
 		const level = this.powerLevel * rollLevel;
-		this.barUniforms.uIntensity.value = this.flareUniforms.uIntensity.value = this.partUniforms.uIntensity.value = this.liveUniforms.uIntensity.value = level;
+		this.fadeIn = Math.min( 1, ( this.fadeIn ?? 1 ) + dt / MUSIC_FADE_IN );
+		const fin = this.fadeIn * this.fadeIn * ( 3 - 2 * this.fadeIn );		// smooth
+		this.barUniforms.uIntensity.value = this.flareUniforms.uIntensity.value = this.partUniforms.uIntensity.value = level * fin;
+		this.liveUniforms.uIntensity.value = level;
 		this.guides.material.opacity = 0.035 * level;
 		if ( this.ghostLevel > 0 ) {
 
