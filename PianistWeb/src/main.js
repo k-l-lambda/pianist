@@ -96,6 +96,27 @@ const probe = new GIProbe( renderer, scene );
 const keyShadow = new KeyShadow( renderer );
 const MIRROR_GAIN = 2.5;
 const MIRROR_SIZE = 1024;		// mirror cube face (px): at 256 the reflection shows the texels as steps
+// Offline render: the screen mirror is read at least this rough (from the blurred PMREM levels),
+// so the person shows as a soft ghost rather than a sharp, pixel-stepped outline. Environment
+// lookups only (the sun's highlight keeps the lacquer's own roughness). 0.11: fainter; from about
+// 0.17 the person is gone
+const MIRROR_BLUR = 0.08;
+function blurMirror( mat ) {
+
+	if ( mat.userData.mirrorBlur ) return;
+	mat.userData.mirrorBlur = true;
+	mat.onBeforeCompile = shader => {
+
+		const chunk = THREE.ShaderChunk.lights_fragment_maps
+			.replace( 'getIBLRadiance( geometryViewDir, geometryNormal, material.roughness )', `getIBLRadiance( geometryViewDir, geometryNormal, max( material.roughness, ${ MIRROR_BLUR.toFixed( 3 ) } ) )` )
+			.replace( 'material.clearcoatRoughness )', `max( material.clearcoatRoughness, ${ MIRROR_BLUR.toFixed( 3 ) } ) )` );
+		shader.fragmentShader = shader.fragmentShader.replace( '#include <lights_fragment_maps>', chunk );
+
+	};
+	mat.customProgramCacheKey = () => 'mirrorBlur';
+	mat.needsUpdate = true;
+
+}
 const screenPlane = new THREE.Plane(), _n = new THREE.Vector3(), _x = new THREE.Vector3( 1, 0, 0 );
 // handheld camera mode (handheldmode.js): shake, walking, height cap, FOV zoom, person in reflections
 const handheld = new HandheldMode( {
@@ -117,6 +138,7 @@ const handheld = new HandheldMode( {
 			screenPlane.setFromNormalAndCoplanarPoint( _n.crossVectors( _x, R.up ).normalize(), R.origin ).applyMatrix4( piano.group.matrixWorld );
 			panel.envMap = probe.updateMirror( eye, screenPlane, [ piano.group ], { objects: opts.objects, size: MIRROR_SIZE } );
 			panel.envMapIntensity = MIRROR_GAIN;
+			if ( RENDER ) blurMirror( panel );
 
 		} else probe.updateSpecular( ahead, piano ? [ piano.group ] : [], opts );
 
