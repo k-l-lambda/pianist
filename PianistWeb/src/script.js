@@ -33,6 +33,10 @@
 //                                  # piano: falls 6x faster, green, no particles); `subtitle`
 //                                  # shows at the top of the screen while it plays
 //     - at: 9
+//     - gap: 0                     # after a user recording: its speech end (trailing silence
+//       midi: { play: yin/a.mid, roll: voice, think: 1.6 }  # excluded) + 0.6 s listening, then
+//                                  # `think` s thinking, then the voice's first note sounds (its
+//                                  # MIDI starts earlier by its lead-in, so the roll comes in)
 //       midi: { stop: 2 }          # fade the file out over 2 s, then stop; { pause: 0.15 } the
 //                                  # same, but paused: the roll stays frozen where it was
 //     - gap: 0.4
@@ -48,6 +52,13 @@
 
 import * as THREE from 'three';
 import { parse } from 'yaml';
+import { parseMidiEvents } from './midi.js';
+
+// the assistant's state on the screen (setStatus): listening while a user recording plays, up to
+// LISTEN_TAIL after its speech ends (trailing silence excluded); thinking for a midi event's
+// `think`; speaking while a voice MIDI sounds
+const LISTEN_TAIL = 0.6;			// s after the user's speech ends
+const SPEECH_FLOOR = 0.01;			// 20 ms RMS below this x the clip's peak RMS (-40 dB) is silence
 
 const EASE = {
 	linear: t => t,
@@ -57,7 +68,7 @@ const EASE = {
 	out: t => 1 - ( 1 - t ) * ( 1 - t ),
 };
 
-const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', person: 'Handheld camera/Person (reflections)' };
+const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', person: 'Handheld camera/Person (reflections)' };
 
 const vec = ( a, what ) => {
 
@@ -87,7 +98,7 @@ export class ScriptPlayer {
 	 *              animating), setRollMode('music' | 'voice'), setSubtitle(text), midi: { load(buffer, name), play(),
 	 *              pause(), resume(), stop(), fadeOut(s, { pause }) -> Promise, seek(s), playing },
 	 *              audio: { decode(arrayBuffer) -> Promise<AudioBuffer>, play(buffer, { volume, from })
-	 *              -> { stop(), playing } } }
+	 *              -> { stop(), playing } }, setStatus(status, level) (assistant state icon) }
 	 */
 	constructor( ctx ) {
 
@@ -98,6 +109,8 @@ export class ScriptPlayer {
 		this.onState = null;		// ( text ) => void, for the GUI
 		this._midiBuffers = new Map();
 		this._audioBuffers = new Map();
+		this._audioSpeech = new Map();		// file -> { end (s, speech end), env (20 ms RMS / peak) }
+		this._midiLead = new Map();			// file -> s before its first note
 		this._sounds = [];			// playing audio handles
 
 	}
@@ -161,6 +174,16 @@ export class ScriptPlayer {
 
 			} else throw new Error( `MIDI "${ file }" not found: pick it together with the script` );
 			this._midiBuffers.set( file, buffer );
+			try {
+
+				const first = parseMidiEvents( buffer.slice( 0 ) ).events.find( e => e.d.subtype === 'noteOn' && e.d.velocity > 0 );
+				this._midiLead.set( file, first ? first.time / 1000 : 0 );
+
+			} catch {
+
+				this._midiLead.set( file, 0 );
+
+			}
 
 		}
 
@@ -182,7 +205,9 @@ export class ScriptPlayer {
 			} else throw new Error( `audio "${ file }" not found: pick it together with the script` );
 			try {
 
-				this._audioBuffers.set( file, await this.ctx.audio.decode( data ) );
+				const buffer = await this.ctx.audio.decode( data );
+				this._audioBuffers.set( file, buffer );
+				this._audioSpeech.set( file, speechOf( buffer ) );
 
 			} catch ( err ) {
 
@@ -237,7 +262,7 @@ export class ScriptPlayer {
 
 			}
 			else if ( typeof m === 'string' ) out.midi = { play: m, from: 0 };
-			else out.midi = { play: m.play, from: Number( m.from ?? 0 ), tempo: m.tempo, roll: m.roll, subtitle: m.subtitle };
+			else out.midi = { play: m.play, from: Number( m.from ?? 0 ), tempo: m.tempo, roll: m.roll, subtitle: m.subtitle, think: Math.max( 0, Number( m.think ?? 0 ) || 0 ) };
 			if ( out.midi.roll !== undefined && ! [ 'music', 'voice' ].includes( out.midi.roll ) ) throw new Error( `${ where }.midi.roll: music | voice` );
 
 		}
@@ -284,6 +309,12 @@ export class ScriptPlayer {
 		this._segment = [];			// busy() of the events since the last gap event
 		this._busy = [];			// busy() of every fired event
 		this._midiToken = 0;
+		this._voiceToken = - 1;			// token of the playing voice MIDI
+		this._voiceOnset = 0;			// its first note, s of file time
+		this._voiceThinks = false;		// it came after a thinking pause (its lead-in still thinks)
+		this._pending = [];				// deferred actions { at, run, think }
+		this._listens = [];				// { until, start, from, env } of user recordings
+		this.ctx.setStatus?.( 'idle' );
 		this._state( 'playing' );
 
 	}
@@ -297,6 +328,9 @@ export class ScriptPlayer {
 		this._sounds = [];
 		this.ctx.setRollMode?.( 'music' );
 		this.ctx.setSubtitle?.( '' );
+		this.ctx.setStatus?.( null );
+		this._pending = [];
+		this._listens = [];
 		this._moves = [];
 		this._tweens = [];
 		this._state( 'stopped' );
@@ -365,6 +399,17 @@ export class ScriptPlayer {
 
 		this._sounds = this._sounds.filter( h => h.playing );
 
+		// deferred actions (a voice reply after its thinking time)
+		if ( this._pending.length ) {
+
+			const due = this._pending.filter( p => this.time >= p.at );
+			this._pending = this._pending.filter( p => this.time < p.at );
+			for ( const p of due ) p.run();
+
+		}
+
+		this._updateStatus();
+
 		// end: everything fired and finished
 		if ( this._next >= events.length && ! this._moves.length && ! this._tweens.length && ! this._busy.some( b => b() ) ) {
 
@@ -373,6 +418,7 @@ export class ScriptPlayer {
 
 				this.playing = false;
 				this.ctx.setRollMode?.( 'music' );
+				this.ctx.setStatus?.( null );
 				this._state( 'finished' );
 
 			}
@@ -456,15 +502,35 @@ export class ScriptPlayer {
 			else {
 
 				const file = this.script.aliases[ m.play ] ?? m.play;
-				this.ctx.setRollMode?.( m.roll ?? 'music' );
-				this.ctx.setSubtitle?.( m.subtitle ?? '' );
-				midi.load( this._midiBuffers.get( file ).slice( 0 ), file.split( /[\\/]/ ).pop() );
-				if ( m.from ) midi.seek( m.from * 1000 );
-				let starting = true;
-				Promise.resolve( midi.play() ).finally( () => starting = false );
-				this._midiStarted = true;
-				const token = ++ this._midiToken;		// a later file ends this one
-				parts.push( () => starting || ( this._midiToken === token && midi.playing ) );
+				const st = { starting: true, token: - 1 };
+				const start = () => {
+
+					this.ctx.setRollMode?.( m.roll ?? 'music' );
+					this.ctx.setSubtitle?.( m.subtitle ?? '' );
+					midi.load( this._midiBuffers.get( file ).slice( 0 ), file.split( /[\\/]/ ).pop() );
+					if ( m.from ) midi.seek( m.from * 1000 );
+					Promise.resolve( midi.play() ).finally( () => st.starting = false );
+					this._midiStarted = true;
+					st.token = ++ this._midiToken;		// a later file ends this one
+					if ( m.roll === 'voice' ) {
+
+						this._voiceToken = st.token;
+						this._voiceOnset = Math.max( 0, ( this._midiLead.get( file ) ?? 0 ) - ( m.from || 0 ) );
+						this._voiceThinks = m.think > 0;
+
+					}
+
+				};
+				if ( m.think > 0 ) {
+
+					// think, then the first note sounds: the file starts earlier by its lead-in, so
+					// its first bars fall in while the icon still shows thinking
+					const lead = Math.max( 0, ( this._midiLead.get( file ) ?? 0 ) - ( m.from || 0 ) );
+					this._pending.push( { at: t0 + Math.max( 0, m.think - lead ), run: start } );
+					this._pending.push( { at: t0 + m.think, run: () => {}, think: true } );
+
+				} else start();
+				parts.push( () => st.starting || this._pending.some( p => p.run === start ) || ( this._midiToken === st.token && midi.playing ) );
 
 			}
 
@@ -482,13 +548,44 @@ export class ScriptPlayer {
 				const file = this.script.audioAliases[ e.audio.play ] ?? e.audio.play;
 				const h = this.ctx.audio.play( this._audioBuffers.get( file ), { volume: e.audio.volume, from: e.audio.from } );
 				this._sounds.push( h );
-				parts.push( () => h.playing );
+				// finished when the speech ends (its trailing silence does not count)
+				const sp = this._audioSpeech.get( file ), from = e.audio.from || 0;
+				const end = t0 + Math.max( 0, ( sp?.end ?? this._audioBuffers.get( file ).duration ) - from );
+				this._listens.push( { start: t0, until: end + LISTEN_TAIL, from, env: sp?.env, h } );
+				parts.push( () => h.playing && this.time < end );
 
 			}
 
 		}
 
 		return () => parts.some( p => p() );
+
+	}
+
+	/** The assistant's state for the screen icon: thinking > speaking > listening > idle. */
+	_updateStatus() {
+
+		if ( ! this.ctx.setStatus ) return;
+		const midi = this.ctx.midi, t = this.time;
+		this._listens = this._listens.filter( l => t < l.until );
+		let status = 'idle', level = 0;
+		const voicing = this._midiToken === this._voiceToken && midi.playing && ( midi.position ?? Infinity ) >= this._voiceOnset * 1000;
+		if ( this._pending.some( p => p.think ) || ( this._voiceThinks && this._midiToken === this._voiceToken && midi.playing && ! voicing ) ) status = 'thinking';
+		else if ( voicing ) status = 'speaking';
+		else if ( this._listens.length ) {
+
+			status = 'listening';
+			for ( const l of this._listens ) {
+
+				if ( ! l.env || ! l.h.playing ) continue;
+				const i = Math.floor( ( t - l.start + l.from ) / 0.02 );
+				if ( i >= 0 && i < l.env.length ) level = Math.max( level, l.env[ i ] );
+
+			}
+
+		}
+
+		this.ctx.setStatus( status, level );
 
 	}
 
@@ -566,5 +663,38 @@ export class ScriptPlayer {
 		this.onState?.( text );
 
 	}
+
+}
+
+/**
+ * Where the speech in a recording ends: the last 20 ms frame whose RMS is above SPEECH_FLOOR x the
+ * loudest frame's (falls back to the clip's end). Also the RMS envelope, 0..1 against its 95th
+ * percentile frame, for the listening icon.
+ */
+function speechOf( buffer ) {
+
+	const sr = buffer.sampleRate, hop = Math.round( sr * 0.02 ), n = Math.floor( buffer.length / hop );
+	const ch = Array.from( { length: buffer.numberOfChannels }, ( _, c ) => buffer.getChannelData( c ) );
+	const rms = new Float32Array( n );
+	for ( let i = 0; i < n; ++ i ) {
+
+		let s2 = 0;
+		for ( const d of ch ) for ( let k = i * hop; k < ( i + 1 ) * hop; ++ k ) s2 += d[ k ] * d[ k ];
+		rms[ i ] = Math.sqrt( s2 / ( hop * ch.length ) );
+
+	}
+
+	const peak = rms.reduce( ( a, b ) => Math.max( a, b ), 0 );
+	let last = - 1;
+	for ( let i = n - 1; i >= 0; -- i ) if ( rms[ i ] > SPEECH_FLOOR * peak ) {
+
+		last = i;
+		break;
+
+	}
+
+	const sorted = [ ...rms ].sort( ( a, b ) => a - b ), ref = sorted[ Math.floor( n * 0.95 ) ] || 1;
+	const env = rms.map( v => Math.min( 1, v / ref ) );
+	return { end: last >= 0 && peak > 0 ? ( last + 1 ) * hop / sr : buffer.duration, env, duration: buffer.duration };
 
 }

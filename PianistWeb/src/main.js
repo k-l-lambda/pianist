@@ -542,6 +542,7 @@ const fHand = gui.addFolder( 'Handheld camera' );
 fHand.add( { on: false }, 'on' ).name( 'Handheld' ).onChange( v => handheld.setEnabled( v ) );
 fHand.add( handheld, 'intensity', 0, 3, 0.05 ).name( 'Shake' );
 fHand.add( handheld, 'walk', 0, 2, 0.05 ).name( 'Walking motion' );
+fHand.add( handheld, 'drift', 0, 2, 0.05 ).name( 'Operator drift' );
 fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
 gui.add( settings, 'mode', { 'Real-time (probe GI + GTAO)': 'realtime', 'Path traced': 'pathtrace' } ).name( 'Renderer' ).onChange( setMode );
 
@@ -712,6 +713,7 @@ const scriptPlayer = new ScriptPlayer( {
 	camera, controls, gui, setScreenPower,
 	setRollMode: mode => roll.setMode( mode ),
 	setSubtitle: text => roll.setSubtitle( text ),
+	setStatus: ( status, level ) => roll.setStatus( status, level ),
 	// power-on: the boot animation and the chime; power-off: the fade
 	screenBusy: () => roll.bootT >= 0 || bootSound.playing || ( roll.power ? roll.powerLevel < 1 : roll.powerLevel > 0 ),
 	midi: {
@@ -723,6 +725,7 @@ const scriptPlayer = new ScriptPlayer( {
 		fadeOut: fadeOutMidi,
 		seek: ms => midiPlayer.seek( ms ),
 		get playing() { return midiPlayer.playing; },
+		get position() { return midiPlayer.position; },
 	},
 	// speech and other recordings, through the same output (volume slider, limiter) as the piano
 	audio: {

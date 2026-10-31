@@ -1,5 +1,9 @@
 // Handheld camera mode: the user still drives the camera with the mouse / touch (OrbitControls),
 // but what renders is a phone held by a person standing there.
+//  - the phone is not glued to the intended pose (mouse, keys, script): an operator model fitted
+//    to the video brings it there in bursts of short sub-movements and lets it drift slowly
+//    (handheld.js Operator; CameraTrack/operator_params.json). Gait, shake and the person build
+//    on that pose
 //  - hand shake from the model fitted to a real handheld video (handheld.js, shakeAt), limited
 //    to 2.5 Hz (above that the measurement is noise), at 10.8% of the video's level (0.18° held
 //    still); 3x while walking, 1.5x while turning
@@ -25,9 +29,10 @@
 // person is still placed, and the scene is rebuilt once the camera has settled.
 
 import * as THREE from 'three';
-import { HandheldCamera } from './handheld.js';
+import { HandheldCamera, Operator } from './handheld.js';
 import { Person } from './person.js';
 import params from '../../CameraTrack/handheld_params.json';
+import operatorParams from '../../CameraTrack/operator_params.json';
 
 const MAX_HEIGHT = 1.85, MIN_HEIGHT = 0.3;
 const FOV_RANGE = [ 12, 70 ];
@@ -52,6 +57,7 @@ const ARM_DRAG = 0.0012;						// m per pixel of right drag
 const KEYS = { ArrowUp: [ 0, 1 ], ArrowDown: [ 0, - 1 ], ArrowLeft: [ - 1, 0 ], ArrowRight: [ 1, 0 ] };
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.Euler();
+const _dv = new THREE.Vector3(), _dq = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _o = new THREE.Vector3();
 
 export class HandheldMode {
@@ -70,8 +76,14 @@ export class HandheldMode {
 		// spectra cut above 2.5 Hz: beyond that the video's measurement is a flat noise floor
 		// (tracking jitter, blur, rolling shutter), not hand motion
 		this.shaker = new HandheldCamera( params, { seed: 11, cutoff: SHAKE_CUTOFF } );
+		// how the person brings the phone where it is wanted (below 1 Hz, fitted to the video):
+		// bursts of sub-movements to the goal and a slow drift; `drift` scales the drift
+		this.operator = new Operator( operatorParams, { seed: 5 } );
+		this.drift = 1;
+		this.steering = false;			// a drag on the view (any button) is in progress
 		this.person = new Person();
 		this.intended = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), valid: false };
+		this._base = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
 		this.lastPos = new THREE.Vector3();
 		this.lastQuat = new THREE.Quaternion();
 		this.speed = 0;				// smoothed camera speed (m/s)
@@ -94,6 +106,7 @@ export class HandheldMode {
 		this._onMove = this._onMove.bind( this );
 		this._onUp = this._onUp.bind( this );
 		this._onKey = this._onKey.bind( this );
+		this._onSteer = e => this.steering = e.type === 'pointerdown';
 
 	}
 
@@ -123,8 +136,11 @@ export class HandheldMode {
 			el.addEventListener( 'pointerdown', this._onDown, { capture: true } );
 			if ( this.showPerson ) scene.add( this.person.group ); else this._removePerson();
 			this.intended.valid = false;
+			this.operator.valid = false;
 			this.probeAt.set( 1e9, 0, 0 );
 			this.armOffset.set( 0, 0 );
+			el.addEventListener( 'pointerdown', this._onSteer );
+			window.addEventListener( 'pointerup', this._onSteer );
 			this._armDrag.set( 0, 0 );
 
 		} else {
@@ -153,6 +169,9 @@ export class HandheldMode {
 			controls.mouseButtons.MIDDLE = this.savedMiddle ?? THREE.MOUSE.DOLLY;
 			el.removeEventListener( 'wheel', this._onWheel, { capture: true } );
 			el.removeEventListener( 'pointerdown', this._onDown, { capture: true } );
+			el.removeEventListener( 'pointerdown', this._onSteer );
+			window.removeEventListener( 'pointerup', this._onSteer );
+			this.steering = false;
 			// the person stays where it stood, for inspection; reflections back to the room's own
 			this.ctx.specularRestore?.();
 			this.rebuild = true;
@@ -302,6 +321,30 @@ export class HandheldMode {
 		const moving = Math.min( 1, THREE.MathUtils.smoothstep( this.speed, 0.03, 0.25 ) + THREE.MathUtils.smoothstep( this.turn, 0.07, 0.4 ) );
 		const walking = THREE.MathUtils.smoothstep( this.speed, 0.04, 0.35 ) * this.walk;
 
+		// the base pose: the operator following the intended pose, plus its slow drift (not while
+		// path tracing: the camera has to keep still there)
+		const base = this._base;
+		if ( ! pt ) {
+
+			const steer = this.steering || this.pressed.size > 0 || this._armDrag.lengthSq() > 0;
+			const op = this.operator;
+			op.drift = this.drift;
+			op.update( dt, I.position, I.quaternion, { steering: steer } );
+			const { offset: dOff, rotation: dRot } = op.driftAt( _dv, _dq );
+			base.quaternion.copy( op.quaternion ).multiply( dRot );
+			base.position.copy( op.position ).add( dOff.applyQuaternion( op.quaternion ) );
+
+		} else {
+
+			this.operator.valid = false;
+			base.position.copy( I.position );
+			base.quaternion.copy( I.quaternion );
+
+		}
+
+		camera.position.copy( base.position );
+		camera.quaternion.copy( base.quaternion );
+
 		if ( ! pt ) {
 
 			this.time += dt;
@@ -334,31 +377,31 @@ export class HandheldMode {
 			_e.set( NOD * D * walking * Math.cos( step ), 0, ROLL * D * walking * Math.sin( stride ) );
 			rotation.multiply( _q2.setFromEuler( _e ) );
 
-			camera.position.add( offset.applyQuaternion( I.quaternion ) );
-			_v.set( 0, 0, - 1 ).applyQuaternion( I.quaternion ).setY( 0 );
+			camera.position.add( offset.applyQuaternion( base.quaternion ) );
+			_v.set( 0, 0, - 1 ).applyQuaternion( base.quaternion ).setY( 0 );
 			if ( _v.lengthSq() < 1e-6 ) _v.set( 0, 0, - 1 );
 			_v.normalize();
 			camera.position.x += - _v.z * arm.x;					// right of the heading
 			camera.position.z += _v.x * arm.x;
 			camera.position.y += arm.y;
-			camera.quaternion.copy( I.quaternion ).multiply( rotation );
+			camera.quaternion.copy( base.quaternion ).multiply( rotation );
 
 		}
 
 		// the person holding the phone (placed from the intended pose: shake moves the hand, not
 		// the whole figure)
-		if ( this.showPerson ) this.person.update( I.position, I.quaternion, this.armOffset );
+		if ( this.showPerson ) this.person.update( base.position, base.quaternion, this.armOffset );
 
 		// reflections: re-capture the mirror probe for the camera's position (a flat screen: from
 		// the camera's mirror image, exact; otherwise from just in front of the camera). Only the
 		// position matters, so turning needs no capture
 		this.probeTime += dt;
-		const movedFar = I.position.distanceTo( this.probeAt ) > 0.01;
+		const movedFar = base.position.distanceTo( this.probeAt ) > 0.01;
 		if ( this.showPerson && ! pt && movedFar && this.probeTime > 1 / 30 ) {
 
-			_v.set( 0, 0, - 0.3 ).applyQuaternion( I.quaternion ).add( I.position );
-			this.ctx.specularCapture( I.position, _v );
-			this.probeAt.copy( I.position );
+			_v.set( 0, 0, - 0.3 ).applyQuaternion( base.quaternion ).add( base.position );
+			this.ctx.specularCapture( base.position, _v );
+			this.probeAt.copy( base.position );
 			this.probeTime = 0;
 
 		}

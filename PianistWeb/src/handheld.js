@@ -374,3 +374,161 @@ export class HandheldCamera {
 	}
 
 }
+
+// ---------------------------------------------------------------------------------------
+// The operator: how a person moves a phone towards where they want it (below ~1 Hz). Fitted to
+// the handheld video (CameraTrack/operator_params.json): the phone does not glide along the
+// wanted path; it is brought there in short min-jerk sub-movements (0.6-0.9 s, one every
+// 0.8-1.4 s) aimed at where the goal will be when they end, so speed comes in bursts. On top, a
+// slow drift (0.12-1.2 Hz, measured spectra) that never quite stops, weaker while holding.
+// The faster hand shake (shakeAt) is added on top of this by the caller.
+
+const minJerk = u => u * u * u * ( 10 - 15 * u + 6 * u * u );
+// a min-jerk move peaks at 1.875x its mean speed; bigger moves take longer, so that the peak stays
+// within the video's 99th percentile: 0.42 m/s, 46 deg/s (not while the user steers)
+const MJ_PEAK = 1.875, OP_VMAX = 0.42, OP_WMAX = 46 * Math.PI / 180;
+const _oq = new THREE.Quaternion(), _ov = new THREE.Vector3(), _oa = new THREE.Vector3();
+
+export class Operator {
+
+	/**
+	 * @param params  operator_params.json
+	 * @param options { seed, drift (gain on the measured drift), holdDrift (factor while the goal
+	 *                  is still), angleDrift (scale on the fitted angle drift) }
+	 */
+	constructor( params, { seed = 3, drift = 1, holdDrift = 0.25, angleDrift = 0.7 } = {} ) {
+
+		this.params = params;
+		this.drift = drift;
+		this.holdDrift = holdDrift;
+		this.rand = mulberry32( seed );
+		const D = params.drift;
+		// the fitted angle gain (1.5) also covers the video's reframing, which a script writes out
+		// itself: angleDrift scales it back
+		this.loops = D.psd.map( ( psd, c ) => shapedNoise( this.rand, D.bands_hz, psd.map( v => v * ( c < 3 ? D.gain_position : D.gain_angle * angleDrift ) ** 2 ),
+			{ rate: 30, seconds: 140, fLow: 0.12 } ) );
+		this.position = new THREE.Vector3();
+		this.quaternion = new THREE.Quaternion();
+		this.valid = false;
+		this.move = null;
+		this.wait = 0;
+		this.time = 0;
+		this.activity = 0;
+		this.goalVel = new THREE.Vector3();			// m/s
+		this.goalSpin = new THREE.Vector3();		// rad/s (axis * rate)
+		this.lastGoal = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
+
+	}
+
+	reset( p, q ) {
+
+		this.position.copy( p );
+		this.quaternion.copy( q );
+		this.lastGoal.p.copy( p );
+		this.lastGoal.q.copy( q );
+		this.goalVel.set( 0, 0, 0 );
+		this.goalSpin.set( 0, 0, 0 );
+		this.move = null;
+		this.wait = 0;
+		this.valid = true;
+
+	}
+
+	_range( r ) {
+
+		return r[ 0 ] + ( r[ 1 ] - r[ 0 ] ) * this.rand();
+
+	}
+
+	/**
+	 * Follow the goal pose (gp, gq) for dt seconds. `steering`: the user is driving the camera
+	 * (followed directly). Writes the operator pose (without drift) into
+	 * this.position / this.quaternion; returns this.
+	 */
+	update( dt, gp, gq, { steering = false } = {} ) {
+
+		if ( ! this.valid ) return this.reset( gp, gq ), this;
+		this.time += dt;
+		// a cut (script camera jump, teleport): start over there
+		if ( gp.distanceTo( this.lastGoal.p ) > 0.4 || gq.angleTo( this.lastGoal.q ) > 0.45 ) return this.reset( gp, gq ), this;
+
+		// goal velocity, smoothed (for aiming each sub-movement where the goal is going)
+		if ( dt > 0 ) {
+
+			const k = 1 - Math.exp( - dt / 0.3 );
+			this.goalVel.lerp( _ov.subVectors( gp, this.lastGoal.p ).divideScalar( dt ), k );
+			_oq.copy( this.lastGoal.q ).invert().premultiply( gq );		// world-frame delta
+			if ( _oq.w < 0 ) _oq.set( - _oq.x, - _oq.y, - _oq.z, - _oq.w );		// the short way round
+			const ang = 2 * Math.acos( Math.min( 1, _oq.w ) );
+			const s = Math.sqrt( Math.max( 0, 1 - _oq.w * _oq.w ) );
+			_oa.set( _oq.x, _oq.y, _oq.z ).multiplyScalar( s > 1e-6 ? ang / s / dt : 0 );
+			this.goalSpin.lerp( _oa, k );
+
+		}
+
+		this.lastGoal.p.copy( gp );
+		this.lastGoal.q.copy( gq );
+		const err = this.position.distanceTo( gp ), errA = this.quaternion.angleTo( gq );
+		const moving = this.goalVel.length() > 0.02 || this.goalSpin.length() > 0.05;
+		this.activity += ( ( moving ? 1 : 0 ) - this.activity ) * ( 1 - Math.exp( - dt / ( moving ? 0.3 : 0.4 ) ) );
+
+		const P = this.params;
+		this.wait -= dt;
+		// the user is steering (keys, a drag): follow at once, tightly (50 ms); the bursts are for
+		// how the person moves by themselves
+		if ( steering ) {
+
+			const k = 1 - Math.exp( - dt / 0.05 );
+			this.position.lerp( gp, k );
+			this.quaternion.slerp( gq, k );
+			this.move = null;
+			this.wait = this._range( P.submove_period ) * 0.5;
+			return this;
+
+		}
+
+		if ( this.move ) {
+
+			const m = this.move;
+			m.t += dt;
+			const u = Math.min( 1, m.t / m.T ), e = minJerk( u );
+			this.position.lerpVectors( m.p0, m.p1, e );
+			this.quaternion.slerpQuaternions( m.q0, m.q1, e );
+			if ( u >= 1 ) this.move = null;
+
+		}
+
+		if ( ! this.move && ( ( this.wait <= 0 && ( err > 0.004 || errA > 0.008 ) ) || err > 0.2 || errA > 0.3 ) ) {
+
+			// a new sub-movement, to where the goal will be when it ends
+			// aim a little ahead of the goal (half the move's time, at most 8 cm / 6 deg: a person
+			// anticipates a pan but does not fly past where it stops); a big move then takes longer
+			let T = this._range( P.submove_duration );
+			const ahead = 0.5 * T;
+			const p1 = gp.clone().addScaledVector( _ov.copy( this.goalVel ).clampLength( 0, 0.08 / ahead ), ahead );
+			const spin = this.goalSpin.length(), q1 = gq.clone();
+			if ( spin > 1e-4 ) q1.premultiply( _oq.setFromAxisAngle( _oa.copy( this.goalSpin ).divideScalar( spin ), Math.min( spin * ahead, 0.105 ) ) );
+			T = Math.max( T, MJ_PEAK * p1.distanceTo( this.position ) / OP_VMAX, MJ_PEAK * q1.angleTo( this.quaternion ) / OP_WMAX );
+			this.move = { t: 0, T, p0: this.position.clone(), q0: this.quaternion.clone(), p1, q1 };
+			this.wait = this._range( P.submove_period );
+
+		}
+
+		return this;
+
+	}
+
+	/** The slow drift at the current time: offset (camera axes, m) and rotation, added by the caller. */
+	driftAt( offset, rotation ) {
+
+		const g = this.drift * ( this.holdDrift + ( 1 - this.holdDrift ) * this.activity );
+		const s = c => sampleLoop( this.loops[ c ], this.time ) * g;
+		offset.set( s( 0 ), s( 1 ), - s( 2 ) );			// right, up, forward (-z)
+		rotation.setFromEuler( _euler.set( s( 4 ), s( 3 ), 0, 'YXZ' ) );		// pitch (x), yaw (y)
+		return { offset, rotation };
+
+	}
+
+}
+
+const _euler = new THREE.Euler();

@@ -249,6 +249,68 @@ class BootAnimation {
 // (alternating, so neighbouring glows never share a channel). A glyph pixel takes its cell's
 // alpha; a glow pixel the alpha of the nearest character of that parity. So a character is
 // either hidden or (fading in) whole, glow included, never cut
+// assistant status icon (top left of the screen): listening / thinking / speaking, drawn as a
+// signed-distance glyph with a soft dark halo (normal blending, so it reads over the bars)
+const ICON_SIZE = 0.034;			// m, square
+const ICON_LEFT = 0.045;			// m, its centre from the screen's left edge, plus
+const ICON_IN = 1 / 8;				// of the screen's width, towards the middle
+const ICON_BRIGHT = 0.5;			// like the subtitles (SUB_BRIGHT)
+const ICON_FADE = 0.18;				// s, cross-fade between states
+const ICON_FS = /* glsl */`
+	uniform vec4 uMode;				// weights: idle, listening, thinking, speaking
+	uniform float uTime;
+	uniform float uLevel;			// 0..1: the user's voice (listening) or the piano's (speaking)
+	uniform vec3 uColor;
+	uniform float uOpacity;
+	varying vec2 vUv;
+	float sdBox( vec2 p, vec2 b ) {
+		vec2 d = abs( p ) - b;
+		return length( max( d, 0.0 ) ) + min( max( d.x, d.y ), 0.0 );
+	}
+	void main() {
+		vec2 p = vUv * 2.0 - 1.0;				// -1..1
+		float t = uTime;
+		// idle: a small dot
+		float dIdle = length( p ) - 0.12;
+		// listening: a dot growing with the voice, two rings travelling out
+		float dl = length( p ) - ( 0.16 + 0.16 * uLevel );
+		float ringA = abs( length( p ) - ( 0.25 + 0.6 * fract( t * 0.7 ) ) ) - 0.035;
+		float ringB = abs( length( p ) - ( 0.25 + 0.6 * fract( t * 0.7 + 0.5 ) ) ) - 0.035;
+		float fadeA = 1.0 - fract( t * 0.7 ), fadeB = 1.0 - fract( t * 0.7 + 0.5 );
+		// thinking: three dots in turn
+		float dThink = 1e3, thinkA = 0.0;
+		for ( int i = 0; i < 3; ++ i ) {
+			float x = ( float( i ) - 1.0 ) * 0.42;
+			float ph = fract( t * 1.4 - float( i ) * 0.22 );
+			float up = smoothstep( 0.0, 0.25, ph ) * ( 1.0 - smoothstep( 0.25, 0.6, ph ) );
+			float d = length( p - vec2( x, 0.12 * up ) ) - ( 0.11 + 0.03 * up );
+			if ( d < dThink ) { dThink = d; thinkA = 0.35 + 0.65 * up; }
+		}
+		// speaking: four level bars
+		float dSpeak = 1e3;
+		for ( int i = 0; i < 4; ++ i ) {
+			float x = ( float( i ) - 1.5 ) * 0.3;
+			float w = 0.5 + 0.5 * sin( t * ( 9.0 + 3.1 * float( i ) ) + float( i ) * 1.7 );
+			float h = 0.1 + 0.55 * uLevel * ( 0.55 + 0.45 * w ) * ( i == 1 || i == 2 ? 1.0 : 0.75 );
+			dSpeak = min( dSpeak, sdBox( p - vec2( x, 0.0 ), vec2( 0.085, h ) ) - 0.03 );
+		}
+		float aa = fwidth( p.x ) * 1.2;
+		float aIdle = 1.0 - smoothstep( - aa, aa, dIdle );
+		float aListen = max( 1.0 - smoothstep( - aa, aa, dl ),
+			max( ( 1.0 - smoothstep( - aa, aa, ringA ) ) * fadeA, ( 1.0 - smoothstep( - aa, aa, ringB ) ) * fadeB ) * 0.8 );
+		float aThink = ( 1.0 - smoothstep( - aa, aa, dThink ) ) * thinkA;
+		float aSpeak = 1.0 - smoothstep( - aa, aa, dSpeak );
+		float glyph = uMode.x * aIdle * 0.45 + uMode.y * aListen + uMode.z * aThink + uMode.w * aSpeak;
+		// dark halo around the shapes (from the nearest one), for contrast over the bars
+		float near = min( min( dIdle + ( 1.0 - uMode.x ) * 9.0, dl + ( 1.0 - uMode.y ) * 9.0 ),
+			min( dThink + ( 1.0 - uMode.z ) * 9.0, dSpeak + ( 1.0 - uMode.w ) * 9.0 ) );
+		float halo = 0.5 * ( 1.0 - smoothstep( 0.0, 0.28, near ) ) * ( 1.0 - uMode.x * 0.6 );
+		float a = glyph + halo * ( 1.0 - glyph );
+		vec3 col = uColor * glyph / max( a, 1e-4 );
+		gl_FragColor = vec4( col, a * uOpacity );
+	}
+`;
+
 const SUB_FS = /* glsl */`
 	uniform sampler2D map;
 	uniform float uOpacity;
@@ -575,6 +637,32 @@ export class PianoRoll {
 
 		}
 
+		// assistant status icon (screens only; set by scene scripts: setStatus)
+		{
+
+			this.iconUniforms = {
+				uMode: { value: new THREE.Vector4( 1, 0, 0, 0 ) }, uTime: { value: 0 }, uLevel: { value: 0 },
+				uColor: { value: new THREE.Color( VOICE_COLOR ).lerp( new THREE.Color( '#ffffff' ), 0.25 ).multiplyScalar( ICON_BRIGHT ) },
+				uOpacity: { value: 0 },
+			};
+			this.iconMesh = new THREE.Mesh( new THREE.PlaneGeometry( 1, 1 ), new THREE.ShaderMaterial( {
+				vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }',
+				fragmentShader: ICON_FS, uniforms: this.iconUniforms, transparent: true, depthWrite: false, toneMapped: false,
+			} ) );
+			this.iconMesh.frustumCulled = false;
+			this.iconMesh.renderOrder = 12;
+			this.iconMesh.visible = false;
+			this.iconMesh.userData.noAO = true;
+			this.group.add( this.iconMesh );
+			this.status = null;				// null (hidden) | 'idle' | 'listening' | 'thinking' | 'speaking'
+			this.statusLevel = 0;			// the user's voice level while listening (from the script)
+			this.iconShow = 0;
+			this.iconLevel = 0;
+			this.iconClock = 0;
+			this.iconEnergy = null;			// { events, frame, env } of the loaded file
+
+		}
+
 		// power-on animation plane (screens only)
 		{
 
@@ -688,6 +776,8 @@ export class PianoRoll {
 		this.bootMesh.scale.set( R.width ?? 1.3, R.height, 1 );
 		this.subMesh.position.y = R.height;
 		this._drawSubtitle();
+		this.iconMesh.scale.set( ICON_SIZE, ICON_SIZE, 1 );
+		this.iconMesh.position.set( - ( R.width ?? 1.3 ) * ( 0.5 - ICON_IN ) + ICON_LEFT, R.height - SUB_MARGIN - SUB_LINE / 2, - 0.0004 );
 		this.bootAnim.resize( ( R.width ?? 1.3 ) / R.height );
 		this.bootT = - 1;
 		this.bootMesh.visible = false;
@@ -1051,6 +1141,59 @@ export class PianoRoll {
 
 	}
 
+	/**
+	 * The assistant's state, shown as a small animated icon at the top left of the screen:
+	 * 'listening' (level: the user's voice, 0..1), 'thinking', 'speaking' (level from the voice
+	 * MIDI's notes), 'idle'; null hides it.
+	 */
+	setStatus( status, level = 0 ) {
+
+		this.status = status;
+		this.statusLevel = level;
+
+	}
+
+	// note energy of the playing file around `ms` (20 ms frames), 0..1 against its 90th percentile
+	_noteEnergy( ms ) {
+
+		if ( this.iconEnergy?.events !== this.events ) {
+
+			const frame = 20, notes = this.notes ?? [];
+			const end = notes.reduce( ( a, n ) => Math.max( a, n.on ), 0 );
+			const env = new Float32Array( Math.ceil( end / frame ) + 2 );
+			for ( const n of notes ) env[ Math.floor( n.on / frame ) ] += n.vel * n.vel;
+			const sorted = [ ...env ].filter( v => v > 0 ).sort( ( a, b ) => a - b );
+			const ref = sorted[ Math.floor( sorted.length * 0.9 ) ] || 1;
+			for ( let i = 0; i < env.length; ++ i ) env[ i ] = Math.min( 1, Math.sqrt( env[ i ] / ref ) );
+			this.iconEnergy = { events: this.events, frame, env };
+
+		}
+
+		const E = this.iconEnergy, i = Math.floor( ms / E.frame );
+		let v = 0;
+		for ( let k = i - 2; k <= i; ++ k ) if ( k >= 0 && k < E.env.length ) v = Math.max( v, E.env[ k ] );
+		return v;
+
+	}
+
+	_updateIcon( player, dt, level ) {
+
+		this.iconClock += dt;
+		const st = this.status, U = this.iconUniforms;
+		this.iconShow = THREE.MathUtils.clamp( this.iconShow + ( st ? dt : - dt ) / ICON_FADE, 0, 1 );
+		this.iconMesh.visible = this.screen && this.iconShow > 0;
+		if ( ! this.iconMesh.visible ) return;
+		const k = 1 - Math.exp( - dt / ICON_FADE * 3 );
+		const want = [ st === 'idle' || ! st, st === 'listening', st === 'thinking', st === 'speaking' ];
+		U.uMode.value.set( ...[ 'x', 'y', 'z', 'w' ].map( ( c, i ) => U.uMode.value[ c ] + ( ( want[ i ] ? 1 : 0 ) - U.uMode.value[ c ] ) * k ) );
+		const target = st === 'speaking' ? ( player.playing ? this._noteEnergy( player.position ) : 0 ) : st === 'listening' ? this.statusLevel : 0;
+		this.iconLevel += ( target - this.iconLevel ) * ( 1 - Math.exp( - dt / ( target > this.iconLevel ? 0.03 : 0.12 ) ) );
+		U.uLevel.value = this.iconLevel;
+		U.uTime.value = this.iconClock;
+		U.uOpacity.value = this.iconShow * level;		// level: off / booting -> hidden
+
+	}
+
 	/** The music-mode colour (GUI). */
 	setColor( c ) {
 
@@ -1146,6 +1289,7 @@ export class PianoRoll {
 
 		}
 		this._updateSubtitle( player, dt, level );
+		this._updateIcon( player, dt, level );
 		this._updateLive();
 
 		this.time += dt;

@@ -1,0 +1,74 @@
+{
+ "description": "Operator (intended) motion of the handheld video, below 1 Hz: the camera follows its goal in min-jerk sub-movements to where the goal will be, plus a slow drift. Fitted by /tmp/pianist-tools/operator_fit.py against traj.csv (speed percentiles, turn rate, burstiness, stillness, peak spacing).",
+ "submove_period": [
+  0.8,
+  1.4
+ ],
+ "submove_duration": [
+  0.6,
+  0.9
+ ],
+ "drift": {
+  "bands_hz": [
+   0.1454,
+   0.2134,
+   0.3132,
+   0.4597,
+   0.6748,
+   0.9905
+  ],
+  "channels": [
+   "right",
+   "up",
+   "forward",
+   "yaw",
+   "pitch"
+  ],
+  "units": "m^2/Hz and rad^2/Hz (one-sided), 0.12-1.2 Hz; channels from the world x/y/z/yaw/pitch of the video, applied on the camera axes",
+  "psd": [
+   [
+    0.009072728671109647,
+    0.007600166827212985,
+    0.001350237901544672,
+    0.0012913222093949475,
+    0.00014322597066240714,
+    2.2746274928476688e-05
+   ],
+   [
+    0.013324147020987004,
+    0.00575720536544204,
+    0.0006312724797357041,
+    7.474446346112195e-05,
+    5.300200713135376e-05,
+    1.3919856970500432e-05
+   ],
+   [
+    0.0031107960743723367,
+    0.0108020704628244,
+    0.0056926430638240145,
+    0.0005906053038029582,
+    5.673688790078539e-05,
+    1.08244283153966e-05
+   ],
+   [
+    0.0006703636828998661,
+    0.02123214665149397,
+    0.030838540007612318,
+    0.006713606794983657,
+    0.000645215517484678,
+    0.000453856511665517
+   ],
+   [
+    0.005610525180272996,
+    0.014814346719488442,
+    0.002780739977537386,
+    0.0013543457858271547,
+    0.00045806145259941184,
+    6.401485542253074e-05
+   ]
+  ],
+  "gain_position": 0.6,
+  "gain_angle": 1.5,
+  "gain_holding": 0.6
+ }
+}
