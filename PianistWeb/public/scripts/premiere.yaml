@@ -98,7 +98,10 @@ timeline:
   # the piano, the phone on it the whole time: a closer look at the keys, then up at the hammers
   # through the glass, then back to the middle of the screen. Speeds after the real handheld
   # video (CameraTrack: 0.16 m/s mean while moving, 0.35 p95); the operator model adds the bursts.
-  - gap: 0.9
+  # It comes in 0.9 s after reply 03 has finished, as before, not after the user's aside (which
+  # runs on into the music): timed from the camera step, i.e. 7.23 s after reply 03's event
+  # (think 1.2 - lead-in 0.47 + its 5.1 s file + the player's 0.5 s tail + 0.9)
+  - after: 4.0
     midi: { play: songs/F.Chopin-op9-no1.transkun.mid, roll: music, from: 5.9 }
     camera:
       duration: 2.4
