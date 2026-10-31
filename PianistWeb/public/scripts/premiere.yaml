@@ -81,8 +81,13 @@ timeline:
   # excluded), then thinks for `think` s, then the first note sounds.
   - gap: 0.6
     midi: { play: yin/premiere-03.mid, roll: voice, think: 1.2, subtitle: 好的，请欣赏肖邦夜曲，九号作品之一。 }
-  # (2.5 s into the speech: think 1.2 - lead-in 0.47 later than the event)
-  - after: 3.23
+  # User, aside to someone with them, quietly and quickly, 1.5 s after the reply starts speaking
+  # (its first note sounds when the 1.2 s of thinking ends): 你看，他这个AI说话的声音完全是钢琴琴键
+  # 敲出来的…这东西不知道谁琢磨的。 About 3 dB quieter than the other user lines.
+  - after: 2.7
+    audio: { play: user/you-see.opus, volume: 0.27 }
+  # (2.5 s into the reply's speech, as before: 3.23 after its event)
+  - after: 0.53
     camera:
       duration: 0.9
       ease: inOutSine
