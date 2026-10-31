@@ -11,61 +11,116 @@
 # the roll stays frozen until the assistant answers.
 #
 # Turns are chained with `gap:` (seconds after the previous line, and anything timed off it, has
-# finished). Effective pauses
-# also include each clip's own lead-in (the `from:` trims most of it) and the MIDI player's 0.5 s
-# release tail, so gaps here are a little shorter than the pauses heard.
+# finished). Effective pauses also include each clip's own lead-in and the MIDI player's 0.5 s
+# release tail, so gaps here are shorter than the pauses heard. The voice MIDI (midi/yin) start
+# with 0.47 s of silence: one look-ahead of the 6x voice roll, so their first notes come in at
+# the top of the screen; they play from 0.
 # Load: #?script=premiere.yaml
 title: Premiere
 
 timeline:
-  # a wide view of the dark screen; then the user walks up while the screen powers on (boot
-  # animation + chime, ~5 s); the assistant speaks once it is done
+  # Shot on the user's phone (handheld mode) from the start: standing ~0.9 m from the keys,
+  # phone at 1.25 m, so the person's own reflection (head and shoulders) sits in the lower half
+  # of the black screen. The screen powers on (boot animation + chime, ~5 s), then the
+  # assistant speaks.
   - at: 0
+    handheld: { enabled: true, shake: 1, walk: 1, person: true }
     screen: off
-    camera: { position: [ -0.55, 1.42, 2.3 ], target: [ 0, 0.84, -0.2 ], fov: 40 }
+    camera: { position: [ 0.05, 1.25, 0.90 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
   - after: 0.6
     screen: on
+  - after: 3.5    # small shifts every 5-8 s while standing (0.06-0.1 m/s, gait included)
     camera:
-      duration: 4.6
+      duration: 1.6
       ease: inOutSine
       path:
-        - { position: [ 0.15, 1.28, 1.15 ], target: [ 0, 0.88, -0.2 ], fov: 38 }
+        - { position: [ -0.04, 1.24, 0.86 ], target: [ -0.02, 0.86, -0.20 ], fov: 38 }
 
   # Assistant: 下午好，我是智慧钢琴助手小音，今天想听点什么？
-  - gap: 0.3
-    midi: { play: yin/premiere-01.mid, roll: voice, from: 0.35, subtitle: 下午好，我是智慧钢琴助手小音，今天想听点什么？ }
-
-  # User: 哟呵，这钢琴成精了，嘿。那你……随便给我放个音乐吧。
-  - gap: 0.3
+  - gap: 0.07
+    midi: { play: yin/premiere-01.mid, roll: voice, subtitle: 下午好，我是智慧钢琴助手小音，今天想听点什么？ }
+  # the user glances around with the phone while it speaks (once in the premiere); turn rates as in the real handheld
+  # video (CameraTrack: yaw 6.5 deg/s median, 15.7 p90): about 8-12 deg/s here
+  - after: 1.0
+    camera:
+      duration: 1.3
+      ease: inOutSine
+      path:
+        - { position: [ 0.05, 1.25, 0.90 ], target: [ -0.23, 0.86, -0.17 ], fov: 38 }
+  - after: 1.6
+    camera:
+      duration: 1.5
+      ease: inOutSine
+      path:
+        - { position: [ 0.05, 1.25, 0.90 ], target: [ 0.12, 0.86, -0.20 ], fov: 38 }
+  - after: 1.65
+    camera:
+      duration: 0.9
+      ease: inOutSine
+      path:
+        - { position: [ 0.05, 1.25, 0.90 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
+  # User cuts in as soon as 小音 has been said (4.76 s into the line, Whisper), over the
+  # assistant's 今天想听点什么: 哟呵，这钢琴成精了，嘿。那你……随便给我放个音乐吧。
+  # (4.68 s after the line's start; `after` counts from the previous event, the last glance)
+  - after: 0.43
     audio: { play: user/yohe.opus, from: 0.35, volume: 0.45 }
+  - after: 3.0
+    camera:
+      duration: 1.5
+      ease: inOutSine
+      path:
+        - { position: [ 0.07, 1.26, 0.92 ], target: [ 0.01, 0.86, -0.20 ], fov: 38 }
 
   # Assistant: 好的，请欣赏肖邦夜曲，九号作品之一。
-  - gap: 0.35
-    midi: { play: yin/premiere-03.mid, roll: voice, from: 0.3, subtitle: 好的，请欣赏肖邦夜曲，九号作品之一。 }
+  - gap: 0.08
+    midi: { play: yin/premiere-03.mid, roll: voice, subtitle: 好的，请欣赏肖邦夜曲，九号作品之一。 }
+  - after: 2.5
+    camera:
+      duration: 1.4
+      ease: inOutSine
+      path:
+        - { position: [ 0.02, 1.25, 0.82 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
 
-  # [Music 1] Chopin, Nocturne op. 9 no. 1 (from its first note); the camera drifts in
+  # [Music 1] Chopin, Nocturne op. 9 no. 1 (from its first note). The user walks to the left of
+  # the piano, the phone on it the whole time: a closer look at the keys, then up at the hammers
+  # through the glass, then back to the middle of the screen. Speeds after the real handheld
+  # video (CameraTrack: 0.16 m/s mean while moving, 0.29 p90): legs average 0.12-0.22 m/s.
   - gap: 0.9
     midi: { play: songs/F.Chopin-op9-no1.transkun.mid, roll: music, from: 5.9 }
     camera:
-      duration: 12
+      duration: 3.6
       ease: inOutSine
       path:
-        - { position: [ 0.3, 1.21, 0.95 ], target: [ -0.02, 0.86, -0.22 ], fov: 35 }
-
-  # User cuts in ~12 s into the piece: 欸，你既然能用钢琴说话，你给我唱个歌呗？
-  - after: 12
-    audio: { play: user/sing-a-song.opus, from: 0.38, volume: 0.6 }
+        - { position: [ -0.62, 1.22, 0.52 ], target: [ -0.25, 0.72, -0.05 ], fov: 38 }
+  - after: 3.6
     camera:
-      duration: 2.2
+      duration: 1.6
+      ease: inOutSine
       path:
-        - { position: [ 0.15, 1.28, 1.15 ], target: [ 0, 0.88, -0.2 ], fov: 38 }
+        - { position: [ -0.50, 1.10, 0.35 ], target: [ -0.22, 0.72, -0.06 ], fov: 32 }
+  - after: 2.3
+    camera:
+      duration: 2.0
+      ease: inOutSine
+      path:
+        - { position: [ -0.48, 1.45, 0.14 ], target: [ -0.20, 0.92, -0.42 ], fov: 34 }
+  - after: 3.0
+    camera:
+      duration: 3.6
+      ease: inOutSine
+      path:
+        - { position: [ 0.02, 1.25, 0.70 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
+
+  # User cuts in ~12 s into the piece, as the phone comes back: 欸，你既然能用钢琴说话，你给我唱个歌呗？
+  - after: 3.1
+    audio: { play: user/sing-a-song.opus, from: 0.38, volume: 0.6 }
   # 0.6 s in, the piano stops; the roll stays frozen until the assistant answers
   - after: 0.6
     midi: { pause: 0.15 }
 
   # Assistant: 好呀。
-  - gap: 0.35
-    midi: { play: yin/premiere-05.mid, roll: voice, from: 0.35, subtitle: 好呀。 }
+  - gap: 0.05
+    midi: { play: yin/premiere-05.mid, roll: voice, subtitle: 好呀。 }
 
   # [Music 2] the "la la la" song (from its first note)
   - gap: 0.5
@@ -73,7 +128,7 @@ timeline:
     camera:
       duration: 9
       path:
-        - { position: [ -0.22, 1.24, 0.98 ], target: [ 0.02, 0.86, -0.22 ], fov: 35 }
+        - { position: [ -0.14, 1.24, 0.88 ], target: [ 0.02, 0.86, -0.22 ], fov: 35 }
 
   # User cuts in ~9 s into the song: 你只会唱啦啦啦呀，唱不了歌词吗？
   - after: 9
@@ -81,18 +136,57 @@ timeline:
     camera:
       duration: 2.2
       path:
-        - { position: [ 0.15, 1.28, 1.15 ], target: [ 0, 0.88, -0.2 ], fov: 38 }
+        - { position: [ 0.05, 1.25, 0.90 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
   - after: 0.6
     midi: { pause: 0.15 }
 
   # Assistant: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。
-  - gap: 0.35
-    midi: { play: yin/premiere-07.mid, roll: voice, from: 0.35, subtitle: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。 }
+  - gap: 0.1
+    midi: { play: yin/premiere-07.mid, roll: voice, subtitle: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。 }
+  - after: 3.0
+    camera:
+      duration: 1.5
+      ease: inOutSine
+      path:
+        - { position: [ 0.11, 1.25, 0.88 ], target: [ 0.02, 0.86, -0.20 ], fov: 38 }
 
-  # [Music 3] 琴伤, with lyrics and accompaniment, in full; the screen stays on afterwards
+
+  # [Music 3] 琴伤, with lyrics and accompaniment, in full (the user shifts a little every ~7 s);
+  # the screen stays on afterwards
   - gap: 1.0
     midi: { play: songs/qinshang.mid, roll: music }
     camera:
-      duration: 40
+      duration: 1.6
+      ease: inOutSine
       path:
-        - { position: [ 0.05, 1.22, 0.85 ], target: [ 0, 0.87, -0.22 ], fov: 33 }
+        - { position: [ 0.00, 1.24, 0.80 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
+  - after: 6.5
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ -0.10, 1.24, 0.84 ], target: [ -0.03, 0.86, -0.20 ], fov: 38 }
+  - after: 7.0
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ -0.06, 1.25, 0.74 ], target: [ -0.02, 0.87, -0.21 ], fov: 38 }
+  - after: 6.5
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 0.06, 1.24, 0.80 ], target: [ 0.01, 0.86, -0.20 ], fov: 38 }
+  - after: 7.0
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 0.14, 1.25, 0.86 ], target: [ 0.03, 0.86, -0.20 ], fov: 38 }
+  - after: 6.5
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 0.05, 1.25, 0.90 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }

@@ -30,7 +30,7 @@
 //     - at: 6
 //       midi: { play: yin/premiere-01.mid, roll: voice, subtitle: 下午好 }   # roll mode for
 //                                  # this file: music (default) | voice (speech played by the
-//                                  # piano: falls 2x faster, green, no particles); `subtitle`
+//                                  # piano: falls 6x faster, green, no particles); `subtitle`
 //                                  # shows at the top of the screen while it plays
 //     - at: 9
 //       midi: { stop: 2 }          # fade the file out over 2 s, then stop; { pause: 0.15 } the

@@ -25,8 +25,10 @@ const MAX_LIVE = 256;				// live (played) note bars
 const POWER_FADE = 0.35;			// s, screen on / off fade
 const BOOT_FADE = 0.6;				// s, boot animation -> roll crossfade
 // roll modes: 'music' (default) and 'voice', for speech fitted to piano (talking MIDI: dense short
-// notes): falls 2x faster, green, no particles. Set by scene scripts only (no GUI).
-const VOICE_SPEED = 2;
+// notes): falls 6x faster, green, no particles. Set by scene scripts only (no GUI).
+const KEY_GLOW = { music: 0.5, voice: 1 };	// how strongly a note arriving lights its key, per roll mode
+const GHOST_FADE = 0.5;				// s, bars left on the screen (a paused file) fading out when the next file loads
+const VOICE_SPEED = 6;				// fall speed vs music (shorter look-ahead: bars stretch, arrival times unchanged)
 const VOICE_COLOR = '#19e07a';
 // subtitle band at the top of the screen (voice MIDI): what the piano is saying, appearing as it
 // is said. Sizes in metres on the screen; the bars fade in below the band while it shows.
@@ -35,8 +37,16 @@ const SUB_FONT = 0.022;				// character height
 const SUB_LINE = SUB_FONT * 1.32;	// line pitch
 const SUB_PAD = 0.010;				// below the last line, then a short fade into the roll
 const SUB_FADE_IN = 0.25, SUB_FADE_OUT = 0.45;	// s
-const SUB_LEAD = 0.12;				// s, text runs this far ahead of the sound
+const SUB_KEEP = 0.4;				// a character shows once this much of it has been said
+const SUB_DELAY = 0.2;				// s, phrases and characters come this much later than computed
+const SUB_BRIGHT = 0.49;				// text and glow brightness
+const SUB_ONSET = 0.2;				// s, a phrase's speech starts this long after its first voiced frame
+									// (the fitted piano starts each phrase early: attack, breath)
+const SUB_PHRASE = /[\s，。！？、；：,.!?;:…]+/;		// a subtitle plays as the short phrases between these
+const SUB_HIDDEN = /[\s，。！？、；：,.!?;:…《》「」“”"'()（）—-]/g;	// not shown (punctuation, quotes)
 const SUB_PX = 4800;				// px per metre on the canvas
+const SUB_CHAR_FADE = 0.12;			// s, each character fades in whole once it is due
+const SUB_MAX = 96;					// characters per subtitle (two lines)
 
 // ---- power-on animation: the loading-screen artwork (tools/build-loading-svg.mjs) drawn into a
 // canvas texture on the screen. Timing mirrors the CSS in index.html.
@@ -233,24 +243,44 @@ class BootAnimation {
 
 }
 
-// subtitle band: black (opaque, fading out at the bottom) behind text revealed per line up to
-// uReveal (u), with a soft edge about a character wide
+// subtitle band: black (opaque, fading out at the bottom) behind text shown character by
+// character. uChars[ i ] = ( u0, u1, line, alpha ): each character's cell (its advance; cells
+// tile the line). The canvas is a mask: R the glyphs, G / B the glow of the even / odd characters
+// (alternating, so neighbouring glows never share a channel). A glyph pixel takes its cell's
+// alpha; a glow pixel the alpha of the nearest character of that parity. So a character is
+// either hidden or (fading in) whole, glow included, never cut
 const SUB_FS = /* glsl */`
 	uniform sampler2D map;
 	uniform float uOpacity;
-	uniform vec2 uReveal;
+	uniform vec4 uChars[ ${ SUB_MAX } ];
+	uniform int uCount;
 	uniform float uSplit;
-	uniform float uSoft;
 	uniform float uFadeV;
+	uniform vec3 uText;
+	uniform vec3 uGlow;
 	varying vec2 vUv;
 	void main() {
-		float edge = vUv.y > uSplit ? uReveal.x : uReveal.y;		// line 1 is the upper one
-		float shown = 1.0 - smoothstep( edge - uSoft, edge, vUv.x );
-		vec4 t = texture2D( map, vUv );
-		float bg = 0.9 * smoothstep( 0.0, uFadeV, vUv.y );
-		float a = t.a * shown;
-		vec3 col = t.rgb * a;
-		float alpha = a + bg * ( 1.0 - a );
+		float line = vUv.y > uSplit ? 0.0 : 1.0;		// line 0 is the upper one
+		float glyphA = 0.0, evenA = 0.0, oddA = 0.0, evenD = 1e9, oddD = 1e9;
+		for ( int i = 0; i < ${ SUB_MAX }; ++ i ) {
+			if ( i >= uCount ) break;
+			vec4 c = uChars[ i ];
+			if ( c.z != line ) continue;
+			float d = max( max( c.x - vUv.x, vUv.x - c.y ), 0.0 );		// distance to the cell
+			if ( d == 0.0 ) glyphA = c.w;
+			if ( ( i - ( i / 2 ) * 2 ) == 0 ) { if ( d < evenD ) { evenD = d; evenA = c.w; } }
+			else if ( d < oddD ) { oddD = d; oddA = c.w; }
+		}
+		vec3 m = texture2D( map, vUv ).rgb;
+		float g = m.r * glyphA;
+		float spread = clamp( m.g * evenA + m.b * oddA, 0.0, 1.0 );
+		float glow = clamp( 0.45 * spread, 0.0, 1.0 );
+		// no band: glyph over glow over a soft dark halo that follows the glyphs (keeps them
+		// readable over bright bars), transparent elsewhere. Premultiplied, back to straight alpha
+		float halo = 0.55 * smoothstep( 0.0, 0.6, spread );
+		vec3 col = uText * g + uGlow * glow * ( 1.0 - g );
+		float a = g + glow * ( 1.0 - g );
+		float alpha = a + halo * ( 1.0 - a );
 		gl_FragColor = vec4( col / max( alpha, 1e-4 ), alpha * uOpacity );
 	}
 `;
@@ -468,6 +498,24 @@ export class PianoRoll {
 			this.bars.userData.noAO = true;
 			this.group.add( this.bars );
 
+			// a copy of the last bars of the previous file, fading out when the next one loads
+			// (a paused file's frozen roll would otherwise vanish at once)
+			const ghost = quadCorners( new THREE.InstancedBufferGeometry() );
+			this.ghostRect = new THREE.InstancedBufferAttribute( new Float32Array( MAX_BARS * 4 ), 4 );
+			this.ghostInfo = new THREE.InstancedBufferAttribute( new Float32Array( MAX_BARS * 2 ), 2 );
+			ghost.setAttribute( 'aRect', this.ghostRect );
+			ghost.setAttribute( 'aInfo', this.ghostInfo );
+			ghost.instanceCount = 0;
+			this.ghostUniforms = { uColor: { value: new THREE.Color() }, uGlow: this.barUniforms.uGlow, uHeight: this.barUniforms.uHeight, uIntensity: { value: 0 } };
+			this.ghostBars = new THREE.Mesh( ghost, new THREE.ShaderMaterial( { vertexShader: BAR_VS, fragmentShader: BAR_FS, uniforms: this.ghostUniforms, ...common } ) );
+			this.ghostBars.frustumCulled = false;
+			this.ghostBars.renderOrder = 10;
+			this.ghostBars.visible = false;
+			this.ghostBars.userData.noAO = true;
+			this.group.add( this.ghostBars );
+			this.ghostLevel = 0;
+			this.drawnColor = new THREE.Color();		// the colour the bars were last drawn in
+
 		}
 
 		// live bars: same shader, own instances and colour, rising from the hit line
@@ -491,17 +539,19 @@ export class PianoRoll {
 		}
 
 		// subtitle band (screens): normal blending, so its black covers the additive bars behind
-		// it. The text is a canvas texture; the shader reveals it left to right per line
+		// it. The text is a canvas texture drawn once per line; the shader shows its characters
+		// one by one (per-character cells and alphas in uChars)
 		{
 
 			this.subCanvas = document.createElement( 'canvas' );
 			this.subTexture = new THREE.CanvasTexture( this.subCanvas );
-			this.subTexture.colorSpace = THREE.SRGBColorSpace;
-			this.subTexture.anisotropy = 4;
+			this.subTexture.anisotropy = 4;		// mask data (R glyphs, G / B glows): no colour space
 			this.subUniforms = {
 				map: { value: this.subTexture }, uOpacity: { value: 0 },
-				uReveal: { value: new THREE.Vector2() },		// per line: u of the reveal edge
-				uSplit: { value: 0.5 }, uSoft: { value: 0.01 }, uFadeV: { value: 0.12 },
+				uText: { value: new THREE.Color( '#e8fff2' ).multiplyScalar( SUB_BRIGHT ) }, uGlow: { value: new THREE.Color( '#19e07a' ).multiplyScalar( SUB_BRIGHT ) },
+				uChars: { value: Array.from( { length: SUB_MAX }, () => new THREE.Vector4() ) },
+				uCount: { value: 0 },
+				uSplit: { value: 0.5 }, uFadeV: { value: 0.12 },
 			};
 			this.subMesh = new THREE.Mesh( new THREE.PlaneGeometry( 1, 1 ).translate( 0, - 0.5, - 0.0004 ), new THREE.ShaderMaterial( {
 				vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }',
@@ -513,7 +563,11 @@ export class PianoRoll {
 			this.subMesh.userData.noAO = true;
 			this.group.add( this.subMesh );
 			this.subText = '';
-			this.subLines = [];			// [{ text, x0, edges: [px after each character] }]
+			this.subPhrases = [];		// the subtitle split at its punctuation, shown one at a time
+			this.subPhrase = 0;			// index of the phrase on the screen
+			this.subLines = [];			// [{ chars, x0, edges: [px after each character] }]
+			this.subShownAt = [];		// per character (both lines in order): subClock when due, or -1
+			this.subClock = 0;			// s, advances while the band shows
 			this.subState = null;		// null | 'pending' (MIDI starting) | 'on' | 'out'
 			this.subLevel = 0;
 			this.subBand = 0;			// m, current band height
@@ -663,6 +717,22 @@ export class PianoRoll {
 
 	}
 
+	/** Keep the bars now on the screen (in their colour) and fade them out. */
+	_ghost() {
+
+		const n = this.bars.geometry.instanceCount;
+		if ( ! n || ! this.group.visible ) return;
+		this.ghostRect.array.set( this.rect.array.subarray( 0, n * 4 ) );
+		this.ghostInfo.array.set( this.info.array.subarray( 0, n * 2 ) );
+		for ( let i = 0; i < n; ++ i ) this.ghostInfo.array[ i * 2 + 1 ] = 0;		// none sounding
+		this.ghostRect.needsUpdate = this.ghostInfo.needsUpdate = true;
+		this.ghostBars.geometry.instanceCount = n;
+		this.ghostUniforms.uColor.value.copy( this.drawnColor );		// the mode may have changed already
+		this.ghostLevel = 1;
+		this.bars.geometry.instanceCount = 0;
+
+	}
+
 	/** (Re)build the note list from the player's events: [{ on, off (ms), pitch, vel, x, w }] sorted by on. */
 	_build( events ) {
 
@@ -725,39 +795,51 @@ export class PianoRoll {
 	}
 
 	/**
-	 * Show `text` at the top of the screen while the next MIDI file plays, appearing as it is
-	 * said (timed by when its notes sound), fading out after it ends; '' / null clears it.
+	 * Show `text` at the top of the screen while the next MIDI file plays, character by
+	 * character as it is said (timed by when its notes sound), fading out after it ends;
+	 * '' / null clears it.
 	 */
 	setSubtitle( text ) {
 
 		this.subText = ( text ?? '' ).trim();
+		this.subPhrases = this.subText.split( SUB_PHRASE ).map( t => t.replace( SUB_HIDDEN, '' ) ).filter( Boolean ).map( t => [ ...t ].slice( 0, SUB_MAX ).join( '' ) );
+		this.subPhrase = 0;
 		this.subState = this.subText ? 'pending' : null;
 		this.subWait = 0;
 		this.subTiming = null;
+		this.subClock = 0;
 		if ( ! this.subText ) this.subLevel = 0;
+		// one band height for the whole subtitle (the longest phrase), so it doesn't jump
+		this.subBandLines = Math.max( 1, ...this.subPhrases.map( t => this._layoutSubtitle( t ).length ) );
 		this._drawSubtitle();
 
 	}
 
+	// one line, or two balanced ones for a phrase too long for one
+	_layoutSubtitle( t ) {
+
+		const W = this.piano?.roll?.width ?? 1.3, g = this.subCanvas.getContext( '2d' );
+		g.font = this._subFont();
+		if ( ! t || g.measureText( t ).width <= W * SUB_PX * 0.86 ) return t ? [ t ] : [];
+		const cut = Math.round( t.length / 2 );
+		return [ t.slice( 0, cut ), t.slice( cut ) ];
+
+	}
+
+	_subFont() {
+
+		return `500 ${ Math.round( SUB_FONT * SUB_PX ) }px "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif`;
+
+	}
+
+	/** Draw the phrase on the screen now (`this.subPhrase`); its characters start hidden. */
 	_drawSubtitle() {
 
 		const W = this.piano?.roll?.width ?? 1.3, c = this.subCanvas, g = c.getContext( '2d' );
-		const font = px => `500 ${ Math.round( px ) }px "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif`;
 		const fpx = SUB_FONT * SUB_PX, w = Math.round( W * SUB_PX );
-		g.font = font( fpx );
-		// one line, or two balanced ones (broken after punctuation near the middle)
-		const t = this.subText;
-		let lines = t ? [ t ] : [];
-		if ( t && g.measureText( t ).width > w * 0.86 ) {
-
-			const mid = t.length / 2;
-			let cut = Math.round( mid ), best = Infinity;
-			for ( let i = 1; i < t.length; ++ i ) if ( /[，。！？、；：,.!?;:]/.test( t[ i - 1 ] ) && Math.abs( i - mid ) < best ) best = Math.abs( i - ( cut = i ) );
-			lines = [ t.slice( 0, cut ), t.slice( cut ) ];
-
-		}
-
-		const band = SUB_MARGIN + Math.max( 1, lines.length ) * SUB_LINE + SUB_PAD;
+		const lines = this._layoutSubtitle( this.subPhrases[ this.subPhrase ] ?? '' );
+		const rows = this.subBandLines ?? 1;
+		const band = SUB_MARGIN + rows * SUB_LINE + SUB_PAD;
 		const h = Math.round( band * SUB_PX );
 		if ( c.width !== w || c.height !== h ) {
 
@@ -766,43 +848,87 @@ export class PianoRoll {
 
 		}
 
-		g.clearRect( 0, 0, w, h );
-		g.font = font( fpx );
+		// an opaque mask (exact channels: no premultiplied-alpha loss): black, then added up
+		g.globalCompositeOperation = 'source-over';
+		g.shadowColor = 'transparent';
+		g.shadowBlur = 0;
+		g.fillStyle = '#000';
+		g.fillRect( 0, 0, w, h );
+		g.font = this._subFont();
 		g.textAlign = 'left';
 		g.textBaseline = 'middle';
-		g.fillStyle = '#e8fff2';
-		g.shadowColor = 'rgba(25,224,122,0.45)';
-		g.shadowBlur = fpx * 0.3;
 		this.subLines = lines.map( ( line, i ) => {
 
 			const chars = [ ...line ], edges = [];
 			let x = 0;
 			for ( const ch of chars ) edges.push( x += g.measureText( ch ).width );
-			const x0 = ( w - x ) / 2, y = ( SUB_MARGIN + ( i + 0.5 ) * SUB_LINE ) * SUB_PX;
-			let cx = x0;
-			chars.forEach( ( ch, k ) => {
-
-				g.fillText( ch, cx, y );
-				cx = x0 + edges[ k ];
-
-			} );
-			return { chars, x0, edges };
+			const row = i + ( rows - lines.length ) / 2;
+			return { chars, x0: ( w - x ) / 2, edges, y: ( SUB_MARGIN + ( row + 0.5 ) * SUB_LINE ) * SUB_PX };
 
 		} );
+		const each = fn => {
+
+			let k = 0;
+			for ( const l of this.subLines ) l.chars.forEach( ( ch, j ) => fn( ch, l.x0 + ( j ? l.edges[ j - 1 ] : 0 ), l.y, k ++ ) );
+
+		};
+		g.globalCompositeOperation = 'lighter';
+		g.fillStyle = '#f00';								// R: the glyphs
+		each( ( ch, x, y ) => g.fillText( ch, x, y ) );
+		// G / B: each character's glow alone (the glyph drawn off the canvas, its shadow on it)
+		const off = h * 4;
+		g.shadowBlur = fpx * 0.3;
+		g.shadowOffsetY = off;
+		g.fillStyle = '#fff';
+		for ( const [ parity, colour ] of [ [ 0, '#0f0' ], [ 1, '#00f' ] ] ) {
+
+			g.shadowColor = colour;
+			each( ( ch, x, y, k ) => {
+
+				if ( k % 2 === parity ) g.fillText( ch, x, y - off );
+
+			} );
+
+		}
+
+		g.shadowColor = 'transparent';
 		g.shadowBlur = 0;
+		g.shadowOffsetY = 0;
+		g.globalCompositeOperation = 'source-over';
 		this.subTexture.needsUpdate = true;
 		this.subBand = band;
 		this.subMesh.scale.set( W, band, 1 );
 		const U = this.subUniforms;
-		U.uSplit.value = 1 - ( SUB_MARGIN + SUB_LINE ) / band;
-		U.uSoft.value = fpx / w;
+		// the line split (shader): between the two lines' rows; a lone line is all line 0
+		U.uSplit.value = lines.length > 1 ? 1 - ( SUB_MARGIN + ( 1 + ( rows - lines.length ) / 2 ) * SUB_LINE ) / band : - 1;
 		U.uFadeV.value = SUB_PAD * 0.8 / band;
-		U.uReveal.value.set( 0, 0 );
+		// per-character cells in u: each character's advance (where it was drawn), the first and
+		// last open to the line's ends so nothing at the edges is cut
+		let k = 0;
+		this.subLines.forEach( ( l, line ) => {
+
+			const n = l.chars.length;
+			for ( let j = 0; j < n && k < SUB_MAX; ++ j, ++ k ) {
+
+				const left = j === 0 ? 0 : l.x0 + l.edges[ j - 1 ];
+				const right = j === n - 1 ? w : l.x0 + l.edges[ j ];
+				U.uChars.value[ k ].set( left / w, right / w, line, 0 );
+
+			}
+
+		} );
+		for ( let i = k; i < SUB_MAX; ++ i ) U.uChars.value[ i ].set( 0, 0, - 1, 0 );
+		U.uCount.value = k;
+		this.subShownAt = new Array( k ).fill( - 1 );
 
 	}
 
-	// when the words are said: the voice MIDI's sounding frames (20 ms; summed squared
-	// velocity over a floor), mapped to the line's characters (punctuation takes no time)
+	// when the words are said, from the voice MIDI's sounding frames (20 ms; summed squared
+	// velocity over a floor). Each phrase starts after one of the speech's pauses: the pauses are
+	// matched to the phrase boundaries by where they fall in the voiced time (a boundary after n
+	// of N characters is expected n / N of the way through), longer pauses preferred; a boundary
+	// with no pause near enough falls where its share of voiced time is reached. Within a phrase
+	// a character is due once SUB_KEEP of its share of the phrase's voiced time has passed.
 	_subtitleTiming() {
 
 		const notes = this.notes ?? [], frame = 20;
@@ -811,12 +937,73 @@ export class PianoRoll {
 		for ( const n of notes ) energy[ Math.floor( n.on / frame ) ] += n.vel * n.vel;
 		const sorted = [ ...energy ].filter( v => v > 0 ).sort( ( a, b ) => a - b );
 		const floor = 0.08 * ( sorted[ Math.floor( sorted.length * 0.9 ) ] ?? 0 );
-		const said = [];		// cumulative voiced time (ms) at the end of each frame
+		const voiced = Array.from( energy, e => e > floor );
+		const cum = [];			// voiced ms at the end of each frame
 		let acc = 0;
-		for ( const e of energy ) said.push( acc += e > floor ? frame : 0 );
-		const weights = this.subLines.flatMap( l => l.chars.map( ch => /[\s，。！？、；：,.!?;:《》「」“”"'()（）…—-]/.test( ch ) ? 0 : 1 ) );
-		const total = weights.reduce( ( a, b ) => a + b, 0 ) || 1;
-		return { events: this.events, said, frame, voiced: acc || 1, weights, total };
+		for ( const v of voiced ) cum.push( acc += v ? frame : 0 );
+		const total = acc || frame;
+		let first = voiced.indexOf( true ), last = voiced.lastIndexOf( true );
+		if ( first < 0 ) first = last = 0;
+		const P = this.subPhrases, counts = P.map( t => [ ...t ].length ), N = counts.reduce( ( a, b ) => a + b, 0 ) || 1;
+		// pauses (at least 60 ms) inside the speech: [ first silent frame, first voiced after ]
+		const gaps = [];
+		for ( let i = first; i <= last; ++ i ) {
+
+			if ( voiced[ i ] ) continue;
+			let j = i;
+			while ( j <= last && ! voiced[ j ] ) ++ j;
+			if ( ( j - i ) * frame >= 60 ) gaps.push( { at: i, next: j, share: cum[ i - 1 ] / total, ms: ( j - i ) * frame } );
+			i = j;
+
+		}
+
+		// boundaries in order: each a pause (cost: characters away from the expected place, less
+		// a bonus for its length) or the fallback; a small beam search over the choices
+		let states = [ { g: - 1, cost: 0, at: [] } ];
+		let done = 0;
+		for ( let b = 0; b < P.length - 1; ++ b ) {
+
+			done += counts[ b ];
+			const want = done / N, next = [];
+			for ( const st of states ) {
+
+				gaps.forEach( ( gp, gi ) => {
+
+					if ( gi > st.g ) next.push( { g: gi, cost: st.cost + Math.abs( gp.share - want ) * N - Math.min( gp.ms, 500 ) / 250, at: [ ...st.at, gp.next ] } );
+
+				} );
+				let k = cum.findIndex( v => v >= want * total );
+				next.push( { g: st.g, cost: st.cost + 2.5, at: [ ...st.at, Math.max( k, ( st.at.at( - 1 ) ?? first ) + 1 ) ] } );
+
+			}
+
+			next.sort( ( x, y ) => x.cost - y.cost );
+			states = next.slice( 0, 64 );
+
+		}
+
+		const starts = [ first, ...states[ 0 ].at ], ends = [ ...states[ 0 ].at, last + 1 ];
+		const phrases = P.map( ( t, p ) => {
+
+			const s0 = starts[ p ], base = s0 > 0 ? cum[ s0 - 1 ] : 0, span = Math.max( frame, cum[ ends[ p ] - 1 ] - base );
+			const due = [];
+			for ( let c = 0; c < counts[ p ]; ++ c ) {
+
+				const target = base + ( c + SUB_KEEP ) / counts[ p ] * span;
+				let k = s0;
+				while ( k < cum.length - 1 && cum[ k ] < target ) ++ k;
+				due.push( ( k + 1 ) * frame );		// end of the frame the share is reached in
+
+			}
+
+			// the phrase (and its first character) begins after the onset lead; keep the order
+			const start = s0 * frame + SUB_ONSET * 1000;
+			due[ 0 ] = Math.max( due[ 0 ], start );
+			for ( let c = 1; c < due.length; ++ c ) due[ c ] = Math.max( due[ c ], due[ c - 1 ] );
+			return { start, due };
+
+		} );
+		return { events: this.events, phrases };
 
 	}
 
@@ -833,54 +1020,34 @@ export class PianoRoll {
 		if ( this.subState === 'out' && this.subLevel === 0 ) this.subState = null;
 		this.subMesh.visible = this.screen && this.subLevel > 0;
 		this.subUniforms.uOpacity.value = this.subLevel * level;
-		this.barUniforms.uHeight.value = this.height - ( this.subBand + 0.002 ) * THREE.MathUtils.smoothstep( this.subLevel, 0, 1 );
+		this.barUniforms.uHeight.value = this.height;		// the bars run on behind the text
 		if ( ! this.subMesh.visible || ! this.subLines.length ) return;
 
-		// how much has been said: characters in proportion to voiced time so far
+		// the phrase being said (one at a time; the next one replaces it when its speech starts),
+		// and its characters, each shown whole once due (fading in over SUB_CHAR_FADE)
+		this.subClock += dt;
 		if ( this.subTiming?.events !== this.events && this.notes ) this.subTiming = this._subtitleTiming();
-		const T = this.subTiming;
-		let n;		// characters shown (fractional)
-		if ( this.subState === 'out' ) n = Infinity;
-		else if ( ! T ) n = 0;
-		else {
+		const T = this.subTiming, subPos = player.position - SUB_DELAY * 1000;
+		if ( T && this.subState !== 'out' ) {
 
-			const i = Math.max( 0, Math.min( T.said.length - 1, Math.floor( ( player.position + SUB_LEAD * 1000 ) / T.frame ) ) );
-			let k = T.said[ i ] / T.voiced * T.total;
-			// spread over the weighted characters; zero-weight ones (punctuation) ride along
-			n = 0;
-			for ( const wgt of T.weights ) {
+			let p = 0;
+			while ( p + 1 < T.phrases.length && subPos >= T.phrases[ p + 1 ].start ) ++ p;
+			if ( p !== this.subPhrase ) {
 
-				if ( k <= 0 ) break;
-				if ( wgt === 0 ) {
-
-					n += 1;
-					continue;
-
-				}
-
-				const take = Math.min( 1, k );
-				n += take;
-				k -= take;
+				this.subPhrase = p;
+				this._drawSubtitle();
 
 			}
 
 		}
 
-		const w = this.subCanvas.width, U = this.subUniforms.uReveal.value;
-		const reveal = [ 0, 0 ];
-		let left = n;
-		this.subLines.forEach( ( l, i ) => {
+		const cells = this.subUniforms.uChars.value, shownAt = this.subShownAt, due = T?.phrases[ this.subPhrase ]?.due;
+		for ( let c = 0; c < shownAt.length; ++ c ) {
 
-			const m = Math.min( left, l.chars.length );
-			left -= m;
-			const whole = Math.floor( m ), frac = m - whole;
-			const a = whole > 0 ? l.edges[ whole - 1 ] : 0, b = l.edges[ Math.min( whole, l.edges.length - 1 ) ] ?? a;
-			// the soft edge spans about a character: push it so a whole character is crisp
-			const px = m >= l.chars.length ? w : l.x0 + a + ( b - a ) * frac + ( m > 0 ? this.subUniforms.uSoft.value * w * 0.5 : 0 );
-			reveal[ i ] = px / w;
+			if ( shownAt[ c ] < 0 && ( this.subState === 'out' || ( due && subPos >= due[ c ] ) ) ) shownAt[ c ] = this.subClock;
+			cells[ c ].w = shownAt[ c ] < 0 ? 0 : Math.min( 1, ( this.subClock - shownAt[ c ] ) / SUB_CHAR_FADE );
 
-		} );
-		U.set( reveal[ 0 ], this.subLines.length > 1 ? reveal[ 1 ] : reveal[ 0 ] );
+		}
 
 	}
 
@@ -893,7 +1060,7 @@ export class PianoRoll {
 	}
 
 	/**
-	 * 'music' (default) or 'voice': speech played by the piano (dense short notes) falls 2x faster,
+	 * 'music' (default) or 'voice': speech played by the piano (dense short notes) falls 6x faster,
 	 * green, without particles. Live (played) bars are unchanged.
 	 */
 	setMode( mode ) {
@@ -925,7 +1092,12 @@ export class PianoRoll {
 	 */
 	update( player, dt, camera, renderer, show ) {
 
-		if ( player.events !== this.events ) this._build( player.events );
+		if ( player.events !== this.events ) {
+
+			this._ghost();
+			this._build( player.events );
+
+		}
 		const target = this.power ? 1 : 0;
 		this.powerLevel = target > this.powerLevel ? Math.min( 1, this.powerLevel + dt / POWER_FADE ) : Math.max( 0, this.powerLevel - dt / POWER_FADE );
 		const active = show && this.enabled && this.piano && this.powerLevel > 0;
@@ -965,6 +1137,14 @@ export class PianoRoll {
 		const level = this.powerLevel * rollLevel;
 		this.barUniforms.uIntensity.value = this.flareUniforms.uIntensity.value = this.partUniforms.uIntensity.value = this.liveUniforms.uIntensity.value = level;
 		this.guides.material.opacity = 0.035 * level;
+		if ( this.ghostLevel > 0 ) {
+
+			this.ghostLevel = Math.max( 0, this.ghostLevel - dt / GHOST_FADE );
+			const k = this.ghostLevel * this.ghostLevel * ( 3 - 2 * this.ghostLevel );		// smooth
+			this.ghostUniforms.uIntensity.value = k * level;
+			this.ghostBars.visible = this.ghostLevel > 0;
+
+		}
 		this._updateSubtitle( player, dt, level );
 		this._updateLive();
 
@@ -1053,6 +1233,7 @@ export class PianoRoll {
 		this.rect.addUpdateRange( 0, nb * 4 );
 		this.info.addUpdateRange( 0, nb * 2 );
 		this.bars.geometry.instanceCount = nb;
+		this.drawnColor.copy( this.color );
 		this.flare.needsUpdate = true;
 		this.flare.clearUpdateRanges();
 		this.flare.addUpdateRange( 0, nf * 3 );
@@ -1156,7 +1337,7 @@ export class PianoRoll {
 			l += ( target - l ) * Math.min( 1, dt * ( target > l ? 30 : 7 ) );
 			if ( Math.abs( target - l ) < 0.01 ) l = target;
 			g.userData.level = l;
-			g.material.opacity = l * 0.85 * this.intensity * this.powerLevel * ( this.bootT >= 0 ? 0 : 1 );
+			g.material.opacity = l * 0.85 * KEY_GLOW[ this.mode ] * this.intensity * this.powerLevel * ( this.bootT >= 0 ? 0 : 1 );
 			g.visible = l > 0;
 
 		}
