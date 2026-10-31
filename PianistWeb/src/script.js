@@ -43,6 +43,11 @@
 //       audio: user/hello.opus     # an audio file (site's audio/ folder, ./ = from the script);
 //                                  # or { play: name, volume: 0.8, from: 0 } | stop
 //   audio:                         # optional aliases, like midi:
+//     - after: 1.6
+//       play:                      # notes played by hand on the piano (live: sound, keys, the
+//         - { note: F2, at: 0, dur: 0.1, vel: 0.7 }    # red rising roll); `note` a name (F2,
+//         - { note: G#2, at: 0.6, dur: 0.4 }           # G#2 / Ab2) or a MIDI number; `at` the
+//                                  # onset, `dur` key-down (s, from the event); vel 0..1 (0.7)
 //
 // Several actions may share one event; it has finished when all of them have (`screen: on` when
 // the power-on animation and chime are done). The script ends when every event has fired and
@@ -53,6 +58,18 @@
 import * as THREE from 'three';
 import { parse } from 'yaml';
 import { parseMidiEvents } from './midi.js';
+
+// note name (C4 = 60; F2, G#2, Ab2, A#2) or MIDI number -> MIDI number
+const STEPS = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+function notePitch( v, where ) {
+
+	if ( typeof v === 'number' && Number.isInteger( v ) && v >= 0 && v <= 127 ) return v;
+	const m = String( v ).trim().match( /^([A-Ga-g])([#b♯♭]?)(-?\d)$/ );
+	if ( ! m ) throw new Error( `${ where }: bad note "${ v }"` );
+	const acc = m[ 2 ] === '#' || m[ 2 ] === '♯' ? 1 : m[ 2 ] === 'b' || m[ 2 ] === '♭' ? - 1 : 0;
+	return 12 * ( Number( m[ 3 ] ) + 1 ) + STEPS[ m[ 1 ].toLowerCase() ] + acc;
+
+}
 
 // the assistant's state on the screen (setStatus): listening while a user recording plays, up to
 // LISTEN_TAIL after its speech ends (trailing silence excluded); thinking for a midi event's
@@ -94,7 +111,8 @@ function parseTime( v, prev ) {
 export class ScriptPlayer {
 
 	/**
-	 * @param ctx { camera, controls, gui, setScreenPower(on), screenBusy() (power-on / -off still
+	 * @param ctx { camera, controls, gui, setScreenPower(on), noteOn(pitch, vel), noteOff(pitch) (live,
+	 *              as played on the keyboard), screenBusy() (power-on / -off still
 	 *              animating), setRollMode('music' | 'voice'), setSubtitle(text), midi: { load(buffer, name), play(),
 	 *              pause(), resume(), stop(), fadeOut(s, { pause }) -> Promise, seek(s), playing },
 	 *              audio: { decode(arrayBuffer) -> Promise<AudioBuffer>, play(buffer, { volume, from })
@@ -112,6 +130,7 @@ export class ScriptPlayer {
 		this._audioSpeech = new Map();		// file -> { end (s, speech end), env (20 ms RMS / peak) }
 		this._midiLead = new Map();			// file -> s before its first note
 		this._sounds = [];			// playing audio handles
+		this._held = new Set();			// pitches a `play` event holds down
 
 	}
 
@@ -277,6 +296,21 @@ export class ScriptPlayer {
 
 		}
 
+		if ( e.play !== undefined ) {
+
+			const list = Array.isArray( e.play ) ? e.play : [ e.play ];
+			out.play = list.map( ( n, j ) => {
+
+				const w = `${ where }.play[${ j }]`;
+				const at = Number( n.at ?? 0 ), dur = Number( n.dur ?? 0.2 ), vel = Number( n.vel ?? 0.7 );
+				if ( ! ( at >= 0 ) || ! ( dur > 0 ) || ! ( vel > 0 && vel <= 1 ) ) throw new Error( `${ w }: at >= 0, dur > 0, 0 < vel <= 1` );
+				return { pitch: notePitch( n.note, w ), at, dur, vel };
+
+			} );
+			out.end = Math.max( out.end, at + Math.max( ...out.play.map( n => n.at + n.dur ) ) );
+
+		}
+
 		const set = { ...( e.set ?? {} ) };
 		for ( const [ k, path ] of Object.entries( HANDHELD ) ) if ( e.handheld?.[ k ] !== undefined ) set[ path ] = e.handheld[ k ];
 		if ( out.midi?.tempo !== undefined ) set[ 'MIDI player/Tempo' ] = out.midi.tempo;
@@ -326,6 +360,8 @@ export class ScriptPlayer {
 		if ( this._midiStarted ) this.ctx.midi.stop();
 		for ( const h of this._sounds ) h.stop();
 		this._sounds = [];
+		for ( const p of this._held ) this.ctx.noteOff?.( p );		// let go of played notes
+		this._held.clear();
 		this.ctx.setRollMode?.( 'music' );
 		this.ctx.setSubtitle?.( '' );
 		this.ctx.setStatus?.( null );
@@ -402,7 +438,7 @@ export class ScriptPlayer {
 		// deferred actions (a voice reply after its thinking time)
 		if ( this._pending.length ) {
 
-			const due = this._pending.filter( p => this.time >= p.at );
+			const due = this._pending.filter( p => this.time >= p.at ).sort( ( a, b ) => a.at - b.at );
 			this._pending = this._pending.filter( p => this.time < p.at );
 			for ( const p of due ) p.run();
 
@@ -555,6 +591,33 @@ export class ScriptPlayer {
 				parts.push( () => h.playing && this.time < end );
 
 			}
+
+		}
+
+		if ( e.play ) {
+
+			// played by hand: each note on at t0 + at, off at + dur (live: sound, keys, red roll)
+			for ( const n of e.play ) {
+
+				this._pending.push( { at: t0 + n.at, run: () => {
+
+					if ( this._held.has( n.pitch ) ) this.ctx.noteOff?.( n.pitch );		// a repeat
+					this.ctx.noteOn?.( n.pitch, n.vel );
+					this._held.add( n.pitch );
+
+				} } );
+				this._pending.push( { at: t0 + n.at + n.dur, run: () => {
+
+					if ( ! this._held.has( n.pitch ) ) return;
+					this.ctx.noteOff?.( n.pitch );
+					this._held.delete( n.pitch );
+
+				} } );
+
+			}
+
+			const last = t0 + Math.max( ...e.play.map( n => n.at + n.dur ) );
+			parts.push( () => this.time < last );
 
 		}
 

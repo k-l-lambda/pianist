@@ -60,11 +60,16 @@ timeline:
   - gap: 0.07
     midi: { play: yin/premiere-01.mid, roll: voice, subtitle: 下午好，我是智慧钢琴助手小音，今天想听点什么？ }
   # User cuts in as soon as 小音 has been said (4.76 s into the line, Whisper), over the
-  # assistant's 今天想听点什么: 哟呵，这钢琴成精了，嘿。那你……随便给我放个音乐吧。
-  # (4.68 s after the line's start: the audio's speech starts 0.08 s in after the trim)
-  - after: 4.68
-    audio: { play: user/yohe.opus, from: 0.35, volume: 0.45 }
-  - after: 3.0
+  # assistant's 今天想听点什么, in two breaths: 哟呵——你这，这钢琴成精了都！ (laughing), then
+  # 那你……随便给我放个音乐吧。 (with a long pause after 那你). Both clips start with their speech.
+  # Volumes put both at the output level of the other user lines (~0.026 RMS on the master).
+  - after: 4.76
+    audio: { play: user/yohe.opus, volume: 0.36 }
+  # 0.4 s after the first part's speech ends (2.94 s)
+  - after: 3.36
+    audio: { play: user/play-any-music.opus, volume: 0.21 }
+  # a small step during the hesitation after 那你
+  - after: 0.5
     camera:
       duration: 0.9
       ease: inOutSine
@@ -107,7 +112,18 @@ timeline:
       ease: inOutSine
       path:
         - { position: [ -0.48, 1.45, 0.14 ], target: [ -0.20, 0.92, -0.42 ], fov: 34 }
-  - after: 3.0
+  # the user plays a few notes by hand once the phone has risen towards the glass and the left
+  # keys have left the frame (measured on the rendered, handheld camera: F2 / G#2 / A#2 are out of
+  # the view from 8.34 to 10.30 s into the piece): F2 three times quickly and unevenly, a breath,
+  # G#2 held, A#2 short. 8.5-9.95 s into the piece (live: sound, keys, red rising roll)
+  - after: 2.6
+    play:
+      - { note: F2,  at: 0.00, dur: 0.10, vel: 0.71 }
+      - { note: F2,  at: 0.15, dur: 0.08, vel: 0.52 }
+      - { note: F2,  at: 0.29, dur: 0.12, vel: 0.64 }
+      - { note: G#2, at: 0.66, dur: 0.42, vel: 0.77 }
+      - { note: A#2, at: 1.25, dur: 0.20, vel: 0.47 }
+  - after: 0.4    # the return still starts 8.9 s into the piece (2.6 + 0.4 = the former 3.0)
     camera:
       duration: 2.4
       ease: inOutSine

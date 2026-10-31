@@ -715,6 +715,9 @@ const scriptPlayer = new ScriptPlayer( {
 	setRollMode: mode => roll.setMode( mode ),
 	setSubtitle: text => roll.setSubtitle( text ),
 	setStatus: ( status, level ) => roll.setStatus( status, level ),
+	// notes played by hand in a script: like the keyboard (sound, keys, the red rising roll)
+	noteOn: ( pitch, velocity ) => noteOn( pitch, velocity, { sound: true, live: true } ),
+	noteOff: pitch => noteOff( pitch, { sound: true, live: true } ),
 	// power-on: the boot animation and the chime; power-off: the fade
 	screenBusy: () => roll.bootT >= 0 || bootSound.playing || ( roll.power ? roll.powerLevel < 1 : roll.powerLevel > 0 ),
 	midi: {
