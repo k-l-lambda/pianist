@@ -79,7 +79,8 @@ export class HandheldMode {
 		// how the person brings the phone where it is wanted (below 1 Hz, fitted to the video):
 		// bursts of sub-movements to the goal and a slow drift; `drift` scales the drift
 		this.operator = new Operator( operatorParams, { seed: 5 } );
-		this.drift = 1;
+		this.drift = 0.2;				// the fitted drift at full strength read as too much sway
+		this.bursts = true;				// the operator's sub-movements (off: follows the goal directly)
 		this.steering = false;			// a drag on the view (any button) is in progress
 		this.person = new Person();
 		this.intended = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), valid: false };
@@ -329,6 +330,7 @@ export class HandheldMode {
 			const steer = this.steering || this.pressed.size > 0 || this._armDrag.lengthSq() > 0;
 			const op = this.operator;
 			op.drift = this.drift;
+			op.bursts = this.bursts;
 			op.update( dt, I.position, I.quaternion, { steering: steer } );
 			const { offset: dOff, rotation: dRot } = op.driftAt( _dv, _dq );
 			base.quaternion.copy( op.quaternion ).multiply( dRot );

@@ -26,7 +26,7 @@ timeline:
   # Handheld mode adds the person's own motion (operator model fitted to the real video: bursts of
   # sub-movements to these poses, a slow drift) on top of the moves written here.
   - at: 0
-    handheld: { enabled: true, shake: 1, walk: 1, drift: 1, person: true }
+    handheld: { enabled: true, shake: 1, walk: 1, drift: 0.2, bursts: true, person: true }
     screen: off
     camera: { position: [ 0.10, 1.27, 1.36 ], target: [ 0.00, 0.86, -0.20 ], fov: 40 }
   - after: 0.6

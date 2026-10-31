@@ -68,7 +68,7 @@ const EASE = {
 	out: t => 1 - ( 1 - t ) * ( 1 - t ),
 };
 
-const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', person: 'Handheld camera/Person (reflections)' };
+const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', bursts: 'Handheld camera/Operator bursts', person: 'Handheld camera/Person (reflections)' };
 
 const vec = ( a, what ) => {
 

@@ -543,6 +543,7 @@ fHand.add( { on: false }, 'on' ).name( 'Handheld' ).onChange( v => handheld.setE
 fHand.add( handheld, 'intensity', 0, 3, 0.05 ).name( 'Shake' );
 fHand.add( handheld, 'walk', 0, 2, 0.05 ).name( 'Walking motion' );
 fHand.add( handheld, 'drift', 0, 2, 0.05 ).name( 'Operator drift' );
+fHand.add( handheld, 'bursts' ).name( 'Operator bursts' );
 fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
 gui.add( settings, 'mode', { 'Real-time (probe GI + GTAO)': 'realtime', 'Path traced': 'pathtrace' } ).name( 'Renderer' ).onChange( setMode );
 

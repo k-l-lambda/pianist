@@ -401,6 +401,7 @@ export class Operator {
 		this.params = params;
 		this.drift = drift;
 		this.holdDrift = holdDrift;
+		this.bursts = true;			// false: follow the goal directly (no sub-movements)
 		this.rand = mulberry32( seed );
 		const D = params.drift;
 		// the fitted angle gain (1.5) also covers the video's reframing, which a script writes out
@@ -474,9 +475,9 @@ export class Operator {
 
 		const P = this.params;
 		this.wait -= dt;
-		// the user is steering (keys, a drag): follow at once, tightly (50 ms); the bursts are for
-		// how the person moves by themselves
-		if ( steering ) {
+		// the user is steering (keys, a drag), or bursts are off: follow at once, tightly (50 ms);
+		// the bursts are for how the person moves by themselves
+		if ( steering || ! this.bursts ) {
 
 			const k = 1 - Math.exp( - dt / 0.05 );
 			this.position.lerp( gp, k );
