@@ -30,6 +30,7 @@
 
 import * as THREE from 'three';
 import { HandheldCamera, Operator } from './handheld.js';
+import { RENDER } from './rendermode.js';
 import { Person } from './person.js';
 import params from '../../CameraTrack/handheld_params.json';
 import operatorParams from '../../CameraTrack/operator_params.json';
@@ -399,7 +400,8 @@ export class HandheldMode {
 		// position matters, so turning needs no capture
 		this.probeTime += dt;
 		const movedFar = base.position.distanceTo( this.probeAt ) > 0.01;
-		if ( this.showPerson && ! pt && movedFar && this.probeTime > 1 / 30 ) {
+		// offline render: every frame (in real time at most 30/s, and only after 1 cm of travel)
+		if ( this.showPerson && ! pt && ( RENDER || ( movedFar && this.probeTime > 1 / 30 ) ) ) {
 
 			_v.set( 0, 0, - 0.3 ).applyQuaternion( base.quaternion ).add( base.position );
 			this.ctx.specularCapture( base.position, _v );

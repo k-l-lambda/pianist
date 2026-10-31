@@ -16,6 +16,7 @@
 
 // Import the parser from source: the package's browser bundle also boots the legacy
 // MIDI.js audio player as a side effect.
+import { clock } from './rendermode.js';
 import * as MIDI from '@k-l-lambda/music-widgets/source/inc/MIDI/index.ts';
 import { midiToSequence, fixOverlapNotes } from '@k-l-lambda/music-widgets/source/inc/MidiSequence.ts';
 
@@ -77,7 +78,7 @@ export class MidiFilePlayer {
 		this.playing = false;
 		this.rate = 1;
 		this._pos = 0;				// file ms when not playing
-		this._anchorWall = 0;		// performance.now() at file time _anchorFile
+		this._anchorWall = 0;		// clock.now() at file time _anchorFile (wall clock, or the render clock)
 		this._anchorFile = 0;
 		this._cursor = 0;
 		this._timer = null;
@@ -91,7 +92,7 @@ export class MidiFilePlayer {
 
 	get position() {
 
-		return this.playing ? this._anchorFile + ( performance.now() - this._anchorWall ) * this.rate : this._pos;
+		return this.playing ? this._anchorFile + ( clock.now() - this._anchorWall ) * this.rate : this._pos;
 
 	}
 
@@ -118,10 +119,10 @@ export class MidiFilePlayer {
 		this._restorePedals( this._pos );
 		this._cursor = this._indexAt( this._pos );
 		this._anchorFile = this._pos;
-		this._anchorWall = performance.now();
+		this._anchorWall = clock.now();
 		this.playing = true;
 		this._tick();
-		this._timer = setInterval( () => this._tick(), TICK );
+		this._timer = clock.setInterval( () => this._tick(), TICK );
 
 	}
 
@@ -156,7 +157,7 @@ export class MidiFilePlayer {
 		if ( this.playing ) {
 
 			this._anchorFile = this.position;
-			this._anchorWall = performance.now();
+			this._anchorWall = clock.now();
 
 		}
 
@@ -187,7 +188,7 @@ export class MidiFilePlayer {
 
 	_tick() {
 
-		const now = performance.now();
+		const now = clock.now();
 		const pos = this._anchorFile + ( now - this._anchorWall ) * this.rate;
 		const horizon = pos + LOOKAHEAD * this.rate;
 		const fluid = this._fluid;
@@ -197,7 +198,7 @@ export class MidiFilePlayer {
 			const e = this.events[ this._cursor ];
 			const delay = Math.max( 0, ( e.time - pos ) / this.rate );
 			if ( fluid ) this._sound( fluid, e.d, delay );
-			const id = setTimeout( () => {
+			const id = clock.setTimeout( () => {
 
 				this._timeouts.delete( id );
 				this._visual( e.d, ! fluid );
@@ -325,11 +326,11 @@ export class MidiFilePlayer {
 
 	_halt( { silence = true } = {} ) {
 
-		if ( this._timer ) clearInterval( this._timer );
+		if ( this._timer ) clock.clearInterval( this._timer );
 		this._timer = null;
 		const was = this.playing;
 		this.playing = false;
-		for ( const id of this._timeouts ) clearTimeout( id );
+		for ( const id of this._timeouts ) clock.clearTimeout( id );
 		this._timeouts.clear();
 
 		const fluid = this._fluid;

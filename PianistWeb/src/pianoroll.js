@@ -13,15 +13,17 @@
 // All buffers are preallocated, nothing is allocated per frame. Additive and depth-tested, not
 // depth-writing; flagged `noAO` so GTAO's depth/normal pass skips it (excludeFromGTAO).
 
+import { RENDER } from './rendermode.js';
 import * as THREE from 'three';
 import { PITCH_MIN, PITCH_MAX, WHITE_PITCH, pitchX, isBlack } from './keyboard.js';
 
-const MAX_BARS = 2048;				// voice-mode MIDI (talking piano) shows ~600-900 short bars at once
-const MAX_PARTICLES = 8192;
+const MAX_BARS = RENDER ? 16384 : 2048;	// voice-mode MIDI (talking piano) shows ~600-900 short bars at once; offline render: no cap in practice
+const MAX_PARTICLES = RENDER ? 65536 : 8192;		// offline render: room for every spark (the ring buffer overwrote the oldest)
 const PARTICLE_LIFE = 1.5;			// s
+const MAX_FLARES = RENDER ? 512 : 128;		// hit flares drawn at once
 const WHITE_TOP = 0.0222, BLACK_TOP = 0.0345;	// key-mesh local heights of the key tops
 const LIFT = 0.0025;				// roll plane offset towards the player (above the screen surface)
-const MAX_LIVE = 256;				// live (played) note bars
+const MAX_LIVE = RENDER ? 1024 : 256;		// live (played) note bars
 const POWER_FADE = 0.35;			// s, screen on / off fade
 const BOOT_FADE = 0.6;				// s, boot animation -> roll crossfade
 // roll modes: 'music' (default) and 'voice', for speech fitted to piano (talking MIDI: dense short
@@ -685,7 +687,7 @@ export class PianoRoll {
 		{
 
 			const geo = quadCorners( new THREE.InstancedBufferGeometry() );
-			this.flare = new THREE.InstancedBufferAttribute( new Float32Array( 128 * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
+			this.flare = new THREE.InstancedBufferAttribute( new Float32Array( MAX_FLARES * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			geo.setAttribute( 'aFlare', this.flare );
 			geo.instanceCount = 0;
 			this.flareUniforms = { uColor: { value: this.color }, uIntensity: { value: 1 } };
@@ -1354,7 +1356,7 @@ export class PianoRoll {
 			if ( sounding ) {
 
 				this.playing[ n.pitch ] = Math.max( this.playing[ n.pitch ], 0.35 + 0.65 * n.vel );
-				if ( nf < 128 ) {
+				if ( nf < MAX_FLARES ) {
 
 					const fresh = Math.max( 0, 1 - ( pos - n.on ) / 400 );		// brighter right after the strike
 					flare[ nf * 3 ] = n.x;

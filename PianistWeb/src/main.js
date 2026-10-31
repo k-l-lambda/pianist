@@ -22,6 +22,8 @@ import { MidiFilePlayer } from './midi.js';
 import { ScriptPlayer } from './script.js';
 import { PianoRoll, excludeFromGTAO } from './pianoroll.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
+import { RENDER, RENDER_OPTS, clock } from './rendermode.js';
+import { AudioLog, renderAudio } from './renderaudio.js';
 
 // start downloading the piano sound right away, in parallel with building the scene
 prefetchSoundfont();
@@ -50,7 +52,7 @@ const settings = {
 	style: params.get( 'style' ) ?? 'upright-oak',
 	mode: params.get( 'mode' ) ?? 'realtime',		// 'realtime' | 'pathtrace'
 	// global illumination / high quality: off favours frame rate (see applyQuality)
-	gi: params.has( 'gi' ) ? params.get( 'gi' ) !== '0' : false,
+	gi: params.has( 'gi' ) ? params.get( 'gi' ) !== '0' : RENDER,		// offline render (rendermode.js): on
 	preset: 'Sunlit afternoon',
 	exposure: Number( params.get( 'exposure' ) ?? 1.7 ),
 	toneMapping: 'AgX',
@@ -66,8 +68,8 @@ const settings = {
 // ---------------------------------------------------------------------------
 // renderer
 
-const renderer = new THREE.WebGLRenderer( { antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: params.has( 'capture' ) } );
-renderer.setPixelRatio( Math.min( window.devicePixelRatio, 2 ) );
+const renderer = new THREE.WebGLRenderer( { antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: params.has( 'capture' ) || RENDER } );
+renderer.setPixelRatio( RENDER ? RENDER_OPTS.pixelRatio : Math.min( window.devicePixelRatio, 2 ) );
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
@@ -142,6 +144,7 @@ renderer.debug.onShaderError = ( gl, program, vs, fs ) => {
 };
 const pathTracer = new PathTracer( renderer );
 const synth = new Synth();
+const audioLog = RENDER ? new AudioLog() : null;		// offline render: the sound track's events
 
 // ---------------------------------------------------------------------------
 // post-processing
@@ -235,7 +238,8 @@ let shadowsDirty = true;
 function applyQuality( relight = true ) {
 
 	const hq = settings.gi;
-	renderer.setPixelRatio( Math.min( window.devicePixelRatio, hq ? 2 : 1 ) );
+	// offline render: the render scale, whatever the quality and the display
+	renderer.setPixelRatio( RENDER ? RENDER_OPTS.pixelRatio : Math.min( window.devicePixelRatio, hq ? 2 : 1 ) );
 	composer.setPixelRatio( renderer.getPixelRatio() );
 	resize();
 	applyAO();
@@ -520,7 +524,7 @@ function setScreenPower( on ) {
 	if ( on && ! roll.power ) {
 
 		bootSound.stop();
-		synth.resume().then( () => bootSound.play() );
+		if ( RENDER ) bootSound.play(); else synth.resume().then( () => bootSound.play() );
 
 	} else if ( ! on && roll.power ) bootSound.stop();
 	roll.setPower( on );
@@ -637,7 +641,7 @@ const midiState = {
 
 async function playMidi() {
 
-	await synth.resume();
+	if ( ! RENDER ) await synth.resume();		// offline render: at once, on the render clock
 	midiPlayer.play();
 
 }
@@ -734,8 +738,10 @@ const scriptPlayer = new ScriptPlayer( {
 	// speech and other recordings, through the same output (volume slider, limiter) as the piano
 	audio: {
 		decode: data => synth.context().decodeAudioData( data ),
-		play: ( buffer, { volume = 1, from = 0 } = {} ) => {
+		play: ( buffer, { volume = 1, from = 0, name } = {} ) => {
 
+			// offline render: logged for the sound track, `playing` on the render clock
+			if ( RENDER ) return audioLog.clip( buffer, { volume, from, name } );
 			const ctx = synth.context();
 			synth.resume();
 			const src = ctx.createBufferSource(), gain = ctx.createGain();
@@ -766,15 +772,15 @@ function fadeOutMidi( seconds, { pause = false } = {} ) {
 	}
 
 	const channels = [ ...midiPlayer._channels ];
-	const t0 = performance.now();
+	const t0 = clock.now();
 	return new Promise( done => {
 
 		const step = () => {
 
-			const u = Math.min( 1, ( performance.now() - t0 ) / ( seconds * 1000 ) );
+			const u = Math.min( 1, ( clock.now() - t0 ) / ( seconds * 1000 ) );
 			const v = Math.round( 100 * ( 1 - u ) ** 2 );		// eases out (perceived loudness)
 			for ( const ch of channels ) fluid.synth.midiControl( ch, 7, v );
-			if ( u < 1 && midiPlayer.playing ) return setTimeout( step, 20 );
+			if ( u < 1 && midiPlayer.playing ) return clock.setTimeout( step, 20 );
 			end();
 			for ( const ch of channels ) fluid.synth.midiControl( ch, 7, 100 );
 			done();
@@ -885,7 +891,7 @@ function startWhenAudible() {
 
 }
 
-if ( params.has( 'script' ) ) {
+if ( params.has( 'script' ) && ! RENDER ) {
 
 	// a bare name is one of public/scripts/; a path is from the site root; or a full URL
 	const name = params.get( 'script' ), base = new URL( import.meta.env.BASE_URL, location.href );
@@ -1016,6 +1022,14 @@ function frame() {
 	const raw = timer.getDelta();
 	const dt = Math.min( raw, 0.05 );
 	if ( raw > 0 ) fps += ( 1 / raw - fps ) * 0.05;
+	frameBody( dt );
+	requestAnimationFrame( frame );
+
+}
+
+// one frame of `dt` s: in real time from frame(), in an offline render from __render.step()
+function frameBody( dt ) {
+
 	cameraMoving = false;
 	handheld.restore();
 	scriptPlayer.update( dt );
@@ -1025,8 +1039,9 @@ function frame() {
 	keysMoving = piano.keyboard.update( dt );
 	roll.update( midiPlayer, dt, camera, renderer, room.mode !== 'pathtrace' );
 	if ( piano.action?.update( dt ) ) keysMoving = true;
-	// re-render shadow maps only when something moved or the lighting changed
-	if ( keysMoving || shadowsDirty ) {
+	// re-render shadow maps only when something moved or the lighting changed (offline render:
+	// every frame)
+	if ( keysMoving || shadowsDirty || RENDER ) {
 
 		renderer.shadowMap.needsUpdate = true;
 		// the keyboard's own sun shadow map (high quality only; same angular sun size as room.js)
@@ -1067,8 +1082,6 @@ function frame() {
 
 	}
 
-	requestAnimationFrame( frame );
-
 }
 
 // ---------------------------------------------------------------------------
@@ -1085,4 +1098,80 @@ if ( params.has( 'shake' ) ) gui.controllersRecursive().find( c => c.object === 
 if ( flag( 'handheld' ) ) gui.controllersRecursive().find( c => c._name === 'Handheld' )?.setValue( true );
 if ( flag( 'screen' ) ) setScreenPower( true );
 window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, get piano() { return piano; } };
-requestAnimationFrame( frame );
+if ( RENDER ) startRender(); else requestAnimationFrame( frame );
+
+// ---------------------------------------------------------------------------
+// offline render (rendermode.js, driven by tools/render-video.mjs): no 2D UI, no animation
+// frames; `__render.step()` advances the render clock by one frame (timers due in it fire: the
+// MIDI player's scheduler, fades) and draws the scene at that time. Frame k shows time k / fps.
+
+function startRender() {
+
+	const o = RENDER_OPTS, dt = 1 / o.fps;
+	document.head.appendChild( Object.assign( document.createElement( 'style' ), {
+		textContent: '.lil-gui, #hud, #power, #start, #drop, #loading { display: none !important; }',
+	} ) );
+	let frameNo = 0;		// frames drawn so far (time of the next: frameNo / fps)
+	const step = () => {
+
+		if ( frameNo > 0 ) clock.advance( 1000 * frameNo * dt - clock.now() );		// no drift
+		frameBody( frameNo > 0 ? dt : 0 );
+		frameNo ++;
+
+	};
+	const ready = ( async () => {
+
+		await synth.load();
+		if ( ! synth.fluidReady ) throw new Error( 'soundfont piano failed to load' );
+		audioLog.attach( synth.fluid );
+		// script: a bare name is one of public/scripts/
+		const base = new URL( import.meta.env.BASE_URL, location.href );
+		const url = new URL( /[/:]/.test( o.script ) ? o.script.replace( /^\//, '' ) : 'scripts/' + o.script, base );
+		const res = await fetch( url );
+		if ( ! res.ok ) throw new Error( `${ url }: ${ res.status }` );
+		await scriptPlayer.load( await res.text(), { name: o.script, baseURL: url, midiURL: new URL( 'midi/', base ), audioURL: new URL( 'audio/', base ) } );
+		// art and textures that load on their own: the person cut-out, the boot artwork, the chime
+		const until = async ( ok, what ) => {
+
+			for ( let i = 0; ! ok(); ++ i ) {
+
+				if ( i > 600 ) throw new Error( `render: ${ what } did not load` );
+				await new Promise( r => setTimeout( r, 50 ) );
+
+			}
+
+		};
+		await until( () => handheld.person.info, 'the person cut-out' );
+		await until( () => roll.bootAnim?.ready, 'the boot artwork' );
+		await until( () => roll.bootLength !== null, 'the power-on chime' );
+		await document.fonts?.ready;
+		scriptPlayer.play();
+		// skip to `from`: the frames before it are simulated (and drawn) but not captured
+		while ( frameNo < Math.round( o.from * o.fps ) ) step();
+		return { fps: o.fps, from: o.from, to: o.to, width: renderer.domElement.width, height: renderer.domElement.height, sampleRate: synth.context().sampleRate };
+
+	} )();
+	window.__render = {
+		ready,
+		step() {
+
+			const t0 = performance.now();
+			step();
+			return { frame: frameNo - 1, time: ( frameNo - 1 ) * dt, ms: performance.now() - t0, state: scriptPlayer.playing };
+
+		},
+		audioSummary: () => audioLog.summary(),
+		// the sound track of [from, to] s as WAV, in base64 chunks (page.evaluate returns strings)
+		async audio( to = o.to ) {
+
+			const { wav, peak } = await renderAudio( audioLog, { from: o.from, to, sampleRate: synth.context().sampleRate, volume: synth.volume } );
+			const bytes = new Uint8Array( wav ), parts = [];
+			for ( let i = 0; i < bytes.length; i += 0x8000 ) parts.push( String.fromCharCode( ...bytes.subarray( i, i + 0x8000 ) ) );
+			this._wav = btoa( parts.join( '' ) );
+			return { length: this._wav.length, peak };
+
+		},
+		wavChunk: ( i, size ) => window.__render._wav.slice( i, i + size ),
+	};
+
+}

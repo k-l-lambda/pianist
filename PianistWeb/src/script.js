@@ -582,7 +582,7 @@ export class ScriptPlayer {
 			} else {
 
 				const file = this.script.audioAliases[ e.audio.play ] ?? e.audio.play;
-				const h = this.ctx.audio.play( this._audioBuffers.get( file ), { volume: e.audio.volume, from: e.audio.from } );
+				const h = this.ctx.audio.play( this._audioBuffers.get( file ), { volume: e.audio.volume, from: e.audio.from, name: file } );
 				this._sounds.push( h );
 				// finished when the speech ends (its trailing silence does not count)
 				const sp = this._audioSpeech.get( file ), from = e.audio.from || 0;
