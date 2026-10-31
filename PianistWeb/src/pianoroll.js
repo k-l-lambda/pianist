@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { PITCH_MIN, PITCH_MAX, WHITE_PITCH, pitchX, isBlack } from './keyboard.js';
 
-const MAX_BARS = 768;
+const MAX_BARS = 2048;				// voice-mode MIDI (talking piano) shows ~600-900 short bars at once
 const MAX_PARTICLES = 8192;
 const PARTICLE_LIFE = 1.5;			// s
 const WHITE_TOP = 0.0222, BLACK_TOP = 0.0345;	// key-mesh local heights of the key tops
@@ -24,6 +24,14 @@ const LIFT = 0.0025;				// roll plane offset towards the player (above the scree
 const MAX_LIVE = 256;				// live (played) note bars
 const POWER_FADE = 0.35;			// s, screen on / off fade
 const BOOT_FADE = 0.6;				// s, boot animation -> roll crossfade
+// roll modes: 'music' (default) and 'voice', for speech fitted to piano (talking MIDI: dense short
+// notes): falls 2x faster, green, no particles. Set by scene scripts only (no GUI).
+const VOICE_SPEED = 2;
+const VOICE_COLOR = '#19e07a';
+// subtitle band at the top of the screen (voice MIDI): what the piano is saying
+const SUB_BAND = 0.036;				// m, band height (the bars fade in below it while it shows)
+const SUB_TEXT = 0.30;				// text size, fraction of the band (~11 mm characters)
+const SUB_FADE_IN = 0.25, SUB_FADE_OUT = 0.45;	// s
 
 // ---- power-on animation: the loading-screen artwork (tools/build-loading-svg.mjs) drawn into a
 // canvas texture on the screen. Timing mirrors the CSS in index.html.
@@ -399,7 +407,10 @@ export class PianoRoll {
 		this.enabled = true;
 		this.particles = true;
 		this.lookahead = 2.5;			// s of file time visible above the hit line
-		this.color = new THREE.Color( '#1a5cff' );
+		this.mode = 'music';			// 'music' | 'voice' (see setMode)
+		this.musicColor = new THREE.Color( '#1a5cff' );
+		this.voiceColor = new THREE.Color( VOICE_COLOR );
+		this.color = this.musicColor.clone();		// the colour in use; uniforms share this object
 		this.liveColor = new THREE.Color( '#ff2a36' );	// notes played on the keyboard, rising
 		this.intensity = 1.0;
 		this.power = false;				// screen on/off: the roll only shows while on
@@ -449,6 +460,27 @@ export class PianoRoll {
 			this.group.add( this.liveBars );
 			this.liveNotes = [];
 			this.liveTime = 0;
+
+		}
+
+		// subtitle band (screens): normal blending, so it covers the additive bars behind it
+		{
+
+			this.subCanvas = document.createElement( 'canvas' );
+			this.subTexture = new THREE.CanvasTexture( this.subCanvas );
+			this.subTexture.colorSpace = THREE.SRGBColorSpace;
+			this.subTexture.anisotropy = 4;
+			this.subMesh = new THREE.Mesh( new THREE.PlaneGeometry( 1, 1 ).translate( 0, - 0.5, - 0.0004 ), new THREE.MeshBasicMaterial( {
+				map: this.subTexture, transparent: true, opacity: 0, depthWrite: false, toneMapped: false,
+			} ) );
+			this.subMesh.frustumCulled = false;
+			this.subMesh.renderOrder = 11;
+			this.subMesh.visible = false;
+			this.subMesh.userData.noAO = true;
+			this.group.add( this.subMesh );
+			this.subText = '';
+			this.subState = null;		// null | 'pending' (MIDI starting) | 'on' | 'out'
+			this.subLevel = 0;
 
 		}
 
@@ -563,6 +595,9 @@ export class PianoRoll {
 		this.barUniforms.uHeight.value = R.height;
 		this.screen = !! R.screen;
 		this.bootMesh.scale.set( R.width ?? 1.3, R.height, 1 );
+		this.subMesh.position.y = R.height;
+		this.subMesh.scale.set( R.width ?? 1.3, SUB_BAND, 1 );
+		this._drawSubtitle();
 		this.bootAnim.resize( ( R.width ?? 1.3 ) / R.height );
 		this.bootT = - 1;
 		this.bootMesh.visible = false;
@@ -653,10 +688,117 @@ export class PianoRoll {
 
 	}
 
+	/**
+	 * Show `text` at the top of the screen while the next MIDI file plays (fades out after it
+	 * ends); '' / null clears it at once.
+	 */
+	setSubtitle( text ) {
+
+		this.subText = ( text ?? '' ).trim();
+		this.subState = this.subText ? 'pending' : null;
+		this.subWait = 0;
+		if ( ! this.subText ) this.subLevel = 0;
+		this._drawSubtitle();
+
+	}
+
+	_drawSubtitle() {
+
+		const R = this.piano?.roll, c = this.subCanvas, g = c.getContext( '2d' );
+		const aspect = ( R?.width ?? 1.3 ) / SUB_BAND;
+		const w = 4096, h = Math.max( 32, Math.round( w / aspect ) );
+		if ( c.width !== w || c.height !== h ) {
+
+			c.width = w;
+			c.height = h;
+
+		}
+
+		g.clearRect( 0, 0, w, h );
+		// the screen's black behind the text, fading out downwards into the roll
+		const bg = g.createLinearGradient( 0, 0, 0, h );
+		bg.addColorStop( 0, 'rgba(0,0,0,0.92)' );
+		bg.addColorStop( 0.75, 'rgba(0,0,0,0.85)' );
+		bg.addColorStop( 1, 'rgba(0,0,0,0)' );
+		g.fillStyle = bg;
+		g.fillRect( 0, 0, w, h );
+		if ( this.subText ) {
+
+			const size = Math.round( h * SUB_TEXT );
+			g.font = `500 ${ size }px "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif`;
+			g.textAlign = 'center';
+			g.textBaseline = 'middle';
+			// one line, or two balanced lines (broken after punctuation near the middle)
+			let lines = [ this.subText ];
+			if ( g.measureText( this.subText ).width > w * 0.8 ) {
+
+				const t = this.subText, mid = t.length / 2;
+				let cut = Math.round( mid ), best = Infinity;
+				for ( let i = 1; i < t.length; ++ i ) if ( /[，。！？、；：,.!?;:]/.test( t[ i - 1 ] ) && Math.abs( i - mid ) < best ) best = Math.abs( i - ( cut = i ) );
+				lines = [ t.slice( 0, cut ), t.slice( cut ) ];
+
+			}
+
+			const lh = size * 1.3, y0 = h * 0.42 - ( lines.length - 1 ) * lh / 2;
+			g.shadowColor = 'rgba(25,224,122,0.45)';
+			g.shadowBlur = size * 0.35;
+			g.fillStyle = '#e8fff2';
+			lines.forEach( ( line, i ) => g.fillText( line, w / 2, y0 + i * lh ) );
+			g.shadowBlur = 0;
+
+		}
+
+		this.subTexture.needsUpdate = true;
+
+	}
+
+	_updateSubtitle( player, dt, level ) {
+
+		if ( this.subState === 'pending' ) {
+
+			if ( player.playing ) this.subState = 'on';
+			else if ( ( this.subWait += dt ) > 2 ) this.subState = 'out';		// never started
+
+		} else if ( this.subState === 'on' && ! player.playing ) this.subState = 'out';
+		const up = this.subState === 'pending' || this.subState === 'on';
+		this.subLevel = up ? Math.min( 1, this.subLevel + dt / SUB_FADE_IN ) : Math.max( 0, this.subLevel - dt / SUB_FADE_OUT );
+		if ( this.subState === 'out' && this.subLevel === 0 ) this.subState = null;
+		this.subMesh.visible = this.screen && this.subLevel > 0;
+		this.subMesh.material.opacity = this.subLevel * level;
+		// the bars fade in below the band while it shows
+		this.barUniforms.uHeight.value = this.height - ( SUB_BAND + 0.004 ) * THREE.MathUtils.smoothstep( this.subLevel, 0, 1 );
+
+	}
+
+	/** The music-mode colour (GUI). */
 	setColor( c ) {
 
-		this.color.set( c );
+		this.musicColor.set( c );
+		this._applyColor();
+
+	}
+
+	/**
+	 * 'music' (default) or 'voice': speech played by the piano (dense short notes) falls 2x faster,
+	 * green, without particles. Live (played) bars are unchanged.
+	 */
+	setMode( mode ) {
+
+		this.mode = mode === 'voice' ? 'voice' : 'music';
+		this._applyColor();
+
+	}
+
+	_applyColor() {
+
+		this.color.copy( this.mode === 'voice' ? this.voiceColor : this.musicColor );
 		for ( const g of this.keyGlows.values() ) g.material.color.copy( this.color );
+
+	}
+
+	get _speedFactor() {
+
+		return this.mode === 'voice' ? VOICE_SPEED : 1;
 
 	}
 
@@ -709,6 +851,7 @@ export class PianoRoll {
 		const level = this.powerLevel * rollLevel;
 		this.barUniforms.uIntensity.value = this.flareUniforms.uIntensity.value = this.partUniforms.uIntensity.value = this.liveUniforms.uIntensity.value = level;
 		this.guides.material.opacity = 0.035 * level;
+		this._updateSubtitle( player, dt, level );
 		this._updateLive();
 
 		this.time += dt;
@@ -723,7 +866,8 @@ export class PianoRoll {
 		}
 
 		const pos = player.position;
-		const speed = this.height / ( this.lookahead * 1000 );		// plane metres per file ms
+		const lookahead = this.lookahead / this._speedFactor;			// s of file time on the plane
+		const speed = this.height / ( lookahead * 1000 );		// plane metres per file ms
 		const notes = this.notes;
 
 		// first note that may still be visible: on >= pos - maxDur
@@ -739,8 +883,8 @@ export class PianoRoll {
 		this.playing.fill( 0 );
 		const rect = this.rect.array, info = this.info.array, flare = this.flare.array;
 		let nb = 0, nf = 0;
-		const horizon = pos + this.lookahead * 1000;
-		const emit = this.particles && player.playing;
+		const horizon = pos + lookahead * 1000;
+		const emit = this.particles && this.mode !== 'voice' && player.playing;
 		const burstFrom = this.prevPos < pos && pos - this.prevPos < 250 ? this.prevPos : pos;
 		for ( let i = lo; i < notes.length; ++ i ) {
 

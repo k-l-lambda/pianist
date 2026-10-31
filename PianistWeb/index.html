@@ -42,6 +42,12 @@
 		@media ( prefers-reduced-motion: reduce ) { #loading .lane i, #loading .base, #loading .played b { animation: none; } }
 		#drop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(10,12,14,.72); border: 3px dashed rgba(255,255,255,.55); box-sizing: border-box; font-size: 20px; letter-spacing: .04em; pointer-events: none; z-index: 10; }
 		#drop.show { display: grid; }
+		/* a script opened from the URL waits here for a click: browsers start audio only after one */
+		#start { position: fixed; inset: 0; display: none; place-items: center; background: rgba(6,8,10,.55); z-index: 11; }
+		#start.show { display: grid; }
+		#start button { display: flex; align-items: center; gap: 12px; padding: 14px 26px; border-radius: 28px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.55); color: #f2efe8; font: 500 17px/1.2 system-ui, sans-serif; letter-spacing: .03em; cursor: pointer; }
+		#start button:hover { border-color: rgba(255,255,255,.7); }
+		#start svg { width: 18px; height: 18px; fill: currentColor; }
 	</style>
 </head>
 <body>
@@ -117,6 +123,7 @@
 	<div id="hud"></div>
 	<button id="power" type="button" title="Screen power (`)" aria-label="Screen power" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M6.6 7.1a7.5 7.5 0 1 0 10.8 0"/></svg></button>
 	<div id="drop">Drop a MIDI file to play it</div>
+	<div id="start"><button type="button"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg><span>Play</span></button></div>
 	<script type="module" src="/src/main.js"></script>
 </body>
 </html>

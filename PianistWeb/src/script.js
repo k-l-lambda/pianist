@@ -3,12 +3,13 @@
 // (together with the MIDI files it names) or loaded from public/scripts/ (?script=name.yaml).
 //
 //   title: Evening etude
-//   midi:                          # aliases -> files: picked alongside, else a bare name from the
-//                                  # site's midi/ folder, a path relative to the script
+//   midi:                          # aliases -> files: picked alongside, else from the site's midi/
+//                                  # folder (sub-paths too: yin/01.mid); ./ or ../ = from the script
 //     etude: beyer05.mid
 //   timeline:
 //     - at: 0                      # seconds, or "1:05.5"; `after: 2` (or at: +2) = 2 s after
-//                                  # the previous event
+//                                  # the previous event started; `gap: 0.5` = 0.5 s after it
+//                                  # *finished* (its MIDI / audio / boot / camera move / tween)
 //       set:                       # GUI controls by "Folder/Label" (or label / property name);
 //         Lighting/Preset: Golden hour    # numbers can tween: give `duration` (and `ease`)
 //       camera: { position: [ 0.6, 1.3, 1.6 ], target: [ 0, 0.9, -0.2 ], fov: 36 }   # a cut
@@ -25,9 +26,21 @@
 //     - at: 3
 //       midi: etude                # alias or file; or { play: etude, from: 0, tempo: 1 },
 //                                  # or stop | pause | resume
+//     - at: 6
+//       midi: { play: yin/01-assistant.mid, roll: voice, subtitle: 下午好 }   # roll mode for
+//                                  # this file: music (default) | voice (speech played by the
+//                                  # piano: falls 2x faster, green, no particles); `subtitle`
+//                                  # shows at the top of the screen while it plays
+//     - at: 9
+//       midi: { stop: 2 }          # fade the file out over 2 s, then stop
+//     - gap: 0.4
+//       audio: user/hello.opus     # an audio file (site's audio/ folder, ./ = from the script);
+//                                  # or { play: name, volume: 0.8, from: 0 } | stop
+//   audio:                         # optional aliases, like midi:
 //
-// Several actions may share one event. The script ends after its last action has finished and
-// the MIDI file (if one is playing) has ended; `loop: true` starts it over.
+// Several actions may share one event; it has finished when all of them have (`screen: on` when
+// the power-on animation and chime are done). The script ends when every event has fired and
+// finished; `loop: true` starts it over.
 // Camera moves drive the orbit target and position before the controls update, so the handheld
 // mode, when on, adds its shake and walking on top.
 
@@ -68,8 +81,11 @@ function parseTime( v, prev ) {
 export class ScriptPlayer {
 
 	/**
-	 * @param ctx { camera, controls, gui, setScreenPower(on), midi: { load(buffer, name), play(),
-	 *              pause(), resume(), stop(), seek(s), playing, duration (ms), position (ms) } }
+	 * @param ctx { camera, controls, gui, setScreenPower(on), screenBusy() (power-on / -off still
+	 *              animating), setRollMode('music' | 'voice'), setSubtitle(text), midi: { load(buffer, name), play(),
+	 *              pause(), resume(), stop(), fadeOut(s) -> Promise, seek(s), playing },
+	 *              audio: { decode(arrayBuffer) -> Promise<AudioBuffer>, play(buffer, { volume, from })
+	 *              -> { stop(), playing } } }
 	 */
 	constructor( ctx ) {
 
@@ -79,6 +95,8 @@ export class ScriptPlayer {
 		this.time = 0;
 		this.onState = null;		// ( text ) => void, for the GUI
 		this._midiBuffers = new Map();
+		this._audioBuffers = new Map();
+		this._sounds = [];			// playing audio handles
 
 	}
 
@@ -93,22 +111,31 @@ export class ScriptPlayer {
 	 * bare name is fetched from `midiURL` (the site's midi/ folder), a path relative to `baseURL`
 	 * (where the script came from).
 	 */
-	async load( text, { name = 'script', files = [], baseURL = null, midiURL = null } = {} ) {
+	async load( text, { name = 'script', files = [], baseURL = null, midiURL = null, audioURL = null } = {} ) {
 
 		// YAML reads an unquoted `at: +2` as the number 2: keep the sign as a string
 		const doc = parse( text.replace( /^(\s*(?:-\s+)?at:\s*)\+(\d[\d.]*)\s*$/gm, '$1"+$2"' ) );
 		if ( ! doc || ! Array.isArray( doc.timeline ) ) throw new Error( 'a script needs a `timeline:` list' );
-		const aliases = doc.midi ?? {};
+		const aliases = doc.midi ?? {}, audioAliases = doc.audio ?? {};
 		const events = [];
+		// with `gap:` (relative to the previous event's end) events run in file order and are timed
+		// as they go; without it every time is known up front and events are sorted by it
+		const chained = doc.timeline.some( e => e.gap !== undefined );
 		let t = 0;
 		for ( const [ i, e ] of doc.timeline.entries() ) {
 
-			t = e.after !== undefined ? t + Number( e.after ) : parseTime( e.at, t );
-			events.push( this._compile( e, t, i ) );
+			let when;
+			if ( e.gap !== undefined ) when = { gap: Number( e.gap ) };
+			else if ( e.after !== undefined ) when = { after: Number( e.after ) };
+			else if ( e.at !== undefined && ! /^\s*\+/.test( String( e.at ) ) ) when = { at: parseTime( e.at, 0 ) };
+			else when = { after: e.at === undefined ? 0 : parseTime( e.at, 0 ) };
+			t = when.at ?? t + ( when.after ?? 0 );
+			if ( Object.values( when ).some( v => ! Number.isFinite( v ) ) ) throw new Error( `timeline[${ i }]: bad at / after / gap` );
+			events.push( Object.assign( this._compile( e, t, i ), { when } ) );
 
 		}
 
-		events.sort( ( a, b ) => a.at - b.at );
+		if ( ! chained ) events.sort( ( a, b ) => a.at - b.at );
 
 		// MIDI: fetch / read everything up front
 		const wanted = new Set( events.filter( e => e.midi?.play ).map( e => aliases[ e.midi.play ] ?? e.midi.play ) );
@@ -118,21 +145,53 @@ export class ScriptPlayer {
 
 			const base = file.split( /[\\/]/ ).pop().toLowerCase();
 			let buffer;
-			const from = /[\\/:]/.test( file ) ? baseURL : midiURL ?? baseURL;
+			// names and sub-paths (yin/01.mid) are in the site's midi/ folder; ./ or ../ paths are
+			// relative to the script; full URLs as they are
+			const from = /^\.\.?\//.test( file ) || /^[a-z]+:/i.test( file ) ? baseURL : midiURL ?? baseURL;
 			if ( byName.has( base ) ) buffer = await byName.get( base ).arrayBuffer();
 			else if ( from ) {
 
 				const res = await fetch( new URL( file, from ) );
 				if ( ! res.ok ) throw new Error( `MIDI "${ file }": ${ res.status }` );
 				buffer = await res.arrayBuffer();
+				// a missing file can come back as the site's HTML page (dev server / SPA fallback)
+				if ( new TextDecoder().decode( new Uint8Array( buffer, 0, 4 ) ) !== 'MThd' ) throw new Error( `MIDI "${ file }": not a MIDI file (${ res.url })` );
 
 			} else throw new Error( `MIDI "${ file }" not found: pick it together with the script` );
 			this._midiBuffers.set( file, buffer );
 
 		}
 
+		// audio: fetch and decode everything up front
+		this._audioBuffers.clear();
+		for ( const file of new Set( events.filter( e => e.audio?.play ).map( e => audioAliases[ e.audio.play ] ?? e.audio.play ) ) ) {
+
+			const base = file.split( /[\\/]/ ).pop().toLowerCase();
+			let data;
+			const from = /^\.\.?\//.test( file ) || /^[a-z]+:/i.test( file ) ? baseURL : audioURL ?? baseURL;
+			if ( byName.has( base ) ) data = await byName.get( base ).arrayBuffer();
+			else if ( from ) {
+
+				const res = await fetch( new URL( file, from ) );
+				if ( ! res.ok ) throw new Error( `audio "${ file }": ${ res.status }` );
+				if ( /text\/html/.test( res.headers.get( 'content-type' ) ?? '' ) ) throw new Error( `audio "${ file }": not found (${ res.url })` );
+				data = await res.arrayBuffer();
+
+			} else throw new Error( `audio "${ file }" not found: pick it together with the script` );
+			try {
+
+				this._audioBuffers.set( file, await this.ctx.audio.decode( data ) );
+
+			} catch ( err ) {
+
+				throw new Error( `audio "${ file }": cannot decode (${ err.message })` );
+
+			}
+
+		}
+
 		this.stop();
-		this.script = { title: doc.title ?? name, loop: !! doc.loop, aliases, events };
+		this.script = { title: doc.title ?? name, loop: !! doc.loop, aliases, audioAliases, events, chained };
 		this._state( `${ events.length } events` );
 		return this.script;
 
@@ -169,8 +228,20 @@ export class ScriptPlayer {
 
 			const m = e.midi;
 			if ( typeof m === 'string' && [ 'stop', 'pause', 'resume' ].includes( m ) ) out.midi = { action: m };
+			else if ( typeof m === 'object' && m.stop !== undefined ) out.midi = { action: 'stop', fade: Math.max( 0, Number( m.stop === true ? 0 : m.stop ) || 0 ) };
 			else if ( typeof m === 'string' ) out.midi = { play: m, from: 0 };
-			else out.midi = { play: m.play, from: Number( m.from ?? 0 ), tempo: m.tempo };
+			else out.midi = { play: m.play, from: Number( m.from ?? 0 ), tempo: m.tempo, roll: m.roll, subtitle: m.subtitle };
+			if ( out.midi.roll !== undefined && ! [ 'music', 'voice' ].includes( out.midi.roll ) ) throw new Error( `${ where }.midi.roll: music | voice` );
+
+		}
+
+		if ( e.audio !== undefined ) {
+
+			const a = e.audio;
+			if ( a === 'stop' ) out.audio = { action: 'stop' };
+			else if ( typeof a === 'string' ) out.audio = { play: a, volume: 1, from: 0 };
+			else out.audio = { play: a.play, volume: Number( a.volume ?? 1 ), from: Number( a.from ?? 0 ) };
+			if ( out.audio.play !== undefined && ! out.audio.play ) throw new Error( `${ where }.audio: give a file` );
 
 		}
 
@@ -202,6 +273,9 @@ export class ScriptPlayer {
 		this._moves = [];			// running camera moves / parameter tweens
 		this._tweens = [];
 		this._midiStarted = false;
+		this._prevStart = 0;
+		this._prevBusy = () => false;
+		this._busy = [];			// busy() of every fired event
 		this._state( 'playing' );
 
 	}
@@ -211,6 +285,10 @@ export class ScriptPlayer {
 		if ( ! this.playing ) return;
 		this.playing = false;
 		if ( this._midiStarted ) this.ctx.midi.stop();
+		for ( const h of this._sounds ) h.stop();
+		this._sounds = [];
+		this.ctx.setRollMode?.( 'music' );
+		this.ctx.setSubtitle?.( '' );
 		this._moves = [];
 		this._tweens = [];
 		this._state( 'stopped' );
@@ -223,7 +301,30 @@ export class ScriptPlayer {
 		if ( ! this.playing ) return;
 		this.time += dt;
 		const { events } = this.script;
-		while ( this._next < events.length && events[ this._next ].at <= this.time ) this._fire( events[ this._next ++ ] );
+		for ( ; ; ) {
+
+			const e = events[ this._next ];
+			if ( ! e ) break;
+			const w = e.when;
+			if ( ! this.script.chained ) {
+
+				if ( e.at > this.time ) break;
+
+			} else if ( w.gap !== undefined ) {
+
+				// the previous event has to finish; then wait `gap` more
+				if ( this._prevBusy() ) break;
+				if ( this._prevEnd === undefined ) this._prevEnd = this.time;
+				if ( this.time < this._prevEnd + w.gap ) break;
+
+			} else if ( this.time < ( w.at ?? this._prevStart + w.after ) ) break;
+			++ this._next;
+			this._prevStart = this.time;
+			this._prevEnd = undefined;
+			this._prevBusy = this._fire( e );
+			this._busy.push( this._prevBusy );
+
+		}
 
 		// camera move: the newest running one wins
 		this._moves = this._moves.filter( m => this.time < m.t0 + m.duration + dt );
@@ -253,14 +354,16 @@ export class ScriptPlayer {
 
 		this._tweens = this._tweens.filter( tw => ! tw.done );
 
-		// end: everything fired and finished, and the MIDI file over
-		const last = events.reduce( ( a, e ) => Math.max( a, e.end ), 0 );
-		if ( this._next >= events.length && this.time > last && ! this._moves.length && ! this._tweens.length && ! ( this._midiStarted && this.ctx.midi.playing ) ) {
+		this._sounds = this._sounds.filter( h => h.playing );
+
+		// end: everything fired and finished
+		if ( this._next >= events.length && ! this._moves.length && ! this._tweens.length && ! this._busy.some( b => b() ) ) {
 
 			if ( this.script.loop ) this.play();
 			else {
 
 				this.playing = false;
+				this.ctx.setRollMode?.( 'music' );
 				this._state( 'finished' );
 
 			}
@@ -269,9 +372,16 @@ export class ScriptPlayer {
 
 	}
 
+	/** Run an event's actions; returns busy(): true until all of them have finished. */
 	_fire( e ) {
 
-		if ( e.set ) this._set( e.set, e.setDuration, e.setEase );
+		const t0 = this.time, parts = [];
+		if ( e.set ) {
+
+			this._set( e.set, e.setDuration, e.setEase );
+			if ( e.setDuration > 0 ) parts.push( () => this.time < t0 + e.setDuration );
+
+		}
 		if ( e.camera ) {
 
 			const c = e.camera, { camera, controls } = this.ctx;
@@ -287,8 +397,9 @@ export class ScriptPlayer {
 				let f = start.fov;
 				for ( const k of keys ) fovs.push( f = k.fov ?? f );
 				const curve = pts => pts.length > 2 ? new THREE.CatmullRomCurve3( pts, false, 'centripetal' ) : new THREE.LineCurve3( pts[ 0 ], pts[ 1 ] );
+				parts.push( () => this.time < t0 + c.duration );
 				this._moves.push( {
-					t0: e.at, duration: c.duration, ease: c.ease,
+					t0, duration: c.duration, ease: c.ease,
 					position: curve( keys.map( k => k.position ) ),
 					target: curve( keys.map( k => k.target ) ),
 					fov: u => {
@@ -308,24 +419,64 @@ export class ScriptPlayer {
 
 		}
 
-		if ( e.screen !== undefined ) this.ctx.setScreenPower( e.screen );
+		if ( e.screen !== undefined ) {
+
+			this.ctx.setScreenPower( e.screen );
+			// a frame for the animation / chime to start; at most 10 s (the roll is hidden while path tracing)
+			if ( this.ctx.screenBusy ) parts.push( () => this.time < t0 + 0.1 || ( this.time < t0 + 10 && this.ctx.screenBusy() ) );
+
+		}
+
 		if ( e.midi ) {
 
 			const m = e.midi, midi = this.ctx.midi;
-			if ( m.action === 'stop' ) midi.stop();
-			else if ( m.action === 'pause' ) midi.pause();
+			if ( m.action === 'stop' ) {
+
+				if ( m.fade > 0 && midi.fadeOut ) {
+
+					let fading = true;
+					midi.fadeOut( m.fade ).finally( () => fading = false );
+					parts.push( () => fading );
+
+				} else midi.stop();
+
+			} else if ( m.action === 'pause' ) midi.pause();
 			else if ( m.action === 'resume' ) midi.resume();
 			else {
 
 				const file = this.script.aliases[ m.play ] ?? m.play;
+				this.ctx.setRollMode?.( m.roll ?? 'music' );
+				this.ctx.setSubtitle?.( m.subtitle ?? '' );
 				midi.load( this._midiBuffers.get( file ).slice( 0 ), file.split( /[\\/]/ ).pop() );
 				if ( m.from ) midi.seek( m.from * 1000 );
-				midi.play();
+				let starting = true;
+				Promise.resolve( midi.play() ).finally( () => starting = false );
 				this._midiStarted = true;
+				parts.push( () => starting || midi.playing );
 
 			}
 
 		}
+
+		if ( e.audio ) {
+
+			if ( e.audio.action === 'stop' ) {
+
+				for ( const h of this._sounds ) h.stop();
+				this._sounds = [];
+
+			} else {
+
+				const file = this.script.audioAliases[ e.audio.play ] ?? e.audio.play;
+				const h = this.ctx.audio.play( this._audioBuffers.get( file ), { volume: e.audio.volume, from: e.audio.from } );
+				this._sounds.push( h );
+				parts.push( () => h.playing );
+
+			}
+
+		}
+
+		return () => parts.some( p => p() );
 
 	}
 

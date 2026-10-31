@@ -1,0 +1,9 @@
+title: voice roll mode test
+timeline:
+  - at: 0
+    screen: on
+    camera: { position: [ 0, 1.2, 0.95 ], target: [ 0, 0.86, -0.22 ], fov: 36 }
+  - at: 0.2
+    midi: { play: yin/01-assistant.mid, roll: voice }
+  - at: 8
+    midi: beyer05.mid

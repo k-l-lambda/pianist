@@ -657,6 +657,8 @@ async function loadMidiFile( file ) {
 	if ( ! file ) return;
 	try {
 
+		roll.setMode( 'music' );
+		roll.setSubtitle( '' );
 		loadMidiBuffer( await file.arrayBuffer(), file.name );
 		await playMidi();
 
@@ -697,7 +699,7 @@ const positionCtrl = fMidi.add( midiState, 'position', 0, 1, 0.1 ).name( 'Positi
 	} );
 fMidi.add( midiState, 'tempo', 0.25, 2, 0.05 ).name( 'Tempo' ).onChange( v => midiPlayer.setRate( v ) );
 fMidi.add( roll, 'enabled' ).name( 'Piano roll' );
-fMidi.addColor( { color: '#' + roll.color.getHexString() }, 'color' ).name( 'Roll colour' ).onChange( v => roll.setColor( v ) );
+fMidi.addColor( { color: '#' + roll.musicColor.getHexString() }, 'color' ).name( 'Roll colour' ).onChange( v => roll.setColor( v ) );
 fMidi.add( roll, 'lookahead', 0.8, 6, 0.1 ).name( 'Look-ahead (s)' );
 fMidi.add( roll, 'particles' ).name( 'Particles' );
 
@@ -708,16 +710,73 @@ fMidi.add( roll, 'particles' ).name( 'Particles' );
 
 const scriptPlayer = new ScriptPlayer( {
 	camera, controls, gui, setScreenPower,
+	setRollMode: mode => roll.setMode( mode ),
+	setSubtitle: text => roll.setSubtitle( text ),
+	// power-on: the boot animation and the chime; power-off: the fade
+	screenBusy: () => roll.bootT >= 0 || bootSound.playing || ( roll.power ? roll.powerLevel < 1 : roll.powerLevel > 0 ),
 	midi: {
 		load: loadMidiBuffer,
 		play: () => playMidi(),
 		pause: () => midiPlayer.pause(),
 		resume: () => playMidi(),
 		stop: () => midiPlayer.stop(),
+		fadeOut: fadeOutMidi,
 		seek: ms => midiPlayer.seek( ms ),
 		get playing() { return midiPlayer.playing; },
 	},
+	// speech and other recordings, through the same output (volume slider, limiter) as the piano
+	audio: {
+		decode: data => synth.context().decodeAudioData( data ),
+		play: ( buffer, { volume = 1, from = 0 } = {} ) => {
+
+			const ctx = synth.context();
+			synth.resume();
+			const src = ctx.createBufferSource(), gain = ctx.createGain();
+			src.buffer = buffer;
+			gain.gain.value = volume;
+			src.connect( gain ).connect( synth.master );
+			const h = { playing: true, stop: () => { try { src.stop(); } catch { /* not started */ } h.playing = false; } };
+			src.onended = () => { h.playing = false; gain.disconnect(); };
+			src.start( 0, Math.max( 0, from ) );
+			return h;
+
+		},
+	},
 } );
+
+// fade the MIDI file out with channel volume (CC7, every file channel), then stop. The next
+// load resets the channels to volume 100. The built-in synth (before the soundfont is in)
+// stops at once.
+function fadeOutMidi( seconds ) {
+
+	const fluid = synth.fluidReady ? synth.fluid : null;
+	if ( ! fluid || ! midiPlayer.playing || ! ( seconds > 0 ) ) {
+
+		midiPlayer.stop();
+		return Promise.resolve();
+
+	}
+
+	const channels = [ ...midiPlayer._channels ];
+	const t0 = performance.now();
+	return new Promise( done => {
+
+		const step = () => {
+
+			const u = Math.min( 1, ( performance.now() - t0 ) / ( seconds * 1000 ) );
+			const v = Math.round( 100 * ( 1 - u ) ** 2 );		// eases out (perceived loudness)
+			for ( const ch of channels ) fluid.synth.midiControl( ch, 7, v );
+			if ( u < 1 && midiPlayer.playing ) return setTimeout( step, 40 );
+			midiPlayer.stop();
+			for ( const ch of channels ) fluid.synth.midiControl( ch, 7, 100 );
+			done();
+
+		};
+		step();
+
+	} );
+
+}
 const scriptState = {
 	file: '(none)',
 	state: '',
@@ -741,7 +800,7 @@ async function loadScriptFile( file, others = [] ) {
 
 	try {
 
-		await scriptPlayer.load( await file.text(), { name: file.name, files: others.filter( f => f !== file ), midiURL: new URL( 'midi/', new URL( import.meta.env.BASE_URL, location.href ) ) } );
+		await scriptPlayer.load( await file.text(), { name: file.name, files: others.filter( f => f !== file ), midiURL: new URL( 'midi/', new URL( import.meta.env.BASE_URL, location.href ) ), audioURL: new URL( 'audio/', new URL( import.meta.env.BASE_URL, location.href ) ) } );
 		scriptState.file = scriptPlayer.title;
 		await synth.resume();
 		scriptPlayer.play();
@@ -758,7 +817,7 @@ async function loadScriptFile( file, others = [] ) {
 
 }
 
-const scriptInput = Object.assign( document.createElement( 'input' ), { type: 'file', multiple: true, accept: '.yaml,.yml,.mid,.midi' } );
+const scriptInput = Object.assign( document.createElement( 'input' ), { type: 'file', multiple: true, accept: '.yaml,.yml,.mid,.midi,.opus,.ogg,.mp3,.m4a,.wav' } );
 scriptInput.style.display = 'none';
 document.body.appendChild( scriptInput );
 scriptInput.addEventListener( 'change', () => {
@@ -776,6 +835,48 @@ fScript.add( scriptState, 'file' ).name( 'Script' ).disable();
 fScript.add( scriptState, 'toggle' ).name( 'Play / stop' );
 fScript.add( scriptState, 'state' ).name( 'State' ).disable();
 
+// A script opened from the URL plays as soon as audio can start. Browsers allow that only after a
+// click on the page (resume() then never settles), so after a moment a Play button asks for one.
+function startWhenAudible() {
+
+	const ctx = synth.context();
+	const overlay = document.getElementById( 'start' );
+	const go = () => {
+
+		overlay.classList.remove( 'show' );
+		scriptPlayer.play();
+
+	};
+	if ( ctx.state === 'running' ) return go();
+	let started = false;
+	ctx.resume().then( () => {
+
+		if ( ! started ) {
+
+			started = true;
+			go();
+
+		}
+
+	} );
+	setTimeout( () => {
+
+		if ( started ) return;
+		overlay.querySelector( 'span' ).textContent = scriptPlayer.title ? `Play · ${ scriptPlayer.title }` : 'Play';
+		overlay.classList.add( 'show' );
+		overlay.querySelector( 'button' ).onclick = () => {
+
+			if ( started ) return;
+			started = true;
+			synth.resume();		// inside the click: allowed now
+			go();
+
+		};
+
+	}, 300 );
+
+}
+
 if ( params.has( 'script' ) ) {
 
 	// a bare name is one of public/scripts/; a path is from the site root; or a full URL
@@ -788,10 +889,10 @@ if ( params.has( 'script' ) ) {
 
 	} ).then( async text => {
 
-		await scriptPlayer.load( text, { name, baseURL: url, midiURL: new URL( 'midi/', base ) } );
+		await scriptPlayer.load( text, { name, baseURL: url, midiURL: new URL( 'midi/', base ), audioURL: new URL( 'audio/', base ) } );
 		scriptState.file = scriptPlayer.title;
-		await synth.resume();
-		scriptPlayer.play();
+		fScript.controllersRecursive().forEach( c => c.updateDisplay() );
+		startWhenAudible();
 
 	} ).catch( err => {
 
