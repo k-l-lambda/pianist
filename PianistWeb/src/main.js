@@ -744,15 +744,16 @@ const scriptPlayer = new ScriptPlayer( {
 	},
 } );
 
-// fade the MIDI file out with channel volume (CC7, every file channel), then stop. The next
-// load resets the channels to volume 100. The built-in synth (before the soundfont is in)
-// stops at once.
-function fadeOutMidi( seconds ) {
+// fade the MIDI file out with channel volume (CC7, every file channel), then stop (or pause:
+// the roll stays where it was). Volume goes back to 100 once the sound is off. The built-in
+// synth (before the soundfont is in) stops at once.
+function fadeOutMidi( seconds, { pause = false } = {} ) {
 
 	const fluid = synth.fluidReady ? synth.fluid : null;
+	const end = () => pause ? midiPlayer.pause() : midiPlayer.stop();
 	if ( ! fluid || ! midiPlayer.playing || ! ( seconds > 0 ) ) {
 
-		midiPlayer.stop();
+		end();
 		return Promise.resolve();
 
 	}
@@ -766,8 +767,8 @@ function fadeOutMidi( seconds ) {
 			const u = Math.min( 1, ( performance.now() - t0 ) / ( seconds * 1000 ) );
 			const v = Math.round( 100 * ( 1 - u ) ** 2 );		// eases out (perceived loudness)
 			for ( const ch of channels ) fluid.synth.midiControl( ch, 7, v );
-			if ( u < 1 && midiPlayer.playing ) return setTimeout( step, 40 );
-			midiPlayer.stop();
+			if ( u < 1 && midiPlayer.playing ) return setTimeout( step, 20 );
+			end();
 			for ( const ch of channels ) fluid.synth.midiControl( ch, 7, 100 );
 			done();
 

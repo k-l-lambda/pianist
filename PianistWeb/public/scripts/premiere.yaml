@@ -6,7 +6,12 @@
 # The assistant's lines show as subtitles at the top of the screen. User speech volumes are set so
 # it sits a little above the piano (measured on the output: speech ~0.025 RMS, piano 0.013-0.022).
 #
-# Turns are chained with `gap:` (seconds after the previous event has finished). Effective pauses
+# The user cuts in on the first two pieces: ~12 s into the nocturne and ~9 s into the "la la la"
+# song the next line starts over the music; 0.6 s later the piano stops (a short 0.15 s fade) and
+# the roll stays frozen until the assistant answers.
+#
+# Turns are chained with `gap:` (seconds after the previous line, and anything timed off it, has
+# finished). Effective pauses
 # also include each clip's own lead-in (the `from:` trims most of it) and the MIDI player's 0.5 s
 # release tail, so gaps here are a little shorter than the pauses heard.
 # Load: #?script=premiere.yaml
@@ -28,7 +33,7 @@ timeline:
 
   # Assistant: 下午好，我是智慧钢琴助手小音，今天想听点什么？
   - gap: 0.3
-    midi: { play: yin/01-assistant.mid, roll: voice, from: 0.35, subtitle: 下午好，我是智慧钢琴助手小音，今天想听点什么？ }
+    midi: { play: yin/premiere-01.mid, roll: voice, from: 0.35, subtitle: 下午好，我是智慧钢琴助手小音，今天想听点什么？ }
 
   # User: 哟呵，这钢琴成精了，嘿。那你……随便给我放个音乐吧。
   - gap: 0.3
@@ -36,51 +41,53 @@ timeline:
 
   # Assistant: 好的，请欣赏肖邦夜曲，九号作品之一。
   - gap: 0.35
-    midi: { play: yin/03-assistant.mid, roll: voice, from: 0.3, subtitle: 好的，请欣赏肖邦夜曲，九号作品之一。 }
+    midi: { play: yin/premiere-03.mid, roll: voice, from: 0.3, subtitle: 好的，请欣赏肖邦夜曲，九号作品之一。 }
 
-  # [Music 1] Chopin, Nocturne op. 9 no. 1: the opening section, faded out after ~72 s as its
-  # first phrase group settles (thin texture at 75-80 s); the camera drifts in slowly meanwhile
+  # [Music 1] Chopin, Nocturne op. 9 no. 1 (from its first note); the camera drifts in
   - gap: 0.9
     midi: { play: songs/F.Chopin-op9-no1.transkun.mid, roll: music, from: 5.9 }
     camera:
-      duration: 40
+      duration: 12
       ease: inOutSine
       path:
-        - { position: [ 0.32, 1.2, 0.9 ], target: [ -0.02, 0.86, -0.22 ], fov: 34 }
-  - after: 72
-    midi: { stop: 3.5 }
+        - { position: [ 0.3, 1.21, 0.95 ], target: [ -0.02, 0.86, -0.22 ], fov: 35 }
 
-  # User: 欸，你既然能用钢琴说话，你给我唱个歌呗？
-  - gap: 0.9
+  # User cuts in ~12 s into the piece: 欸，你既然能用钢琴说话，你给我唱个歌呗？
+  - after: 12
     audio: { play: user/sing-a-song.opus, from: 0.38, volume: 0.6 }
     camera:
       duration: 2.2
       path:
         - { position: [ 0.15, 1.28, 1.15 ], target: [ 0, 0.88, -0.2 ], fov: 38 }
+  # 0.6 s in, the piano stops; the roll stays frozen until the assistant answers
+  - after: 0.6
+    midi: { pause: 0.15 }
 
   # Assistant: 好呀。
   - gap: 0.35
-    midi: { play: yin/05-assistant.mid, roll: voice, from: 0.35, subtitle: 好呀。 }
+    midi: { play: yin/premiere-05.mid, roll: voice, from: 0.35, subtitle: 好呀。 }
 
-  # [Music 2] the "la la la" song, in full
+  # [Music 2] the "la la la" song (from its first note)
   - gap: 0.5
     midi: { play: songs/huaxin-76s.mid, roll: music, from: 6.3 }
     camera:
-      duration: 30
+      duration: 9
       path:
-        - { position: [ -0.25, 1.24, 0.95 ], target: [ 0.02, 0.86, -0.22 ], fov: 35 }
+        - { position: [ -0.22, 1.24, 0.98 ], target: [ 0.02, 0.86, -0.22 ], fov: 35 }
 
-  # User: 你只会唱啦啦啦呀，唱不了歌词吗？
-  - gap: 0.8
+  # User cuts in ~9 s into the song: 你只会唱啦啦啦呀，唱不了歌词吗？
+  - after: 9
     audio: { play: user/only-la.opus, from: 0.22, volume: 0.27 }
     camera:
       duration: 2.2
       path:
         - { position: [ 0.15, 1.28, 1.15 ], target: [ 0, 0.88, -0.2 ], fov: 38 }
+  - after: 0.6
+    midi: { pause: 0.15 }
 
   # Assistant: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。
   - gap: 0.35
-    midi: { play: yin/07-assistant.mid, roll: voice, from: 0.35, subtitle: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。 }
+    midi: { play: yin/premiere-07.mid, roll: voice, from: 0.35, subtitle: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。 }
 
   # [Music 3] 琴伤, with lyrics and accompaniment, in full; the screen stays on afterwards
   - gap: 1.0

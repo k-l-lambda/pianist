@@ -28,10 +28,15 @@ const BOOT_FADE = 0.6;				// s, boot animation -> roll crossfade
 // notes): falls 2x faster, green, no particles. Set by scene scripts only (no GUI).
 const VOICE_SPEED = 2;
 const VOICE_COLOR = '#19e07a';
-// subtitle band at the top of the screen (voice MIDI): what the piano is saying
-const SUB_BAND = 0.036;				// m, band height (the bars fade in below it while it shows)
-const SUB_TEXT = 0.30;				// text size, fraction of the band (~11 mm characters)
+// subtitle band at the top of the screen (voice MIDI): what the piano is saying, appearing as it
+// is said. Sizes in metres on the screen; the bars fade in below the band while it shows.
+const SUB_MARGIN = 0.010;			// above the text (from the screen's top edge)
+const SUB_FONT = 0.022;				// character height
+const SUB_LINE = SUB_FONT * 1.32;	// line pitch
+const SUB_PAD = 0.010;				// below the last line, then a short fade into the roll
 const SUB_FADE_IN = 0.25, SUB_FADE_OUT = 0.45;	// s
+const SUB_LEAD = 0.12;				// s, text runs this far ahead of the sound
+const SUB_PX = 4800;				// px per metre on the canvas
 
 // ---- power-on animation: the loading-screen artwork (tools/build-loading-svg.mjs) drawn into a
 // canvas texture on the screen. Timing mirrors the CSS in index.html.
@@ -227,6 +232,28 @@ class BootAnimation {
 	}
 
 }
+
+// subtitle band: black (opaque, fading out at the bottom) behind text revealed per line up to
+// uReveal (u), with a soft edge about a character wide
+const SUB_FS = /* glsl */`
+	uniform sampler2D map;
+	uniform float uOpacity;
+	uniform vec2 uReveal;
+	uniform float uSplit;
+	uniform float uSoft;
+	uniform float uFadeV;
+	varying vec2 vUv;
+	void main() {
+		float edge = vUv.y > uSplit ? uReveal.x : uReveal.y;		// line 1 is the upper one
+		float shown = 1.0 - smoothstep( edge - uSoft, edge, vUv.x );
+		vec4 t = texture2D( map, vUv );
+		float bg = 0.9 * smoothstep( 0.0, uFadeV, vUv.y );
+		float a = t.a * shown;
+		vec3 col = t.rgb * a;
+		float alpha = a + bg * ( 1.0 - a );
+		gl_FragColor = vec4( col / max( alpha, 1e-4 ), alpha * uOpacity );
+	}
+`;
 
 // ---------------------------------------------------------------------------------------------
 const BAR_VS = /* glsl */`
@@ -463,15 +490,22 @@ export class PianoRoll {
 
 		}
 
-		// subtitle band (screens): normal blending, so it covers the additive bars behind it
+		// subtitle band (screens): normal blending, so its black covers the additive bars behind
+		// it. The text is a canvas texture; the shader reveals it left to right per line
 		{
 
 			this.subCanvas = document.createElement( 'canvas' );
 			this.subTexture = new THREE.CanvasTexture( this.subCanvas );
 			this.subTexture.colorSpace = THREE.SRGBColorSpace;
 			this.subTexture.anisotropy = 4;
-			this.subMesh = new THREE.Mesh( new THREE.PlaneGeometry( 1, 1 ).translate( 0, - 0.5, - 0.0004 ), new THREE.MeshBasicMaterial( {
-				map: this.subTexture, transparent: true, opacity: 0, depthWrite: false, toneMapped: false,
+			this.subUniforms = {
+				map: { value: this.subTexture }, uOpacity: { value: 0 },
+				uReveal: { value: new THREE.Vector2() },		// per line: u of the reveal edge
+				uSplit: { value: 0.5 }, uSoft: { value: 0.01 }, uFadeV: { value: 0.12 },
+			};
+			this.subMesh = new THREE.Mesh( new THREE.PlaneGeometry( 1, 1 ).translate( 0, - 0.5, - 0.0004 ), new THREE.ShaderMaterial( {
+				vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }',
+				fragmentShader: SUB_FS, uniforms: this.subUniforms, transparent: true, depthWrite: false, toneMapped: false,
 			} ) );
 			this.subMesh.frustumCulled = false;
 			this.subMesh.renderOrder = 11;
@@ -479,8 +513,11 @@ export class PianoRoll {
 			this.subMesh.userData.noAO = true;
 			this.group.add( this.subMesh );
 			this.subText = '';
+			this.subLines = [];			// [{ text, x0, edges: [px after each character] }]
 			this.subState = null;		// null | 'pending' (MIDI starting) | 'on' | 'out'
 			this.subLevel = 0;
+			this.subBand = 0;			// m, current band height
+			this.subTiming = null;		// { events, curve: file ms -> characters said }
 
 		}
 
@@ -596,7 +633,6 @@ export class PianoRoll {
 		this.screen = !! R.screen;
 		this.bootMesh.scale.set( R.width ?? 1.3, R.height, 1 );
 		this.subMesh.position.y = R.height;
-		this.subMesh.scale.set( R.width ?? 1.3, SUB_BAND, 1 );
 		this._drawSubtitle();
 		this.bootAnim.resize( ( R.width ?? 1.3 ) / R.height );
 		this.bootT = - 1;
@@ -689,14 +725,15 @@ export class PianoRoll {
 	}
 
 	/**
-	 * Show `text` at the top of the screen while the next MIDI file plays (fades out after it
-	 * ends); '' / null clears it at once.
+	 * Show `text` at the top of the screen while the next MIDI file plays, appearing as it is
+	 * said (timed by when its notes sound), fading out after it ends; '' / null clears it.
 	 */
 	setSubtitle( text ) {
 
 		this.subText = ( text ?? '' ).trim();
 		this.subState = this.subText ? 'pending' : null;
 		this.subWait = 0;
+		this.subTiming = null;
 		if ( ! this.subText ) this.subLevel = 0;
 		this._drawSubtitle();
 
@@ -704,9 +741,24 @@ export class PianoRoll {
 
 	_drawSubtitle() {
 
-		const R = this.piano?.roll, c = this.subCanvas, g = c.getContext( '2d' );
-		const aspect = ( R?.width ?? 1.3 ) / SUB_BAND;
-		const w = 4096, h = Math.max( 32, Math.round( w / aspect ) );
+		const W = this.piano?.roll?.width ?? 1.3, c = this.subCanvas, g = c.getContext( '2d' );
+		const font = px => `500 ${ Math.round( px ) }px "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif`;
+		const fpx = SUB_FONT * SUB_PX, w = Math.round( W * SUB_PX );
+		g.font = font( fpx );
+		// one line, or two balanced ones (broken after punctuation near the middle)
+		const t = this.subText;
+		let lines = t ? [ t ] : [];
+		if ( t && g.measureText( t ).width > w * 0.86 ) {
+
+			const mid = t.length / 2;
+			let cut = Math.round( mid ), best = Infinity;
+			for ( let i = 1; i < t.length; ++ i ) if ( /[，。！？、；：,.!?;:]/.test( t[ i - 1 ] ) && Math.abs( i - mid ) < best ) best = Math.abs( i - ( cut = i ) );
+			lines = [ t.slice( 0, cut ), t.slice( cut ) ];
+
+		}
+
+		const band = SUB_MARGIN + Math.max( 1, lines.length ) * SUB_LINE + SUB_PAD;
+		const h = Math.round( band * SUB_PX );
 		if ( c.width !== w || c.height !== h ) {
 
 			c.width = w;
@@ -715,40 +767,56 @@ export class PianoRoll {
 		}
 
 		g.clearRect( 0, 0, w, h );
-		// the screen's black behind the text, fading out downwards into the roll
-		const bg = g.createLinearGradient( 0, 0, 0, h );
-		bg.addColorStop( 0, 'rgba(0,0,0,0.92)' );
-		bg.addColorStop( 0.75, 'rgba(0,0,0,0.85)' );
-		bg.addColorStop( 1, 'rgba(0,0,0,0)' );
-		g.fillStyle = bg;
-		g.fillRect( 0, 0, w, h );
-		if ( this.subText ) {
+		g.font = font( fpx );
+		g.textAlign = 'left';
+		g.textBaseline = 'middle';
+		g.fillStyle = '#e8fff2';
+		g.shadowColor = 'rgba(25,224,122,0.45)';
+		g.shadowBlur = fpx * 0.3;
+		this.subLines = lines.map( ( line, i ) => {
 
-			const size = Math.round( h * SUB_TEXT );
-			g.font = `500 ${ size }px "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif`;
-			g.textAlign = 'center';
-			g.textBaseline = 'middle';
-			// one line, or two balanced lines (broken after punctuation near the middle)
-			let lines = [ this.subText ];
-			if ( g.measureText( this.subText ).width > w * 0.8 ) {
+			const chars = [ ...line ], edges = [];
+			let x = 0;
+			for ( const ch of chars ) edges.push( x += g.measureText( ch ).width );
+			const x0 = ( w - x ) / 2, y = ( SUB_MARGIN + ( i + 0.5 ) * SUB_LINE ) * SUB_PX;
+			let cx = x0;
+			chars.forEach( ( ch, k ) => {
 
-				const t = this.subText, mid = t.length / 2;
-				let cut = Math.round( mid ), best = Infinity;
-				for ( let i = 1; i < t.length; ++ i ) if ( /[，。！？、；：,.!?;:]/.test( t[ i - 1 ] ) && Math.abs( i - mid ) < best ) best = Math.abs( i - ( cut = i ) );
-				lines = [ t.slice( 0, cut ), t.slice( cut ) ];
+				g.fillText( ch, cx, y );
+				cx = x0 + edges[ k ];
 
-			}
+			} );
+			return { chars, x0, edges };
 
-			const lh = size * 1.3, y0 = h * 0.42 - ( lines.length - 1 ) * lh / 2;
-			g.shadowColor = 'rgba(25,224,122,0.45)';
-			g.shadowBlur = size * 0.35;
-			g.fillStyle = '#e8fff2';
-			lines.forEach( ( line, i ) => g.fillText( line, w / 2, y0 + i * lh ) );
-			g.shadowBlur = 0;
-
-		}
-
+		} );
+		g.shadowBlur = 0;
 		this.subTexture.needsUpdate = true;
+		this.subBand = band;
+		this.subMesh.scale.set( W, band, 1 );
+		const U = this.subUniforms;
+		U.uSplit.value = 1 - ( SUB_MARGIN + SUB_LINE ) / band;
+		U.uSoft.value = fpx / w;
+		U.uFadeV.value = SUB_PAD * 0.8 / band;
+		U.uReveal.value.set( 0, 0 );
+
+	}
+
+	// when the words are said: the voice MIDI's sounding frames (20 ms; summed squared
+	// velocity over a floor), mapped to the line's characters (punctuation takes no time)
+	_subtitleTiming() {
+
+		const notes = this.notes ?? [], frame = 20;
+		const end = notes.reduce( ( a, n ) => Math.max( a, n.on ), 0 ) + frame;
+		const energy = new Float32Array( Math.ceil( end / frame ) + 1 );
+		for ( const n of notes ) energy[ Math.floor( n.on / frame ) ] += n.vel * n.vel;
+		const sorted = [ ...energy ].filter( v => v > 0 ).sort( ( a, b ) => a - b );
+		const floor = 0.08 * ( sorted[ Math.floor( sorted.length * 0.9 ) ] ?? 0 );
+		const said = [];		// cumulative voiced time (ms) at the end of each frame
+		let acc = 0;
+		for ( const e of energy ) said.push( acc += e > floor ? frame : 0 );
+		const weights = this.subLines.flatMap( l => l.chars.map( ch => /[\s，。！？、；：,.!?;:《》「」“”"'()（）…—-]/.test( ch ) ? 0 : 1 ) );
+		const total = weights.reduce( ( a, b ) => a + b, 0 ) || 1;
+		return { events: this.events, said, frame, voiced: acc || 1, weights, total };
 
 	}
 
@@ -764,9 +832,55 @@ export class PianoRoll {
 		this.subLevel = up ? Math.min( 1, this.subLevel + dt / SUB_FADE_IN ) : Math.max( 0, this.subLevel - dt / SUB_FADE_OUT );
 		if ( this.subState === 'out' && this.subLevel === 0 ) this.subState = null;
 		this.subMesh.visible = this.screen && this.subLevel > 0;
-		this.subMesh.material.opacity = this.subLevel * level;
-		// the bars fade in below the band while it shows
-		this.barUniforms.uHeight.value = this.height - ( SUB_BAND + 0.004 ) * THREE.MathUtils.smoothstep( this.subLevel, 0, 1 );
+		this.subUniforms.uOpacity.value = this.subLevel * level;
+		this.barUniforms.uHeight.value = this.height - ( this.subBand + 0.002 ) * THREE.MathUtils.smoothstep( this.subLevel, 0, 1 );
+		if ( ! this.subMesh.visible || ! this.subLines.length ) return;
+
+		// how much has been said: characters in proportion to voiced time so far
+		if ( this.subTiming?.events !== this.events && this.notes ) this.subTiming = this._subtitleTiming();
+		const T = this.subTiming;
+		let n;		// characters shown (fractional)
+		if ( this.subState === 'out' ) n = Infinity;
+		else if ( ! T ) n = 0;
+		else {
+
+			const i = Math.max( 0, Math.min( T.said.length - 1, Math.floor( ( player.position + SUB_LEAD * 1000 ) / T.frame ) ) );
+			let k = T.said[ i ] / T.voiced * T.total;
+			// spread over the weighted characters; zero-weight ones (punctuation) ride along
+			n = 0;
+			for ( const wgt of T.weights ) {
+
+				if ( k <= 0 ) break;
+				if ( wgt === 0 ) {
+
+					n += 1;
+					continue;
+
+				}
+
+				const take = Math.min( 1, k );
+				n += take;
+				k -= take;
+
+			}
+
+		}
+
+		const w = this.subCanvas.width, U = this.subUniforms.uReveal.value;
+		const reveal = [ 0, 0 ];
+		let left = n;
+		this.subLines.forEach( ( l, i ) => {
+
+			const m = Math.min( left, l.chars.length );
+			left -= m;
+			const whole = Math.floor( m ), frac = m - whole;
+			const a = whole > 0 ? l.edges[ whole - 1 ] : 0, b = l.edges[ Math.min( whole, l.edges.length - 1 ) ] ?? a;
+			// the soft edge spans about a character: push it so a whole character is crisp
+			const px = m >= l.chars.length ? w : l.x0 + a + ( b - a ) * frac + ( m > 0 ? this.subUniforms.uSoft.value * w * 0.5 : 0 );
+			reveal[ i ] = px / w;
+
+		} );
+		U.set( reveal[ 0 ], this.subLines.length > 1 ? reveal[ 1 ] : reveal[ 0 ] );
 
 	}
 
@@ -893,7 +1007,7 @@ export class PianoRoll {
 			if ( n.off < pos ) continue;
 			const y0 = Math.max( 0, ( n.on - pos ) * speed ), y1 = Math.min( this.height + 0.05, ( n.off - pos ) * speed );
 			if ( y1 <= y0 ) continue;
-			const sounding = n.on <= pos;
+			const sounding = player.playing && n.on <= pos;		// paused: frozen, nothing sounds
 			if ( nb < MAX_BARS ) {
 
 				rect[ nb * 4 ] = n.x - n.w / 2;

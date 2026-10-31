@@ -8,8 +8,9 @@
 //     etude: beyer05.mid
 //   timeline:
 //     - at: 0                      # seconds, or "1:05.5"; `after: 2` (or at: +2) = 2 s after
-//                                  # the previous event started; `gap: 0.5` = 0.5 s after it
-//                                  # *finished* (its MIDI / audio / boot / camera move / tween)
+//                                  # the previous event started; `gap: 0.5` = 0.5 s after the
+//                                  # previous gap event, and everything timed after it, has
+//                                  # *finished* (MIDI / audio / boot / camera move / tween)
 //       set:                       # GUI controls by "Folder/Label" (or label / property name);
 //         Lighting/Preset: Golden hour    # numbers can tween: give `duration` (and `ease`)
 //       camera: { position: [ 0.6, 1.3, 1.6 ], target: [ 0, 0.9, -0.2 ], fov: 36 }   # a cut
@@ -27,12 +28,13 @@
 //       midi: etude                # alias or file; or { play: etude, from: 0, tempo: 1 },
 //                                  # or stop | pause | resume
 //     - at: 6
-//       midi: { play: yin/01-assistant.mid, roll: voice, subtitle: 下午好 }   # roll mode for
+//       midi: { play: yin/premiere-01.mid, roll: voice, subtitle: 下午好 }   # roll mode for
 //                                  # this file: music (default) | voice (speech played by the
 //                                  # piano: falls 2x faster, green, no particles); `subtitle`
 //                                  # shows at the top of the screen while it plays
 //     - at: 9
-//       midi: { stop: 2 }          # fade the file out over 2 s, then stop
+//       midi: { stop: 2 }          # fade the file out over 2 s, then stop; { pause: 0.15 } the
+//                                  # same, but paused: the roll stays frozen where it was
 //     - gap: 0.4
 //       audio: user/hello.opus     # an audio file (site's audio/ folder, ./ = from the script);
 //                                  # or { play: name, volume: 0.8, from: 0 } | stop
@@ -83,7 +85,7 @@ export class ScriptPlayer {
 	/**
 	 * @param ctx { camera, controls, gui, setScreenPower(on), screenBusy() (power-on / -off still
 	 *              animating), setRollMode('music' | 'voice'), setSubtitle(text), midi: { load(buffer, name), play(),
-	 *              pause(), resume(), stop(), fadeOut(s) -> Promise, seek(s), playing },
+	 *              pause(), resume(), stop(), fadeOut(s, { pause }) -> Promise, seek(s), playing },
 	 *              audio: { decode(arrayBuffer) -> Promise<AudioBuffer>, play(buffer, { volume, from })
 	 *              -> { stop(), playing } } }
 	 */
@@ -228,7 +230,12 @@ export class ScriptPlayer {
 
 			const m = e.midi;
 			if ( typeof m === 'string' && [ 'stop', 'pause', 'resume' ].includes( m ) ) out.midi = { action: m };
-			else if ( typeof m === 'object' && m.stop !== undefined ) out.midi = { action: 'stop', fade: Math.max( 0, Number( m.stop === true ? 0 : m.stop ) || 0 ) };
+			else if ( typeof m === 'object' && ( m.stop !== undefined || m.pause !== undefined ) ) {
+
+				const v = m.stop ?? m.pause;
+				out.midi = { action: m.stop !== undefined ? 'stop' : 'pause', fade: Math.max( 0, Number( v === true ? 0 : v ) || 0 ) };
+
+			}
 			else if ( typeof m === 'string' ) out.midi = { play: m, from: 0 };
 			else out.midi = { play: m.play, from: Number( m.from ?? 0 ), tempo: m.tempo, roll: m.roll, subtitle: m.subtitle };
 			if ( out.midi.roll !== undefined && ! [ 'music', 'voice' ].includes( out.midi.roll ) ) throw new Error( `${ where }.midi.roll: music | voice` );
@@ -274,8 +281,9 @@ export class ScriptPlayer {
 		this._tweens = [];
 		this._midiStarted = false;
 		this._prevStart = 0;
-		this._prevBusy = () => false;
+		this._segment = [];			// busy() of the events since the last gap event
 		this._busy = [];			// busy() of every fired event
+		this._midiToken = 0;
 		this._state( 'playing' );
 
 	}
@@ -312,8 +320,8 @@ export class ScriptPlayer {
 
 			} else if ( w.gap !== undefined ) {
 
-				// the previous event has to finish; then wait `gap` more
-				if ( this._prevBusy() ) break;
+				// the previous line (and whatever was timed off it) has to finish; then `gap` more
+				if ( this._segment.some( b => b() ) ) break;
 				if ( this._prevEnd === undefined ) this._prevEnd = this.time;
 				if ( this.time < this._prevEnd + w.gap ) break;
 
@@ -321,13 +329,14 @@ export class ScriptPlayer {
 			++ this._next;
 			this._prevStart = this.time;
 			this._prevEnd = undefined;
-			this._prevBusy = this._fire( e );
-			this._busy.push( this._prevBusy );
+			const busy = this._fire( e );
+			if ( w.gap !== undefined ) this._segment = [ busy ]; else this._segment.push( busy );
+			this._busy.push( busy );
 
 		}
 
 		// camera move: the newest running one wins
-		this._moves = this._moves.filter( m => this.time < m.t0 + m.duration + dt );
+		this._moves = this._moves.filter( m => this.time < m.t0 + m.duration );
 		const m = this._moves[ this._moves.length - 1 ];
 		if ( m ) {
 
@@ -397,8 +406,7 @@ export class ScriptPlayer {
 				let f = start.fov;
 				for ( const k of keys ) fovs.push( f = k.fov ?? f );
 				const curve = pts => pts.length > 2 ? new THREE.CatmullRomCurve3( pts, false, 'centripetal' ) : new THREE.LineCurve3( pts[ 0 ], pts[ 1 ] );
-				parts.push( () => this.time < t0 + c.duration );
-				this._moves.push( {
+				const move = {
 					t0, duration: c.duration, ease: c.ease,
 					position: curve( keys.map( k => k.position ) ),
 					target: curve( keys.map( k => k.target ) ),
@@ -408,7 +416,9 @@ export class ScriptPlayer {
 						return THREE.MathUtils.lerp( fovs[ i ], fovs[ i + 1 ], x - i );
 
 					},
-				} );
+				};
+				this._moves = [ move ];		// a newer move replaces the running one
+				parts.push( () => this._moves.includes( move ) );
 
 			} else {
 
@@ -430,17 +440,18 @@ export class ScriptPlayer {
 		if ( e.midi ) {
 
 			const m = e.midi, midi = this.ctx.midi;
-			if ( m.action === 'stop' ) {
+			if ( m.action === 'stop' || m.action === 'pause' ) {
 
+				const pause = m.action === 'pause';
 				if ( m.fade > 0 && midi.fadeOut ) {
 
 					let fading = true;
-					midi.fadeOut( m.fade ).finally( () => fading = false );
+					midi.fadeOut( m.fade, { pause } ).finally( () => fading = false );
 					parts.push( () => fading );
 
-				} else midi.stop();
+				} else if ( pause ) midi.pause(); else midi.stop();
 
-			} else if ( m.action === 'pause' ) midi.pause();
+			}
 			else if ( m.action === 'resume' ) midi.resume();
 			else {
 
@@ -452,7 +463,8 @@ export class ScriptPlayer {
 				let starting = true;
 				Promise.resolve( midi.play() ).finally( () => starting = false );
 				this._midiStarted = true;
-				parts.push( () => starting || midi.playing );
+				const token = ++ this._midiToken;		// a later file ends this one
+				parts.push( () => starting || ( this._midiToken === token && midi.playing ) );
 
 			}
 
