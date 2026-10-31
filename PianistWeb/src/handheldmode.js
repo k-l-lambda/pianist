@@ -5,7 +5,7 @@
 //    (handheld.js Operator; CameraTrack/operator_params.json). Gait, shake and the person build
 //    on that pose
 //  - hand shake from the model fitted to a real handheld video (handheld.js, shakeAt), limited
-//    to 2.5 Hz (above that the measurement is noise), at 10.8% of the video's level (0.18° held
+//    to 2.5 Hz (above that the measurement is noise), at 1.3% of the video's level (0.18° held
 //    still); 3x while walking, 1.5x while turning
 //  - left drag turns the view in place (the orbit centre is kept just ahead of the lens)
 //  - walking = body + arm. The body bobs once per step and sways once per stride; steps keep a
@@ -46,8 +46,8 @@ const TURN_RADIUS = 0.01;
 const SHAKE_CUTOFF = 2.5;						// Hz
 // shake gain: the 2.5 Hz-limited generator gives 0.91° RMS at gain 1. The video (CameraTrack)
 // held still at 0.18° below 3 Hz (gain 0.2) and, walking about, 3x that (0.57°). Played back at
-// 10.8% of that (0.02° holding still): the full level reads as far too shaky on screen
-const HOLD_GAIN = 0.2 * 0.108, WALK_FACTOR = 3, TURN_FACTOR = 1.5;
+// 1.3% of that (0.003° holding still): the full level reads as far too shaky on screen
+const HOLD_GAIN = 0.2 * 0.013, WALK_FACTOR = 3, TURN_FACTOR = 1.5;
 const D = THREE.MathUtils.DEG2RAD;
 const WALK_SPEED = 0.7, RUN_SPEED = 1.2;		// m/s
 const WALK_EASE = 0.3;							// s to reach speed / to stop

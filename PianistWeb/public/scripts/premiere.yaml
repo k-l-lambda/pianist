@@ -75,9 +75,9 @@ timeline:
   # the user's speech ends (`gap: 0.6`; a recording ends with its speech, trailing silence
   # excluded), then thinks for `think` s, then the first note sounds.
   - gap: 0.6
-    midi: { play: yin/premiere-03.mid, roll: voice, think: 0.6, subtitle: 好的，请欣赏肖邦夜曲，九号作品之一。 }
-  # (2.5 s into the speech: think 0.6 - lead-in 0.47 later than the event)
-  - after: 2.63
+    midi: { play: yin/premiere-03.mid, roll: voice, think: 1.2, subtitle: 好的，请欣赏肖邦夜曲，九号作品之一。 }
+  # (2.5 s into the speech: think 1.2 - lead-in 0.47 later than the event)
+  - after: 3.23
     camera:
       duration: 0.9
       ease: inOutSine
@@ -123,7 +123,7 @@ timeline:
 
   # Assistant: 好呀。
   - gap: 0.6
-    midi: { play: yin/premiere-05.mid, roll: voice, think: 1.6, subtitle: 好呀。 }
+    midi: { play: yin/premiere-05.mid, roll: voice, think: 3.2, subtitle: 好呀。 }
 
   # [Music 2] the "la la la" song (from its first note)
   - gap: 0.5
@@ -145,9 +145,9 @@ timeline:
 
   # Assistant: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。
   - gap: 0.6
-    midi: { play: yin/premiere-07.mid, roll: voice, think: 2.5, subtitle: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。 }
-  # (3.0 s into the speech: think 2.5 - lead-in 0.47 later than the event)
-  - after: 5.03
+    midi: { play: yin/premiere-07.mid, roll: voice, think: 5, subtitle: 当然可以呀，下面唱一首带歌词和伴奏的，《琴伤》。 }
+  # (3.0 s into the speech: think 5 - lead-in 0.47 later than the event)
+  - after: 7.53
     camera:
       duration: 0.9
       ease: inOutSine
