@@ -1053,8 +1053,14 @@ function frame() {
 function frameBody( dt, scripted = false ) {
 
 	cameraMoving = false;
-	handheld.restore();
-	if ( ! scripted ) scriptPlayer.update( dt );		// offline render: done in sub-steps (startRender)
+	// offline render: restored and updated in sub-steps by startRender() (restoring again here
+	// would put the camera back where it was before the script's move this frame)
+	if ( ! scripted ) {
+
+		handheld.restore();
+		scriptPlayer.update( dt );
+
+	}
 	controls.update();
 	handheld.apply( dt );
 	if ( handheld.consumeRebuild() ) ptDirty = true;
