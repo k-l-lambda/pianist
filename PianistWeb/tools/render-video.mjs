@@ -149,8 +149,6 @@ try {
 	ffmpeg = spawn( 'ffmpeg', [ '-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String( opt.fps ), '-c:v', 'png', '-i', '-',
 		'-c:v', 'libx264', '-preset', 'slow', '-crf', String( opt.crf ), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', video ], { stdio: [ 'pipe', 'inherit', 'inherit' ] } );
 	const encoded = new Promise( ( ok, fail ) => ffmpeg.on( 'close', code => code === 0 ? ok() : fail( new Error( `ffmpeg exited ${ code }` ) ) ) );
-	// CDP capture (lossless PNG, fast zlib): ~2.5x faster than page.screenshot()
-	const cdp = await page.context().newCDPSession( page );
 	const t0 = Date.now();
 	let frames = 0, stepMs = 0, shotMs = 0, endAt = null;
 	for ( let f = first; f <= last; ++ f ) {
@@ -159,7 +157,9 @@ try {
 		if ( s.frame !== f ) throw new Error( `frame ${ s.frame }, expected ${ f }` );
 		stepMs += s.ms;
 		const ts = Date.now();
-		const png = Buffer.from( ( await cdp.send( 'Page.captureScreenshot', { format: 'png', optimizeForSpeed: true } ) ).data, 'base64' );
+		// the canvas itself (__render.frame), not a compositor screenshot (Page.captureScreenshot:
+		// now and then a frame came before the canvas was composited, the page background instead)
+		const png = Buffer.from( await page.evaluate( ( [ w, h ] ) => window.__render.frame( w, h ), [ W, H ] ), 'base64' );
 		shotMs += Date.now() - ts;
 		if ( ! ffmpeg.stdin.write( png ) ) await new Promise( r => ffmpeg.stdin.once( 'drain', r ) );
 		++ frames;

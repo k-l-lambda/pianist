@@ -1140,6 +1140,7 @@ function startRender() {
 		textContent: '.lil-gui, #hud, #power, #start, #drop, #loading { display: none !important; }',
 	} ) );
 	let frameNo = 0;		// frames drawn so far (time of the next: frameNo / fps)
+	let out = null;		// 2D canvas for frame()
 	// The script player runs in sub-steps of at most SCRIPT_STEP s with the clock: it sees time
 	// only when it is updated, so with one update per frame every event (and everything timed off
 	// it with after: / gap:) fired up to a frame late, and the delays added up along the script
@@ -1195,7 +1196,14 @@ function startRender() {
 		await document.fonts?.ready;
 		scriptPlayer.play();
 		// skip to `from`: the frames before it are simulated (and drawn) but not captured
-		while ( frameNo < Math.round( o.from * o.fps ) ) step();
+		// (yielding now and then: thousands of frames in one task lost the WebGL context, and a
+		// MIDI file's start, which settles in a promise, stayed pending)
+		while ( frameNo < Math.round( o.from * o.fps ) ) {
+
+			step();
+			if ( frameNo % 5 === 0 ) await new Promise( r => setTimeout( r, 0 ) );
+
+		}
 		return { fps: o.fps, from: o.from, to: o.to, width: renderer.domElement.width, height: renderer.domElement.height, sampleRate: synth.context().sampleRate };
 
 	} )();
@@ -1206,6 +1214,22 @@ function startRender() {
 			const t0 = performance.now();
 			step();
 			return { frame: frameNo - 1, time: ( frameNo - 1 ) * dt, ms: performance.now() - t0, state: scriptPlayer.playing };
+
+		},
+		// the frame just drawn, read from the WebGL canvas itself (preserveDrawingBuffer) and scaled
+		// to the output size, as PNG base64. Not a compositor screenshot: that sometimes caught a
+		// frame before the canvas had been composited, and showed the page background (#111)
+		// instead, in blocks or the whole frame
+		frame( width, height ) {
+
+			const src = renderer.domElement;
+			out ??= document.createElement( 'canvas' );
+			if ( out.width !== width || out.height !== height ) Object.assign( out, { width, height } );
+			const g = out.getContext( '2d' );
+			g.imageSmoothingEnabled = true;
+			g.imageSmoothingQuality = 'high';
+			g.drawImage( src, 0, 0, width, height );
+			return out.toDataURL( 'image/png' ).slice( 22 );
 
 		},
 		audioSummary: () => audioLog.summary(),
