@@ -670,7 +670,11 @@ if ( ! RENDER ) {
 gui.add( settings, 'style', Object.fromEntries( STYLES.map( s => [ s.name, s.id ] ) ) ).name( 'Piano' ).onChange( setStyle );
 gui.add( settings, 'gi' ).name( 'Global illumination' ).onChange( () => applyQuality() );
 const fHand = gui.addFolder( 'Handheld camera' );
-fHand.add( { on: false }, 'on' ).name( 'Handheld' ).onChange( v => handheld.setEnabled( v ) );
+// Ctrl held while switching it off: the person stays in the scene, to be inspected
+let ctrlHeld = false;
+for ( const type of [ 'keydown', 'keyup', 'pointerdown' ] ) addEventListener( type, e => ctrlHeld = e.ctrlKey, true );
+addEventListener( 'blur', () => ctrlHeld = false );
+fHand.add( { on: false }, 'on' ).name( 'Handheld' ).onChange( v => handheld.setEnabled( v, { keepPerson: ctrlHeld } ) );
 fHand.add( handheld, 'intensity', 0, 3, 0.05 ).name( 'Shake' );
 fHand.add( handheld, 'walk', 0, 2, 0.05 ).name( 'Walking motion' );
 fHand.add( handheld, 'drift', 0, 2, 0.05 ).name( 'Operator drift' );

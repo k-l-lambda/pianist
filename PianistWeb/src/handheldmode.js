@@ -24,7 +24,8 @@
 //  - a person (person.js, a cut-out of the reference photo) behind the camera, seen in glossy
 //    reflections: the mirror probe is re-captured as the camera moves (on a flat screen from the
 //    camera's mirror image, an exact planar reflection; elsewhere from just ahead of the camera). On
-//    leaving the mode the person stays where it stood, to be inspected
+//    leaving the mode the person goes, or, with { keepPerson: true } (Ctrl held on the switch),
+//    stays where it stood, to be inspected
 // In path tracing the shake is paused (it would restart the accumulation every frame); the
 // person is still placed, and the scene is rebuilt once the camera has settled.
 
@@ -134,7 +135,8 @@ export class HandheldMode {
 
 	}
 
-	setEnabled( on ) {
+	/** `keepPerson`: when switching off, leave the person standing in the scene (to inspect it). */
+	setEnabled( on, { keepPerson = false } = {} ) {
 
 		if ( on === this.enabled ) return;
 		const { camera, controls, scene, renderer } = this.ctx;
@@ -196,7 +198,9 @@ export class HandheldMode {
 			el.removeEventListener( 'pointerdown', this._onSteer );
 			window.removeEventListener( 'pointerup', this._onSteer );
 			this.steering = false;
-			// the person stays where it stood, for inspection; reflections back to the room's own
+			// the person goes (or stays where it stood, for inspection); reflections back to the
+			// room's own
+			if ( ! keepPerson ) this._removePerson();
 			this.ctx.specularRestore?.();
 			this.rebuild = true;
 			controls.dispatchEvent( { type: 'change' } );
