@@ -1248,7 +1248,10 @@ export class PianoRoll {
 
 		}
 		const target = this.power ? 1 : 0;
-		this.powerLevel = target > this.powerLevel ? Math.min( 1, this.powerLevel + dt / POWER_FADE ) : Math.max( 0, this.powerLevel - dt / POWER_FADE );
+		// step towards the target and stop there (at the target the old `>` test faded down a step,
+		// so the screen dimmed every other frame; at 1 fps it went off)
+		const pstep = dt / POWER_FADE;
+		this.powerLevel = target > this.powerLevel ? Math.min( target, this.powerLevel + pstep ) : Math.max( target, this.powerLevel - pstep );
 		const active = show && this.enabled && this.piano && this.powerLevel > 0;
 		this.group.visible = !! active;
 		this.liveTime += dt;

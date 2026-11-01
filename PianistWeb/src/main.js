@@ -1050,11 +1050,11 @@ function frame() {
 }
 
 // one frame of `dt` s: in real time from frame(), in an offline render from __render.step()
-function frameBody( dt ) {
+function frameBody( dt, scripted = false ) {
 
 	cameraMoving = false;
 	handheld.restore();
-	scriptPlayer.update( dt );
+	if ( ! scripted ) scriptPlayer.update( dt );		// offline render: done in sub-steps (startRender)
 	controls.update();
 	handheld.apply( dt );
 	if ( handheld.consumeRebuild() ) ptDirty = true;
@@ -1134,10 +1134,30 @@ function startRender() {
 		textContent: '.lil-gui, #hud, #power, #start, #drop, #loading { display: none !important; }',
 	} ) );
 	let frameNo = 0;		// frames drawn so far (time of the next: frameNo / fps)
+	// The script player runs in sub-steps of at most SCRIPT_STEP s with the clock: it sees time
+	// only when it is updated, so with one update per frame every event (and everything timed off
+	// it with after: / gap:) fired up to a frame late, and the delays added up along the script
+	// (at 1 fps the user's first line came 4.6 s late, at 25 fps still 0.04 s per event). The
+	// rest of the frame (camera shake, roll, keys) is updated once with the frame's dt
+	const SCRIPT_STEP = 0.005;
 	const step = () => {
 
-		if ( frameNo > 0 ) clock.advance( 1000 * frameNo * dt - clock.now() );		// no drift
-		frameBody( frameNo > 0 ? dt : 0 );
+		handheld.restore();		// the script's camera moves work on the intended pose
+		if ( frameNo > 0 ) {
+
+			const end = 1000 * frameNo * dt;
+			const n = Math.max( 1, Math.ceil( ( end - clock.now() ) / ( 1000 * SCRIPT_STEP ) - 1e-9 ) );
+			for ( let i = 1; i <= n; ++ i ) {
+
+				const t = i === n ? end : clock.now() + ( end - clock.now() ) / ( n - i + 1 );
+				const sdt = ( t - clock.now() ) / 1000;
+				clock.advance( t - clock.now() );		// no drift: the last sub-step ends on the frame
+				scriptPlayer.update( sdt );
+
+			}
+
+		} else scriptPlayer.update( 0 );
+		frameBody( frameNo > 0 ? dt : 0, true );
 		frameNo ++;
 
 	};
