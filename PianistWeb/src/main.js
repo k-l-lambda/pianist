@@ -23,7 +23,7 @@ import { ScriptPlayer } from './script.js';
 import { PianoRoll, excludeFromGTAO } from './pianoroll.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
 import { RENDER, RENDER_OPTS, clock } from './rendermode.js';
-import { AudioLog, renderAudio } from './renderaudio.js';
+import { AudioLog, renderAudio, roomAPI } from './renderaudio.js';
 
 // start downloading the piano sound right away, in parallel with building the scene
 prefetchSoundfont();
@@ -1214,6 +1214,8 @@ function startRender() {
 
 		},
 		wavChunk: ( i, size ) => window.__render._wav.slice( i, i + size ),
+		// dry stems for the room simulation, and its mix (tools/render-audio.mjs)
+		...roomAPI( audioLog, { from: o.from, sampleRate: synth.context().sampleRate, volume: () => synth.volume } ),
 	};
 
 }
