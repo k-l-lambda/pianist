@@ -12,7 +12,8 @@ import { TextureBaker } from './textures.js';
 import { makeMaterials, STYLES, applyGlass } from './materials.js';
 import { buildUpright } from './upright.js';
 import { buildGrand } from './grand.js';
-import { Room, LIGHT_PRESETS } from './room.js';
+import { Room } from './room.js';
+import { ConcertHall } from './hall.js';
 import { GIProbe } from './gi.js';
 import { PathTracer } from './pathtracer.js';
 import { KeyShadow } from './keyshadow.js';
@@ -54,7 +55,6 @@ const settings = {
 	mode: params.get( 'mode' ) ?? 'realtime',		// 'realtime' | 'pathtrace'
 	// global illumination / high quality: off favours frame rate (see applyQuality)
 	gi: params.has( 'gi' ) ? params.get( 'gi' ) !== '0' : RENDER,		// offline render (rendermode.js): on
-	preset: 'Sunlit afternoon',
 	exposure: Number( params.get( 'exposure' ) ?? 1.7 ),
 	toneMapping: 'AgX',
 	ao: true,
@@ -92,7 +92,11 @@ controls.maxDistance = 5.0;
 controls.maxPolarAngle = Math.PI * 0.53;
 
 const baker = new TextureBaker( renderer );
+// venues, by the piano's type: uprights in the room, grands in the concert hall
 const room = new Room( scene, baker );
+const hall = new ConcertHall( scene, baker );
+let venue = room;
+room.activate();
 const probe = new GIProbe( renderer, scene );
 const keyShadow = new KeyShadow( renderer );
 const MIRROR_GAIN = 2.5;
@@ -142,7 +146,7 @@ const handheld = new HandheldMode( {
 	isPathTracing: () => settings.mode === 'pathtrace',
 	specularCapture: ( eye, ahead ) => {
 
-		const opts = { lights: [ room.sun ], objects: [ room.foliage ].filter( Boolean ) };
+		const opts = { lights: venue.specularOff, objects: venue.probeHidden };
 		const panel = piano?.roll?.screen && piano.materials?.panel;
 		if ( panel ) {
 
@@ -169,7 +173,7 @@ const handheld = new HandheldMode( {
 	},
 	subject: () => pianoCentre(),
 	defocus: ( duration, amount ) => startDefocus( duration, amount ),
-	bounds: () => ( { minX: - room.params.width / 2, maxX: room.params.width / 2, minZ: room.backWallZ, maxZ: room.backWallZ + room.params.depth } ),
+	bounds: () => venue.bounds(),
 } );
 renderer.debug.onShaderError = ( gl, program, vs, fs ) => {
 
@@ -290,8 +294,9 @@ function setStyle( id ) {
 	piano.pedalMeshes = [];
 	piano.group.traverse( o => o.userData.pedal && piano.pedalMeshes.push( o ) );
 	for ( const [ name, holds ] of Object.entries( pedalHolds ) ) if ( holds.size ) piano.action?.setPedal( name, true );
-	// back of the piano against the back wall
-	piano.group.position.set( 0, 0, room.backWallZ + piano.depth + 0.03 );
+	// its venue, and its place in it
+	switchVenue( style.type === 'grand' ? hall : room );
+	venue.place( piano );
 	piano.materials = M;
 	applyGlass( M.glass, settings.gi || settings.mode === 'pathtrace' );
 	scene.add( piano.group );
@@ -304,8 +309,7 @@ function setStyle( id ) {
 	controls.target.copy( piano.camera.target ).add( off );
 	controls.update();
 
-	probe.position.set( 0, 1.1, off.z + 0.9 );
-	room.lampTarget = off;
+	probe.position.copy( venue.probePoint( piano ) );
 	refreshLighting();
 
 }
@@ -334,21 +338,24 @@ function applyQuality( relight = true ) {
 	// full resolution: the strings and pins behind the glass must stay sharp
 	renderer.transmissionResolutionScale = 1.0;
 	room.setQuality( hq );
+	hall.setQuality( hq );
 	keyShadow.setEnabled( hq && ! keyShadow.broken );
-	if ( piano ) applyGlass( piano.materials.glass, hq || room.mode === 'pathtrace' );
+	if ( piano ) applyGlass( piano.materials.glass, hq || venue.mode === 'pathtrace' );
 	shadowsDirty = true;
 	if ( relight ) refreshLighting();
 
 }
 let probeEnv = null;
 
-// raster: prefiltered room probe; path tracer: the sky itself (light enters through the window)
+// raster: prefiltered room probe; path tracer: the venue's environment (the room: the sky, light
+// enters through the window; the hall: none)
 function setLightingMode( mode ) {
 
 	room.setMode( mode );
+	hall.setMode( mode );
 	if ( piano ) applyGlass( piano.materials.glass, mode === 'pathtrace' || settings.gi );
 	shadowsDirty = true;
-	scene.environment = mode === 'pathtrace' ? room.sky : probeEnv;
+	scene.environment = mode === 'pathtrace' ? venue.environment : probeEnv;
 	scene.environmentIntensity = mode === 'pathtrace' ? 1 : probe.intensity;
 
 }
@@ -370,13 +377,16 @@ function applySpecularEnv() {
 
 function refreshLighting() {
 
-	room.updateLights();
-	renderer.toneMappingExposure = settings.exposure * room.light.exposure;
+	venue.updateLights();
+	renderer.toneMappingExposure = settings.exposure * venue.light.exposure;
 	renderer.toneMapping = TONE[ settings.toneMapping ];
 	probe.bounces = settings.gi ? settings.giBounces : 1;
 	renderer.shadowMap.needsUpdate = true;
 	shadowsDirty = true;
-	probeEnv = probe.update( piano ? [ piano.group ] : [], { lights: [ room.sun ], objects: [ room.foliage ].filter( Boolean ) } );
+	probeEnv = probe.update( piano ? [ piano.group ] : [], { lights: venue.specularOff, objects: venue.probeHidden } );
+	// the venue's ambient level (the hall's Spotlight: the dark round the light stays dark)
+	probe.intensity = venue.light.env ?? 1;
+	if ( settings.mode !== 'pathtrace' ) scene.environmentIntensity = probe.intensity;
 	applySpecularEnv();
 	if ( settings.mode === 'pathtrace' ) setLightingMode( 'pathtrace' );
 	ptDirty = true;
@@ -683,23 +693,29 @@ fHand.add( handheld, 'focusHunt', 0, 2, 0.05 ).name( 'Focus hunting' );
 fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
 gui.add( settings, 'mode', { 'Real-time (probe GI + GTAO)': 'realtime', 'Path traced': 'pathtrace' } ).name( 'Renderer' ).onChange( setMode );
 
+// lighting: the venue's own presets and controls (rebuilt when the venue changes)
 const fLight = gui.addFolder( 'Lighting' );
-fLight.add( settings, 'preset', Object.keys( LIGHT_PRESETS ) ).name( 'Preset' ).onChange( name => {
-
-	Object.assign( room.light, LIGHT_PRESETS[ name ] );
-	fLight.controllersRecursive().forEach( c => c.updateDisplay() );
-	refreshLighting();
-
-} );
 const relight = () => refreshLighting();
-fLight.add( room.light, 'sunAzimuth', 0, 180, 1 ).name( 'Sun azimuth' ).onFinishChange( relight );
-fLight.add( room.light, 'sunElevation', 2, 70, 0.5 ).name( 'Sun elevation' ).onFinishChange( relight );
-fLight.add( room.light, 'sunIntensity', 0, 20, 0.1 ).name( 'Sun intensity' ).onFinishChange( relight );
-fLight.addColor( room.light, 'sunColor' ).name( 'Sun color' ).onFinishChange( relight );
-fLight.add( room.light, 'sunSoftness', 0, 1, 0.01 ).name( 'Sun softness' ).onFinishChange( relight );
-fLight.add( room.light, 'sky', 0, 4, 0.01 ).name( 'Sky' ).onFinishChange( relight );
-fLight.addColor( room.light, 'skyColor' ).name( 'Sky color' ).onFinishChange( relight );
-fLight.add( room.light, 'lamp', 0, 200, 1 ).name( 'Lamp' ).onFinishChange( relight );
+function buildLightFolder() {
+
+	for ( const c of [ ...fLight.controllers ] ) c.destroy();
+	fLight.add( venue, 'preset', Object.keys( venue.presets ) ).name( 'Preset' ).onChange( name => {
+
+		Object.assign( venue.light, venue.presets[ name ] );
+		fLight.controllersRecursive().forEach( c => c.updateDisplay() );
+		refreshLighting();
+
+	} );
+	for ( const [ key, a, b, c, d ] of venue.lightControls() ) {
+
+		if ( a === 'color' ) fLight.addColor( venue.light, key ).name( b ).onFinishChange( relight );
+		else fLight.add( venue.light, key, a, b, c ).name( d ).onFinishChange( relight );
+
+	}
+
+}
+
+buildLightFolder();
 
 const fRoom = gui.addFolder( 'Room' ).close();
 const rebuildRoom = () => {
@@ -720,8 +736,40 @@ fRoom.add( room.params, 'windowHeight', 0.5, 3, 0.05 ).name( 'Window height' ).o
 fRoom.add( room.params, 'windowSill', 0, 2, 0.05 ).name( 'Window sill' ).onFinishChange( rebuildRoom );
 fRoom.add( room.params, 'foliage' ).name( 'Foliage shadow' ).onChange( relight );
 
+// the hall's viewpoints
+const fHall = gui.addFolder( 'Hall' ).close().hide();
+const hallView = { view: 'At the piano' };
+fHall.add( hallView, 'view', [ 'At the piano', ...Object.keys( hall.views() ) ] ).name( 'View' ).onChange( name => {
+
+	const off = piano.group.position;
+	const v = name === 'At the piano' ? { position: piano.camera.position.clone().add( off ), target: piano.camera.target.clone().add( off ) } : hall.views()[ name ];
+	camera.position.copy( v.position );
+	controls.target.copy( v.target );
+	controls.update();
+
+} );
+
+/** The venue for the piano's type: its geometry and lights in the scene, its lighting controls. */
+function switchVenue( v ) {
+
+	if ( v === venue && v.active ) return;
+	venue.deactivate();
+	venue = v;
+	venue.activate();
+	controls.maxDistance = venue.view.maxDistance;
+	controls.maxPolarAngle = venue.view.maxPolarAngle;
+	buildLightFolder();
+	fRoom.show( venue === room );
+	fHall.show( venue === hall );
+	hallView.view = 'At the piano';
+	fHall.controllersRecursive().forEach( c => c.updateDisplay() );
+	ptDirty = true;
+	shadowsDirty = true;
+
+}
+
 const fRender = gui.addFolder( 'Rendering' ).close();
-fRender.add( settings, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' ).onChange( () => renderer.toneMappingExposure = settings.exposure * room.light.exposure );
+fRender.add( settings, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' ).onChange( () => renderer.toneMappingExposure = settings.exposure * venue.light.exposure );
 fRender.add( settings, 'toneMapping', Object.keys( TONE ) ).name( 'Tone mapping' ).onChange( v => {
 
 	renderer.toneMapping = TONE[ v ];
@@ -1177,15 +1225,15 @@ function frameBody( dt, scripted = false ) {
 	updateDefocus();
 	if ( handheld.consumeRebuild() ) ptDirty = true;
 	keysMoving = piano.keyboard.update( dt );
-	roll.update( midiPlayer, dt, camera, renderer, room.mode !== 'pathtrace' );
+	roll.update( midiPlayer, dt, camera, renderer, venue.mode !== 'pathtrace' );
 	if ( piano.action?.update( dt ) ) keysMoving = true;
 	// re-render shadow maps only when something moved or the lighting changed (offline render:
 	// every frame)
 	if ( keysMoving || shadowsDirty || RENDER ) {
 
 		renderer.shadowMap.needsUpdate = true;
-		// the keyboard's own sun shadow map (high quality only; same angular sun size as room.js)
-		if ( settings.gi && room.mode !== 'pathtrace' ) keyShadow.update( scene, room.sun, 0.0045 * ( 0.4 + 1.6 * room.light.sunSoftness ) );
+		// the keyboard's own shadow map from the venue's key light (high quality only)
+		if ( settings.gi && venue.mode !== 'pathtrace' ) keyShadow.update( scene, venue.keyLight, venue.keyLightRadius() );
 		shadowsDirty = false;
 
 	}
@@ -1195,13 +1243,13 @@ function frameBody( dt, scripted = false ) {
 		if ( keysMoving ) {
 
 			// keys can't be refit into the BVH cheaply; show the raster view while they move
-			if ( room.mode !== 'raster' ) setLightingMode( 'raster' );
+			if ( venue.mode !== 'raster' ) setLightingMode( 'raster' );
 			composer.render();
 			ptDirty = true;
 
 		} else {
 
-			if ( room.mode !== 'pathtrace' ) setLightingMode( 'pathtrace' );
+			if ( venue.mode !== 'pathtrace' ) setLightingMode( 'pathtrace' );
 			if ( ptDirty ) {
 
 				pathTracer.setScene( scene, camera );
@@ -1237,7 +1285,7 @@ if ( params.has( 'preset' ) ) gui.controllersRecursive().find( c => c.property =
 if ( params.has( 'shake' ) ) gui.controllersRecursive().find( c => c.object === handheld && c.property === 'intensity' )?.setValue( Number( params.get( 'shake' ) ) );
 if ( flag( 'handheld' ) ) gui.controllersRecursive().find( c => c._name === 'Handheld' )?.setValue( true );
 if ( flag( 'screen' ) ) setScreenPower( true );
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, hall, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
 if ( RENDER ) startRender(); else requestAnimationFrame( frame );
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,14 @@
-// Parametric room + lighting rig, independent of the piano model.
-// The room is a closed box (so light bounces stay inside) with a window on one wall;
-// the sun enters through the window and casts the frame / foliage shadows.
+// Parametric room + lighting rig, independent of the piano model: the uprights' venue (the
+// grands play in hall.js). The room is a closed box (so light bounces stay inside) with a window
+// on one wall; the sun enters through the window and casts the frame / foliage shadows.
+//
+// A venue (Room, ConcertHall) gives main.js: group (geometry) and lights (a group of its lights),
+// activate() / deactivate(), light (its lighting values), presets + preset, lightControls()
+// (GUI rows for them), keyLight (the shadow-casting light: the GIProbe specular capture leaves it
+// out, keyshadow.js follows it) and keyLightRadius() (its angular radius), probeHidden (objects
+// left out of the probe's specular capture), environment (the path tracer's), place( piano ),
+// probePoint( piano ), bounds() (walkable floor), view (orbit limits), rebuild(), updateLights(),
+// setQuality( hq ), setMode( mode ), mode.
 
 import * as THREE from 'three';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
@@ -49,11 +57,16 @@ export class Room {
 		this.baker = baker;
 		this.highQuality = true;
 		this.params = { ...ROOM_DEFAULTS };
-		this.light = { ...LIGHT_PRESETS[ 'Sunlit afternoon' ] };
+		this.presets = LIGHT_PRESETS;
+		this.preset = 'Sunlit afternoon';
+		this.light = { ...LIGHT_PRESETS[ this.preset ] };
 		this._shell = new Map();			// material -> its no-draw twin for outward faces
 		this.group = new THREE.Group();
 		this.group.name = 'room';
-		scene.add( this.group );
+		this.lights = new THREE.Group();
+		this.lights.name = 'roomLights';
+		this.active = false;
+		this.view = { maxDistance: 5, maxPolarAngle: Math.PI * 0.53 };
 
 		// piano placement: back of the piano against the back wall
 		this.backWallZ = - 0.63;
@@ -71,6 +84,60 @@ export class Room {
 
 		this._buildLights();
 		this.rebuild();
+
+	}
+
+	activate() {
+
+		this.active = true;
+		this.scene.add( this.group, this.lights );
+		this.updateLights();
+
+	}
+
+	deactivate() {
+
+		this.active = false;
+		this.scene.remove( this.group, this.lights );
+
+	}
+
+	get keyLight() { return this.sun; }
+	get specularOff() { return [ this.sun ]; }		// see gi.js: the sun shows once, as its own highlight
+	get probeHidden() { return [ this.foliage ].filter( Boolean ); }
+	get environment() { return this.sky; }
+	keyLightRadius() { return 0.0045 * ( 0.4 + 1.6 * this.light.sunSoftness ); }
+
+	/** The piano's back against the back wall. */
+	place( piano ) {
+
+		piano.group.position.set( 0, 0, this.backWallZ + piano.depth + 0.03 );
+		piano.group.rotation.set( 0, 0, 0 );
+
+	}
+
+	probePoint( piano ) {
+
+		return new THREE.Vector3( 0, 1.1, piano.group.position.z + 0.9 );
+
+	}
+
+	bounds() {
+
+		const p = this.params;
+		return { minX: - p.width / 2, maxX: p.width / 2, minZ: this.backWallZ, maxZ: this.backWallZ + p.depth };
+
+	}
+
+	/** GUI rows for the lighting folder: [ key, min, max, step, label ] or [ key, 'color', label ]. */
+	lightControls() {
+
+		return [
+			[ 'sunAzimuth', 0, 180, 1, 'Sun azimuth' ], [ 'sunElevation', 2, 70, 0.5, 'Sun elevation' ],
+			[ 'sunIntensity', 0, 20, 0.1, 'Sun intensity' ], [ 'sunColor', 'color', 'Sun color' ],
+			[ 'sunSoftness', 0, 1, 0.01, 'Sun softness' ], [ 'sky', 0, 4, 0.01, 'Sky' ],
+			[ 'skyColor', 'color', 'Sky color' ], [ 'lamp', 0, 200, 1, 'Lamp' ],
+		];
 
 	}
 
@@ -310,19 +377,19 @@ export class Room {
 		sun.shadow.normalBias = 0.001;
 		sun.shadow.camera.near = SUN_NEAR;
 		sun.shadow.camera.far = SUN_FAR;
-		this.scene.add( sun, sun.target );
+		this.lights.add( sun, sun.target );
 		this.sun = sun;
 
 		// path-traced sun: small distant area light -> physically soft penumbra
 		const sunArea = new THREE.RectAreaLight( '#ffffff', 1, 1, 1 );
 		sunArea.visible = false;
-		this.scene.add( sunArea );
+		this.lights.add( sunArea );
 		this.sunArea = sunArea;
 
 		// sky portal: the window's sky radiance as an area light for the raster path
 		// (the path tracer samples the sky environment through the opening instead)
 		const portal = new THREE.RectAreaLight( '#ffffff', 1, 1, 1 );
-		this.scene.add( portal );
+		this.lights.add( portal );
 		this.portal = portal;
 
 		// overhead lamp for the evening preset
@@ -332,7 +399,7 @@ export class Room {
 		lamp.shadow.bias = - 0.0002;
 		lamp.shadow.radius = 4;
 		lamp.radius = 0.08;		// path tracer soft shadows
-		this.scene.add( lamp, lamp.target );
+		this.lights.add( lamp, lamp.target );
 		this.lamp = lamp;
 
 		this.sky = new ProceduralEquirectTexture( 256, 128 );
@@ -454,7 +521,7 @@ export class Room {
 		this._groundColor = new THREE.Color( '#5d6650' ).multiplyScalar( L.sky * SKY_RADIANCE * 0.4 );
 		this._sunColorLinear = new THREE.Color( L.sunColor );
 		this.sky.update();
-		this.scene.background = this.sky;
+		if ( this.active ) this.scene.background = this.sky;
 
 	}
 
