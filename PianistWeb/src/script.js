@@ -14,7 +14,11 @@
 //       set:                       # GUI controls by "Folder/Label" (or label / property name);
 //         Lighting/Preset: Golden hour    # numbers can tween: give `duration` (and `ease`)
 //       camera: { position: [ 0.6, 1.3, 1.6 ], target: [ 0, 0.9, -0.2 ], fov: 36 }   # a cut
-//       handheld: { enabled: true, shake: 0.6, walk: 1, person: true }
+//       defocus: { delay: 0.8, duration: 0.9, amount: 1 }   # the lens loses focus for a moment
+//                                  # and finds it again (depth of field), `delay` s after the
+//                                  # event; `defocus: true` = the defaults (0, 0.9 s, 1)
+//       handheld: { enabled: true, shake: 0.6, walk: 1, person: true }   # focusHunt: the phone's
+//                                  # focus hunting now and then on quick moves (1; 0 = never)
 //     - at: 1
 //       screen: on                 # on | off
 //     - at: 2
@@ -85,7 +89,7 @@ const EASE = {
 	out: t => 1 - ( 1 - t ) * ( 1 - t ),
 };
 
-const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', bursts: 'Handheld camera/Operator bursts', person: 'Handheld camera/Person (reflections)' };
+const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', bursts: 'Handheld camera/Operator bursts', focusHunt: 'Handheld camera/Focus hunting', person: 'Handheld camera/Person (reflections)' };
 
 const vec = ( a, what ) => {
 
@@ -270,6 +274,12 @@ export class ScriptPlayer {
 		}
 
 		if ( e.screen !== undefined ) out.screen = e.screen === true || e.screen === 'on';
+		if ( e.defocus !== undefined ) {
+
+			const d = typeof e.defocus === 'object' ? e.defocus : {};
+			out.defocus = { delay: Math.max( 0, Number( d.delay ) || 0 ), duration: Number( d.duration ) > 0 ? Number( d.duration ) : 0.9, amount: d.amount !== undefined ? Number( d.amount ) : 1 };
+
+		}
 		if ( e.midi !== undefined ) {
 
 			const m = e.midi;
@@ -508,6 +518,14 @@ export class ScriptPlayer {
 				this._pose( c.position, c.target, c.fov );
 
 			}
+
+		}
+
+		if ( e.defocus ) {
+
+			const d = e.defocus;
+			this._pending.push( { at: t0 + d.delay, run: () => this.ctx.defocus?.( d.duration, d.amount ) } );
+			parts.push( () => this.time < t0 + d.delay + d.duration );
 
 		}
 

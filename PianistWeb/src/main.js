@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import GUI from 'lil-gui';
 
 import { TextureBaker } from './textures.js';
@@ -117,6 +118,23 @@ function blurMirror( mat ) {
 	mat.needsUpdate = true;
 
 }
+// the piano's centre (what the phone focuses on), measured once per piano
+const _subject = new THREE.Vector3(), _subjectBox = new THREE.Box3();
+let _subjectOf = null;
+function pianoCentre() {
+
+	if ( ! piano ) return null;
+	if ( _subjectOf !== piano.group ) {
+
+		_subjectBox.setFromObject( piano.group ).getCenter( _subject );
+		_subjectOf = piano.group;
+
+	}
+
+	return _subject;
+
+}
+
 const screenPlane = new THREE.Plane(), _n = new THREE.Vector3(), _x = new THREE.Vector3( 1, 0, 0 );
 // handheld camera mode (handheldmode.js): shake, walking, height cap, FOV zoom, person in reflections
 const handheld = new HandheldMode( {
@@ -149,6 +167,8 @@ const handheld = new HandheldMode( {
 		applySpecularEnv();
 
 	},
+	subject: () => pianoCentre(),
+	defocus: ( duration, amount ) => startDefocus( duration, amount ),
 	bounds: () => ( { minX: - room.params.width / 2, maxX: room.params.width / 2, minZ: room.backWallZ, maxZ: room.backWallZ + room.params.depth } ),
 } );
 renderer.debug.onShaderError = ( gl, program, vs, fs ) => {
@@ -182,7 +202,52 @@ const outputPass = new OutputPass();
 composer.addPass( renderPass );
 composer.addPass( gtaoPass );
 composer.addPass( bloomPass );
+// depth of field, only for a lens that loses focus for a moment (scripts: `defocus`); off otherwise
+const bokehPass = new BokehPass( scene, camera, { focus: 1, aperture: 0.03, maxblur: 0 } );
+bokehPass.enabled = false;
+composer.addPass( bokehPass );
 composer.addPass( outputPass );
+
+// Focus hunting, like a phone camera's autofocus on a quick move: the focus pulled in front of
+// the subject, nearly back, out again, then sharp. `amount` scales the blur (1: DOF_MAXBLUR, in
+// screen units). Timed on `clock` (the render clock offline)
+const DOF_MAXBLUR = 0.02;
+const DOF_KEYS = [ [ 0, 0 ], [ 0.16, 1 ], [ 0.36, 0.35 ], [ 0.56, 0.75 ], [ 1, 0 ] ];		// [ u, blur ]
+const defocus = { t0: - 1, duration: 1, amount: 1 };
+function startDefocus( duration = 0.9, amount = 1 ) {
+
+	Object.assign( defocus, { t0: clock.now() / 1000, duration: Math.max( 0.1, duration ), amount } );
+
+}
+
+function updateDefocus() {
+
+	let k = 0;
+	const u = defocus.t0 < 0 ? 1 : ( clock.now() / 1000 - defocus.t0 ) / defocus.duration;
+	if ( u > 0 && u < 1 ) {
+
+		let i = 1;
+		while ( DOF_KEYS[ i ][ 0 ] < u ) ++ i;
+		const [ u0, a ] = DOF_KEYS[ i - 1 ], [ u1, b ] = DOF_KEYS[ i ];
+		k = a + ( b - a ) * THREE.MathUtils.smoothstep( u, u0, u1 );
+
+	}
+
+	k *= defocus.amount;
+	bokehPass.enabled = k > 0.002;
+	if ( ! bokehPass.enabled ) return;
+	// the subject: the piano, along the view (not the orbit target: in handheld mode that sits
+	// just in front of the phone)
+	_dof.copy( pianoCentre() ?? controls.target );
+	const d = THREE.MathUtils.clamp( _dof.sub( camera.position ).dot( camera.getWorldDirection( _dofDir ) ), 0.3, 5 );
+	const U = bokehPass.uniforms;
+	U.focus.value = d * ( 1 - 0.6 * Math.min( 1, k ) );
+	U.maxblur.value = DOF_MAXBLUR * k;
+	U.aspect.value = camera.aspect;
+
+}
+
+const _dof = new THREE.Vector3(), _dofDir = new THREE.Vector3();
 
 function applyAO() {
 
@@ -570,6 +635,7 @@ fHand.add( handheld, 'intensity', 0, 3, 0.05 ).name( 'Shake' );
 fHand.add( handheld, 'walk', 0, 2, 0.05 ).name( 'Walking motion' );
 fHand.add( handheld, 'drift', 0, 2, 0.05 ).name( 'Operator drift' );
 fHand.add( handheld, 'bursts' ).name( 'Operator bursts' );
+fHand.add( handheld, 'focusHunt', 0, 2, 0.05 ).name( 'Focus hunting' );
 fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
 gui.add( settings, 'mode', { 'Real-time (probe GI + GTAO)': 'realtime', 'Path traced': 'pathtrace' } ).name( 'Renderer' ).onChange( setMode );
 
@@ -741,6 +807,7 @@ const scriptPlayer = new ScriptPlayer( {
 	setRollMode: mode => roll.setMode( mode ),
 	setSubtitle: text => roll.setSubtitle( text ),
 	setStatus: ( status, level ) => roll.setStatus( status, level ),
+	defocus: ( duration, amount ) => startDefocus( duration, amount ),
 	// notes played by hand in a script: like the keyboard (sound, keys, the red rising roll)
 	noteOn: ( pitch, velocity ) => noteOn( pitch, velocity, { sound: true, live: true } ),
 	noteOff: pitch => noteOff( pitch, { sound: true, live: true } ),
@@ -1063,6 +1130,7 @@ function frameBody( dt, scripted = false ) {
 	}
 	controls.update();
 	handheld.apply( dt );
+	updateDefocus();
 	if ( handheld.consumeRebuild() ) ptDirty = true;
 	keysMoving = piano.keyboard.update( dt );
 	roll.update( midiPlayer, dt, camera, renderer, room.mode !== 'pathtrace' );
@@ -1125,7 +1193,7 @@ if ( params.has( 'preset' ) ) gui.controllersRecursive().find( c => c.property =
 if ( params.has( 'shake' ) ) gui.controllersRecursive().find( c => c.object === handheld && c.property === 'intensity' )?.setValue( Number( params.get( 'shake' ) ) );
 if ( flag( 'handheld' ) ) gui.controllersRecursive().find( c => c._name === 'Handheld' )?.setValue( true );
 if ( flag( 'screen' ) ) setScreenPower( true );
-window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
 if ( RENDER ) startRender(); else requestAnimationFrame( frame );
 
 // ---------------------------------------------------------------------------

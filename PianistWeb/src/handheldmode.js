@@ -61,11 +61,30 @@ const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.
 const _dv = new THREE.Vector3(), _dq = new THREE.Quaternion();
 const _v = new THREE.Vector3(), _o = new THREE.Vector3();
 
+// autofocus hunting (HandheldMode._focusHunt)
+const HUNT_SPEED = 0.2;			// m/s, smoothed: a quick move
+const HUNT_COOLDOWN = 8;		// s between two hunts at least
+
+function mulberry( seed ) {
+
+	return () => {
+
+		seed = ( seed + 0x6D2B79F5 ) >>> 0;
+		let t = seed;
+		t = Math.imul( t ^ ( t >>> 15 ), t | 1 );
+		t ^= t + Math.imul( t ^ ( t >>> 7 ), t | 61 );
+		return ( ( t ^ ( t >>> 14 ) ) >>> 0 ) / 4294967296;
+
+	};
+
+}
+
 export class HandheldMode {
 
 	/**
 	 * @param ctx { camera, controls, scene, renderer, isPathTracing(), specularCapture(eye, ahead), specularRestore(),
-	 *              bounds() -> { minX, maxX, minZ, maxZ } (room floor) }
+	 *              bounds() -> { minX, maxX, minZ, maxZ } (room floor), subject() -> Vector3 (what the
+	 *              phone focuses on), defocus(duration, amount) (a focus hunt) }
 	 */
 	constructor( ctx ) {
 
@@ -82,6 +101,9 @@ export class HandheldMode {
 		this.operator = new Operator( operatorParams, { seed: 5 } );
 		this.drift = 0.2;				// the fitted drift at full strength read as too much sway
 		this.bursts = true;				// the operator's sub-movements (off: follows the goal directly)
+		// the phone's autofocus hunting now and then on a quick move (ctx.defocus); 0 = never
+		this.focusHunt = 1;
+		this._hunt = { on: false, peak: 0, cool: 0, dist: null, radial: 0, rand: mulberry( RENDER ? 23 : Date.now() ) };		// offline: reproducible
 		this.steering = false;			// a drag on the view (any button) is in progress
 		this.person = new Person();
 		this.intended = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), valid: false };
@@ -196,6 +218,42 @@ export class HandheldMode {
 		if ( on ) this.ctx.scene.add( this.person.group );
 		this.probeAt.set( 1e9, 0, 0 );
 		this.rebuild = true;
+
+	}
+
+	/**
+	 * Autofocus hunting: a quick move (smoothed speed over HUNT_SPEED) is one chance; at its end
+	 * the focus hunts with a probability that grows with how fast the distance to the subject
+	 * changed (that is what a phone's focus has to follow; sideways moves and turns rarely lose
+	 * it). At most one hunt every HUNT_COOLDOWN s. Seeded: an offline render is reproducible.
+	 */
+	_focusHunt( dt, position ) {
+
+		const H = this._hunt;
+		H.cool = Math.max( 0, H.cool - dt );
+		const subject = this.ctx.subject?.();
+		if ( ! subject || ! this.ctx.defocus || dt <= 0 ) return;
+		const d = position.distanceTo( subject );
+		const r = H.dist === null ? 0 : Math.abs( d - H.dist ) / dt;
+		H.dist = d;
+		H.radial += ( r - H.radial ) * ( 1 - Math.exp( - dt / 0.25 ) );
+		if ( ! H.on && this.speed > HUNT_SPEED ) {
+
+			H.on = true;
+			H.peak = 0;
+
+		}
+
+		if ( ! H.on ) return;
+		H.peak = Math.max( H.peak, H.radial );
+		if ( this.speed > HUNT_SPEED * 0.6 ) return;
+		// the move is ending: the focus catches up now, or loses it for a moment
+		H.on = false;
+		const chance = this.focusHunt * THREE.MathUtils.clamp( 0.15 + 2 * H.peak, 0, 0.95 );
+		const roll = H.rand(), size = H.rand(), len = H.rand();
+		if ( H.cool > 0 || roll >= chance ) return;
+		H.cool = HUNT_COOLDOWN;
+		this.ctx.defocus( 0.7 + 0.4 * len, Math.min( 1, ( 0.6 + 0.4 * size ) * Math.min( 1, this.focusHunt ) ) );
 
 	}
 
@@ -321,6 +379,7 @@ export class HandheldMode {
 		this.lastPos.copy( camera.position );
 		this.lastQuat.copy( camera.quaternion );
 		const moving = Math.min( 1, THREE.MathUtils.smoothstep( this.speed, 0.03, 0.25 ) + THREE.MathUtils.smoothstep( this.turn, 0.07, 0.4 ) );
+		this._focusHunt( dt, camera.position );
 		const walking = THREE.MathUtils.smoothstep( this.speed, 0.04, 0.35 ) * this.walk;
 
 		// the base pose: the operator following the intended pose, plus its slow drift (not while
