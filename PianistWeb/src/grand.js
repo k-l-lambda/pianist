@@ -15,6 +15,7 @@ import { Keyboard } from './keyboard.js';
 import { woodBox, v3, extrudeTop, merge, beam, rod, boxProjectUV } from './geometry.js';
 import { PianoAction } from './action.js';
 import { pedalShape } from './upright.js';
+import { buildBench } from './bench.js';
 
 const KEY_BOTTOM = 0.698;
 // heights from the patent's side elevation (Fig. 5, rim top 1.00 m): the rim is 0.28 m deep,
@@ -791,6 +792,11 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	const keyboard = new Keyboard( { white: M.keyWhite, black: M.keyBlack } );
 	keyboard.group.position.set( 0, KEY_BOTTOM, 0 );
 	group.add( keyboard.group );
+
+	// the bench, in the case's lacquer, its front ~0.3 m from the keys
+	const bench = buildBench( M.case, { dark: M.case.color.getHSL( {} ).l < 0.5 } );
+	bench.position.set( 0, 0, KEY_FRONT_Z + 0.48 );
+	group.add( bench );
 
 	return {
 		group,
