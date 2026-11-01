@@ -213,7 +213,12 @@ timeline:
       ease: inOutSine
       path:
         - { position: [ 0.14, 1.25, 0.86 ], target: [ 0.03, 0.86, -0.20 ], fov: 38 }
-  - after: 6.5
+  # User, over the song, just after its line 闪烁的悲伤 (1:44 into the premiere, 32.8 s into
+  # 琴伤): 还行能听出是歌词，就是，她唱的这个声……有点剌嗓子。 At the level of the other user
+  # lines (~-24 dB speech RMS on the output)
+  - after: 5.8
+    audio: { play: user/lyrics-fine.opus, volume: 0.33 }
+  - after: 0.7    # (the last small step stays 6.5 s after the one before)
     camera:
       duration: 0.9
       ease: inOutSine
