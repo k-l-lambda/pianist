@@ -18,6 +18,7 @@ export const RENDER_OPTS = RENDER ? {
 	from: Number( get( 'from' ) ?? 0 ),
 	to: get( 'to' ) !== null ? Number( get( 'to' ) ) : Infinity,
 	pixelRatio: Number( get( 'ss' ) ?? 2 ),		// render scale (supersampling), downscaled by the capture
+	watermark: get( 'wm' ),		// "off" or "opacity=0.12,right=60,bottom=60,height=96" (main.js: WATERMARK)
 } : null;
 
 // a render is reproducible: Math.random (wood grain offsets in geometry.js, ...) seeded

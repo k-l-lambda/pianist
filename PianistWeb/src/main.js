@@ -627,6 +627,46 @@ powerButton?.addEventListener( 'click', () => {
 } );
 
 const gui = new GUI( { title: 'Pianist' } );
+
+// Watermark: bottom right, its right and bottom edges `right` / `bottom` px in from the view's
+// (and left of the Pianist panel while that reaches down to it). On the page an <img> over the
+// canvas; offline renders draw it into each frame (startRender: frame()), where the render can
+// set its own (render-video.mjs --watermark "opacity=0.12,x=0.75,bottom=64" | off)
+const WATERMARK = { src: 'klstudio.png', opacity: 0.06, right: 60, bottom: 60, height: 96 };
+function parseWatermark( spec ) {
+
+	const out = {};
+	for ( const kv of ( spec ?? '' ).split( ',' ) ) {
+
+		const [ k, v ] = kv.split( '=' ).map( x => x?.trim() );
+		if ( k && v !== undefined && [ 'opacity', 'right', 'bottom', 'height', 'x' ].includes( k ) && Number.isFinite( Number( v ) ) ) out[ k ] = Number( v );
+
+	}
+
+	return out;
+
+}
+
+if ( ! RENDER ) {
+
+	const img = Object.assign( document.createElement( 'img' ), { src: new URL( WATERMARK.src, new URL( import.meta.env.BASE_URL, location.href ) ).href, alt: '', draggable: false } );
+	img.setAttribute( 'aria-hidden', 'true' );
+	Object.assign( img.style, { position: 'fixed', bottom: `${ WATERMARK.bottom }px`, height: `${ WATERMARK.height }px`, width: 'auto', opacity: String( WATERMARK.opacity ), pointerEvents: 'none', userSelect: 'none', zIndex: '5' } );
+	document.body.appendChild( img );
+	// keep clear of the panel (top right) when it is tall enough to reach the mark
+	const place = () => {
+
+		const r = gui.domElement.getBoundingClientRect();
+		const top = innerHeight - WATERMARK.bottom - WATERMARK.height;
+		const blocked = r.width > 0 && r.bottom > top - 8;
+		img.style.right = `${ WATERMARK.right + ( blocked ? innerWidth - r.left : 0 ) }px`;
+
+	};
+	place();
+	new ResizeObserver( place ).observe( gui.domElement );
+	addEventListener( 'resize', place );
+
+}
 gui.add( settings, 'style', Object.fromEntries( STYLES.map( s => [ s.name, s.id ] ) ) ).name( 'Piano' ).onChange( setStyle );
 gui.add( settings, 'gi' ).name( 'Global illumination' ).onChange( () => applyQuality() );
 const fHand = gui.addFolder( 'Handheld camera' );
@@ -1209,6 +1249,10 @@ function startRender() {
 	} ) );
 	let frameNo = 0;		// frames drawn so far (time of the next: frameNo / fps)
 	let out = null;		// 2D canvas for frame()
+	// the watermark on every frame (frame()): WATERMARK, or the render's own (#?wm=…, the driver's
+	// --watermark); px at 1080 lines, scaled for other sizes
+	const wm = o.watermark === 'off' ? null : { ...WATERMARK, ...parseWatermark( o.watermark ) };
+	const mark = new Image();
 	// The script player runs in sub-steps of at most SCRIPT_STEP s with the clock: it sees time
 	// only when it is updated, so with one update per frame every event (and everything timed off
 	// it with after: / gap:) fired up to a frame late, and the delays added up along the script
@@ -1262,6 +1306,12 @@ function startRender() {
 		await until( () => roll.bootAnim?.ready, 'the boot artwork' );
 		await until( () => roll.bootLength !== null, 'the power-on chime' );
 		await document.fonts?.ready;
+		if ( wm ) {
+
+			mark.src = new URL( wm.src, base ).href;
+			await mark.decode().catch( () => console.warn( `watermark ${ wm.src } did not load` ) );
+
+		}
 		scriptPlayer.play();
 		// skip to `from`: the frames before it are simulated (and drawn) but not captured
 		// (yielding now and then: thousands of frames in one task lost the WebGL context, and a
@@ -1297,6 +1347,17 @@ function startRender() {
 			g.imageSmoothingEnabled = true;
 			g.imageSmoothingQuality = 'high';
 			g.drawImage( src, 0, 0, width, height );
+			if ( wm && mark.complete && mark.naturalWidth ) {
+
+				const k = height / 1080, h = wm.height * k, w = h * mark.naturalWidth / mark.naturalHeight;
+				// `x`: the centre at that fraction of the width; else `right` px from the right edge
+				const x = wm.x !== undefined ? width * wm.x - w / 2 : width - wm.right * k - w;
+				g.globalAlpha = wm.opacity;
+				g.drawImage( mark, x, height - wm.bottom * k - h, w, h );
+				g.globalAlpha = 1;
+
+			}
+
 			return out.toDataURL( 'image/png' ).slice( 22 );
 
 		},

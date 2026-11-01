@@ -5,6 +5,12 @@
 //
 //   node tools/render-video.mjs <script.yaml> [--fps 25] [--from 0] [--to <s>] [--out out.mp4]
 //        [--size 1280x720] [--ss 2] [--url http://localhost:5184/] [--no-audio] [--crf 18]
+//        [--watermark "opacity=0.06,right=60,bottom=60,height=96" | off]
+//
+// --watermark: the klstudio.png mark drawn into every frame; defaults as on the page (src/main.js
+// WATERMARK: bottom right, 60 px in, opacity 0.06); keys opacity, right, bottom, height (px at
+// 1080 lines, scaled) or x (its centre at that fraction of the width), e.g. the premiere's
+// "opacity=0.12,x=0.75,bottom=64"; `off` for none.
 //
 // <script>: a name in public/scripts/, a path from the site root, or a URL. --to defaults to the
 // end of the script. --ss: render scale (pixel ratio; the frame is drawn at size x ss and the
@@ -49,9 +55,10 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--url' ) opt.url = val();
 	else if ( a === '--crf' ) opt.crf = Number( val() );
 	else if ( a === '--no-audio' ) opt.audio = false;
+	else if ( a === '--watermark' ) opt.watermark = val();
 	else if ( a === '-h' || a === '--help' ) {
 
-		console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 20 ).join( '\n' ) );
+		console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 26 ).join( '\n' ) );
 		process.exit( 0 );
 
 	} else if ( ! a.startsWith( '--' ) && ! script ) script = a;
@@ -128,6 +135,7 @@ try {
 	page.on( 'console', m => ( m.type() === 'error' || m.type() === 'warning' ) && ! /^fluidsynth: /.test( m.text() ) ? console.error( `page ${ m.type() }:`, m.text() ) : null );
 	const hash = new URLSearchParams( { render: script, fps: opt.fps, from: opt.from, ss: opt.ss } );
 	if ( opt.to !== null ) hash.set( 'to', opt.to );
+	if ( opt.watermark ) hash.set( 'wm', opt.watermark );
 	await page.goto( new URL( '#?' + hash, opt.url ).href, { waitUntil: 'commit' } );
 	await page.waitForFunction( () => window.__render, null, { timeout: 120000 } );
 	const info = await page.evaluate( () => window.__render.ready );
