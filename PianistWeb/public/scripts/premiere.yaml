@@ -226,3 +226,103 @@ timeline:
       ease: inOutSine
       path:
         - { position: [ 0.05, 1.25, 0.90 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
+
+  # From 50 s into 琴伤 to its end (160 s) the user, listening, looks round the piano with the
+  # phone: at the front the arm goes up and down (views from above and from key height), a walk
+  # round to the piano's left, to where the line to its centre meets the back wall at ~30°,
+  # close on the keys and the screen there, back across the front to the right, close and low at
+  # the front, the arm up over the keys, back to the hold. Phone heights 1.07-1.6 m: the cut-out's
+  # shoulder is at 1.41 m, its arm (0.56 m) reaches from 1.0 to above the eyes (1.64); speeds as in
+  # the real video (walks ~0.2 m/s mean, peaks under the operator's 0.42 m/s)
+  - after: 16.5   # 50 s: at the front, the arm up, looking down on keys and screen
+    camera:
+      duration: 1.5
+      ease: inOutSine
+      path:
+        - { position: [ 0.04, 1.58, 0.84 ], target: [ 0.00, 0.80, -0.18 ], fov: 38 }
+  - after: 6.0    # 56 s: the arm down, at key height
+    camera:
+      duration: 2.0
+      ease: inOutSine
+      path:
+        - { position: [ 0.03, 1.07, 0.80 ], target: [ 0.00, 0.92, -0.22 ], fov: 38 }
+  - after: 5.5    # back to the hold
+    camera:
+      duration: 1.2
+      ease: inOutSine
+      path:
+        - { position: [ 0.05, 1.25, 0.88 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
+  - after: 4.5    # 66 s: a walk round to the piano's left, 30° off the back wall
+    camera:
+      duration: 6.5
+      ease: inOutSine
+      path:
+        - { position: [ -0.55, 1.25, 0.85 ], target: [ -0.15, 0.86, -0.18 ], fov: 37 }
+        - { position: [ -0.95, 1.24, 0.25 ], target: [ -0.25, 0.86, -0.12 ], fov: 36 }
+  - after: 10.0   # 76 s: a step in, close on the keys and the screen
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ -0.78, 1.16, 0.14 ], target: [ -0.12, 0.82, -0.14 ], fov: 33 }
+  - after: 6.0    # 82 s: the arm up a little, down along the keys on to the screen
+    camera:
+      duration: 1.4
+      ease: inOutSine
+      path:
+        - { position: [ -0.76, 1.45, 0.12 ], target: [ -0.05, 0.80, -0.20 ], fov: 33 }
+  - after: 6.0    # 88 s: along the keyboard towards the treble
+    camera:
+      duration: 2.2
+      ease: inOutSine
+      path:
+        - { position: [ -0.74, 1.30, 0.16 ], target: [ 0.30, 0.82, -0.12 ], fov: 34 }
+  - after: 7.0    # 95 s: a step back out
+    camera:
+      duration: 1.8
+      ease: inOutSine
+      path:
+        - { position: [ -0.95, 1.24, 0.25 ], target: [ -0.20, 0.86, -0.15 ], fov: 36 }
+  - after: 6.0    # 101 s: back across the front to the right
+    camera:
+      duration: 8.0
+      ease: inOutSine
+      path:
+        - { position: [ -0.40, 1.25, 0.95 ], target: [ -0.05, 0.86, -0.20 ], fov: 37 }
+        - { position: [ 0.55, 1.25, 0.82 ], target: [ 0.05, 0.86, -0.22 ], fov: 38 }
+  - after: 13.0   # 114 s: close and low at the front, the screen and keys
+    camera:
+      duration: 2.4
+      ease: inOutSine
+      path:
+        - { position: [ 0.12, 1.12, 0.42 ], target: [ 0.00, 0.90, -0.22 ], fov: 34 }
+  - after: 7.0    # 121 s: the arm up high over the keys
+    camera:
+      duration: 2.0
+      ease: inOutSine
+      path:
+        - { position: [ 0.08, 1.60, 0.40 ], target: [ 0.00, 0.72, -0.10 ], fov: 34 }
+  - after: 6.5    # 127.5 s: a step back, the hold
+    camera:
+      duration: 2.2
+      ease: inOutSine
+      path:
+        - { position: [ 0.05, 1.25, 0.85 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
+  - after: 8.5    # small shifts to the end
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ 0.16, 1.25, 0.88 ], target: [ 0.03, 0.86, -0.20 ], fov: 38 }
+  - after: 8.0
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ -0.06, 1.24, 0.86 ], target: [ -0.02, 0.86, -0.20 ], fov: 38 }
+  - after: 7.0    # 151 s
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ 0.05, 1.25, 0.90 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
