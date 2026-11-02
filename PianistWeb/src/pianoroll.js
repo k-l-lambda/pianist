@@ -20,6 +20,7 @@ import { PITCH_MIN, PITCH_MAX, WHITE_PITCH, pitchX, isBlack } from './keyboard.j
 const MAX_BARS = RENDER ? 16384 : 2048;	// voice-mode MIDI (talking piano) shows ~600-900 short bars at once; offline render: no cap in practice
 const MAX_PARTICLES = RENDER ? 65536 : 8192;		// offline render: room for every spark (the ring buffer overwrote the oldest)
 const PARTICLE_LIFE = 1.5;			// s
+const FLAME_SHARE = 0.05;			// of the particles spawned: small flames (short-lived, see PART_VS)
 const MAX_FLARES = RENDER ? 512 : 128;		// hit flares drawn at once
 const WHITE_TOP = 0.0222, BLACK_TOP = 0.0345;	// key-mesh local heights of the key tops
 const LIFT = 0.0025;				// roll plane offset towards the player (above the screen surface)
@@ -29,6 +30,8 @@ const BOOT_FADE = 0.6;				// s, boot animation -> roll crossfade
 // roll modes: 'music' (default) and 'voice', for speech fitted to piano (talking MIDI: dense short
 // notes): falls 6x faster, green, no particles. Set by scene scripts only (no GUI).
 const KEY_GLOW = { music: 0.5, voice: 1 };	// how strongly a note arriving lights its key, per roll mode
+const KEY_SPREAD = 0.016;			// m: a note's glow spreads to its neighbours (Gaussian sigma, ~2/3 of a white key)
+const KEY_ATTACK = 0.035, KEY_RELEASE = 0.22;	// s: the glow's swell and let-go (critically damped follow)
 const GHOST_FADE = 0.5;
 const MUSIC_FADE_IN = 0.6;			// s, a music (blue) file's roll fading in when it appears (it starts
 									// mid-file, its first look-ahead of bars all at once); voice files
@@ -432,47 +435,94 @@ const FLARE_FS = /* glsl */`
 	}
 `;
 
-// sparks: rise from the hit line with a turbulent swirl; a few larger dim "smoke" puffs
+// sparks: rise from the hit line with a turbulent swirl, breaking up and wandering as they get
+// higher; a few larger dim "smoke" puffs; and small flames licking upwards, faster or slower than
+// the sparks, wiggling side to side like a swimming fish or meandering up
 const PART_VS = /* glsl */`
-	attribute vec4 aSpawn;			// t0, seed, kind (0 spark / 1 smoke), strength
+	attribute vec4 aSpawn;			// t0, seed, kind (0 spark / 1 smoke / 2 flame), strength
 	uniform float uTime;
 	uniform float uLife;
 	uniform float uScale;			// px per metre at unit distance
 	varying float vA;
 	varying float vKind;
 	varying float vAge;
+	varying float vLean;			// flames: sideways slope of the path (the flame leans into it)
+	varying float vFlick;			// flames: flicker
 	float h( float n ) { return fract( sin( n ) * 43758.5453 ); }
 	void main() {
 		float age = uTime - aSpawn.x;
 		float s = aSpawn.y, kind = aSpawn.z;
-		float life = uLife * ( 0.55 + 0.6 * h( s * 3.1 ) ) * ( kind > 0.5 ? 1.6 : 1.0 );
+		bool smoke = kind > 0.5 && kind < 1.5, flame = kind > 1.5;
+		float life = uLife * ( 0.55 + 0.6 * h( s * 3.1 ) ) * ( smoke ? 1.6 : flame ? 0.45 : 1.0 );
 		vKind = kind;
-		vAge = age / life;
+		vAge = age / max( life, 1e-3 );
+		vLean = 0.0;
+		vFlick = 1.0;
 		if ( age < 0.0 || age > life ) {
 			gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
 			gl_PointSize = 0.0;
 			vA = 0.0;
 			return;
 		}
+		float x, y, z, size;
+		if ( flame ) {
+			// a wider range of speeds than the sparks: slow licks to quick darts, more sideways
+			float rise = mix( 0.05, 0.32, h( s * 7.7 ) );
+			float lift = mix( 0.0, 0.12, h( s * 6.1 ) );
+			y = 0.004 + rise * age + lift * age * age;
+			float vy = rise + 2.0 * lift * age;
+			float side = ( h( s * 2.3 ) - 0.5 ) * position.y + ( h( s * 9.1 ) - 0.5 ) * 0.03 * age;
+			float vx = ( h( s * 9.1 ) - 0.5 ) * 0.03;
+			float ph = h( s * 4.7 ) * 6.2832;
+			if ( h( s * 5.9 ) < 0.55 ) {
+				// fish: a quick side-to-side wiggle, growing as it gets going
+				float f = mix( 4.0, 8.0, h( s * 1.3 ) ) * 6.2832, A = mix( 0.004, 0.012, h( s * 3.3 ) ) * smoothstep( 0.0, 0.25, age );
+				side += A * sin( f * age + ph );
+				vx += A * f * cos( f * age + ph );
+			} else {
+				// meander: a slow wide weave
+				float f = mix( 0.9, 2.2, h( s * 1.3 ) ) * 6.2832, A = mix( 0.012, 0.03, h( s * 3.3 ) ) * smoothstep( 0.0, 0.4, age );
+				side += A * sin( f * age + ph );
+				vx += A * f * cos( f * age + ph );
+			}
+			x = position.x + side;
+			z = 0.003 + 0.02 * h( s * 4.1 ) * age;
+			vLean = clamp( vx / max( vy, 0.02 ), - 1.5, 1.5 );
+			vFlick = 0.8 + 0.2 * sin( 31.0 * age + ph * 3.0 ) * sin( 17.0 * age + ph );
+			size = mix( 0.005, 0.009, h( s * 6.7 ) ) * vFlick * ( 1.0 - 0.45 * vAge );
+		} else {
 		// 70% of the sparks ride one of three strands per note: same rise / swirl for the whole
 		// strand and a phase that follows the spawn time, so they trace travelling wavy ribbons;
 		// the rest scatter on their own
 		float strand = step( 0.3, h( s * 8.9 ) );
 		float k = position.x * 977.0 + floor( h( s * 3.7 ) * 3.0 ) * 13.0;
-		float rise = mix( mix( 0.06, 0.15, h( s * 7.7 ) ), mix( 0.075, 0.12, h( k * 1.7 ) ), strand ) * ( kind > 0.5 ? 0.5 : 1.0 );
-		float y = 0.003 + rise * age + 0.025 * age * age;
+		float rise = mix( mix( 0.06, 0.15, h( s * 7.7 ) ), mix( 0.075, 0.12, h( k * 1.7 ) ), strand ) * ( smoke ? 0.5 : 1.0 );
+		y = 0.003 + rise * age + 0.025 * age * age;
 		float w = mix( mix( 4.0, 9.0, h( s * 1.9 ) ), mix( 4.5, 7.0, h( k * 3.3 ) ), strand );
 		float amp = mix( mix( 0.005, 0.02, h( s * 5.3 ) ), mix( 0.011, 0.022, h( k * 2.9 ) ), strand ) * smoothstep( 0.0, 0.45, age );
 		float phase = mix( s * 40.0, h( k * 4.1 ) * 6.28 + aSpawn.x * 3.5, strand );
 		float strandOff = ( floor( h( s * 3.7 ) * 3.0 ) - 1.0 ) * 0.3 * position.y;		// position.y: key width
 		float spread = mix( ( h( s * 2.3 ) - 0.5 ) * position.y, strandOff + ( h( s * 2.3 ) - 0.5 ) * 0.0015, strand );
-		float x = position.x + spread + amp * sin( w * age + phase ) + 0.005 * sin( 2.3 * age + phase * 0.37 ) * age;
-		float z = 0.002 + 0.03 * h( s * 4.1 ) * age;
+		x = position.x + spread + amp * sin( w * age + phase ) + 0.005 * sin( 2.3 * age + phase * 0.37 ) * age;
+		z = 0.002 + 0.03 * h( s * 4.1 ) * age;
+		// high up the strands break up: each spark wanders off on its own, the more the higher it
+		// gets (nothing near the hit line): a drift away from the ribbon plus a turbulent weave,
+		// direction, frequency and phase per spark
+		float high = smoothstep( 0.04, 0.2, y ) * smoothstep( 0.2, 0.9, age );
+		float dir = h( s * 7.3 ) - 0.5, wf = mix( 1.4, 3.2, h( s * 2.9 ) ), wp = h( s * 5.7 ) * 6.2832;
+		float wander = ( dir * 0.07 * age + 0.016 * sin( wf * age * 6.2832 + wp ) + 0.008 * sin( 2.7 * wf * age * 6.2832 + wp * 1.7 ) ) * high;
+		x += wander * ( smoke ? 0.5 : 1.0 );
+		y += 0.012 * ( h( s * 8.3 ) - 0.5 ) * high * age;
+		z += 0.015 * h( s * 1.1 ) * high * age;
+		size = smoke ? 0.015 : mix( 0.0014, 0.003, h( s * 6.7 ) );		// glow puffs at half the reach
+		}
 		vec4 mv = modelViewMatrix * vec4( x, y, z, 1.0 );
 		gl_Position = projectionMatrix * mv;
-		float size = kind > 0.5 ? 0.015 : mix( 0.0014, 0.003, h( s * 6.7 ) );		// glow puffs at half the reach
-		gl_PointSize = max( 1.0, size * uScale / - mv.z );
-		vA = aSpawn.w * smoothstep( 0.0, 0.06, age ) * pow( 1.0 - age / life, 1.4 ) * ( kind > 0.5 ? 0.06 : 1.0 );
+		// (finite and bounded whatever the camera does)
+		gl_PointSize = clamp( size * uScale / max( - mv.z, 0.05 ), 1.0, 256.0 );
+		float fade = pow( max( 1.0 - age / life, 0.0 ), 1.4 );
+		// (born dim: a fresh burst is not drawn at full white where its sparks still sit together)
+		vA = aSpawn.w * smoothstep( 0.0, flame ? 0.04 : 0.09, age ) * fade * ( smoke ? 0.06 : flame ? 0.9 * vFlick : 1.0 );
 	}
 `;
 
@@ -482,8 +532,27 @@ const PART_FS = /* glsl */`
 	varying float vA;
 	varying float vKind;
 	varying float vAge;
+	varying float vLean;
+	varying float vFlick;
 	void main() {
 		vec2 c = gl_PointCoord * 2.0 - 1.0;
+		if ( vKind > 1.5 ) {
+			// a flame: a teardrop, round at the base and drawn to a tip above, leaning into its
+			// path; a hot near-white core, warm in the body, the roll colour at the edge
+			float t = 1.0 - gl_PointCoord.y;			// 0 at the bottom, 1 at the top
+			float u = c.x - vLean * ( t - 0.25 ) * 0.6;
+			float wd = 0.62 * pow( clamp( 1.0 - t, 0.0, 1.0 ), 0.65 ) * smoothstep( 0.0, 0.18, t ) + 0.02;
+			float q = abs( u ) / wd;
+			if ( q > 1.0 || t < 0.02 ) discard;
+			float body = ( 1.0 - q * q ) * smoothstep( 0.02, 0.2, t ) * ( 1.0 - smoothstep( 0.55, 1.0, t ) * 0.6 );
+			float core = exp( - q * q * 5.0 ) * exp( - ( t - 0.32 ) * ( t - 0.32 ) / 0.0484 );
+			vec3 warm = mix( vec3( 1.0, 0.62, 0.26 ), uColor, 0.35 );
+			vec3 edge = mix( uColor, warm, 0.5 );
+			vec3 col = mix( edge, warm, body ) * 1.6 * body + vec3( 1.0, 0.95, 0.85 ) * core * 2.2;
+			col *= 1.0 - 0.5 * smoothstep( 0.4, 1.0, vAge );		// cools as it dies
+			gl_FragColor = vec4( col * vA * uIntensity, 1.0 );
+			return;
+		}
 		float r2 = dot( c, c );
 		if ( r2 > 1.0 ) discard;
 		float fall = vKind > 0.5 ? ( 1.0 - r2 ) * ( 1.0 - r2 ) : exp( - r2 * 3.0 );
@@ -716,6 +785,9 @@ export class PianoRoll {
 			this.pDirtyFrom = - 1;
 			this.pDirtyCount = 0;
 			this.seed = 1;
+			this._frame = 0;							// update count (one stream / one burst per key and frame)
+			this._streamed = new Int32Array( 128 ).fill( - 1 );
+			this._burst = new Int32Array( 128 ).fill( - 1 );
 
 		}
 
@@ -770,6 +842,7 @@ export class PianoRoll {
 		}
 
 		this.keyGlows.clear();
+		this._keyNeighbours = null;		// (rebuilt for the new keys by _fadeKeys)
 		const R = piano.roll;
 		if ( ! R ) return;
 		const normal = new THREE.Vector3().crossVectors( new THREE.Vector3( 1, 0, 0 ), R.up ).normalize();
@@ -1331,6 +1404,7 @@ export class PianoRoll {
 		}
 
 		this.playing.fill( 0 );
+		++ this._frame;
 		const rect = this.rect.array, info = this.info.array, flare = this.flare.array;
 		let nb = 0, nf = 0;
 		const horizon = pos + lookahead * 1000;
@@ -1371,10 +1445,21 @@ export class PianoRoll {
 
 				if ( emit ) {
 
-					// a burst on the strike, then a steady stream while it sounds
-					let count = dt * ( 140 + 180 * n.vel );
-					if ( n.on > burstFrom ) count += 30 + 50 * n.vel;
-					this._spawn( n.x, n.w, count, 0.6 + 0.4 * n.vel );
+					// a burst on the strike, then a steady stream while it sounds. One of each per key
+					// per frame: the dense fitted MIDI (琴伤) strikes a key several times between two
+					// frames and overlaps its notes, and every burst was born at the same spot in the
+					// same instant: white-hot and additive they stacked to a white blob for a frame
+					const k = n.pitch;
+					let count = this._streamed[ k ] === this._frame ? 0 : dt * ( 140 + 180 * n.vel );
+					this._streamed[ k ] = this._frame;
+					if ( n.on > burstFrom && this._burst[ k ] !== this._frame ) {
+
+						count += 30 + 50 * n.vel;
+						this._burst[ k ] = this._frame;
+
+					}
+
+					if ( count > 0 ) this._spawn( n.x, n.w, count, 0.6 + 0.4 * n.vel, dt );
 
 				}
 
@@ -1443,18 +1528,22 @@ export class PianoRoll {
 
 	}
 
-	_spawn( x, w, count, strength ) {
+	_spawn( x, w, count, strength, dt = 0.016 ) {
 
 		let n = Math.floor( count ) + ( this._rand() < count % 1 ? 1 : 0 );
 		const pos = this.pPos.array, sp = this.pSpawn.array;
+		// births spread over the frame just gone (and at least 30 ms): a burst comes in over a
+		// moment instead of all at full brightness in one place in one frame
+		const spread = Math.max( 0.03, Math.min( 0.1, dt ) );
 		while ( n -- > 0 ) {
 
 			const i = this.pNext;
 			pos[ i * 3 ] = x;					// key centre; the shader spreads the sparks
 			pos[ i * 3 + 1 ] = w;
-			sp[ i * 4 ] = this.time - this._rand() * 0.016;
+			sp[ i * 4 ] = this.time - this._rand() * spread;
 			sp[ i * 4 + 1 ] = this._rand() * 100;
-			sp[ i * 4 + 2 ] = this._rand() < 0.12 ? 1 : 0;
+			const k = this._rand();
+			sp[ i * 4 + 2 ] = k < 0.12 ? 1 : k < 0.12 + FLAME_SHARE ? 2 : 0;		// smoke, flame, spark
 			sp[ i * 4 + 3 ] = strength;
 			if ( this.pDirtyCount === 0 ) this.pDirtyFrom = i;
 			++ this.pDirtyCount;
@@ -1482,19 +1571,55 @@ export class PianoRoll {
 
 	}
 
-	// key tint follows the sounding notes: quick attack, slower release
+	// key tint follows the sounding notes, smooth across the keyboard and in time: each key's target
+	// is the strongest of its neighbours' notes through a soft falloff with distance (no hard
+	// per-key steps), and its level follows that target like a critically damped spring, quick to
+	// swell (KEY_ATTACK) and slow to let go (KEY_RELEASE), so it swells and lingers
 	_fadeKeys( dt, off ) {
 
+		if ( ! this._keyNeighbours ) {
+
+			// per key: [ pitch, weight ] of the keys within reach (Gaussian in x, KEY_SPREAD)
+			this._keyNeighbours = new Map();
+			const ps = [ ...this.keyGlows.keys() ];
+			for ( const p of ps ) {
+
+				const list = [];
+				for ( const q of ps ) {
+
+					const d = pitchX( q ) - pitchX( p ), w = Math.exp( - d * d / ( 2 * KEY_SPREAD * KEY_SPREAD ) );
+					if ( w > 0.02 ) list.push( [ q, w ] );
+
+				}
+
+				this._keyNeighbours.set( p, list );
+
+			}
+
+		}
+
+		const n = Math.max( 1, Math.ceil( dt / ( 1 / 120 ) ) ), h = dt / n;
 		for ( const [ pitch, g ] of this.keyGlows ) {
 
-			const target = off ? 0 : this.playing[ pitch ];
-			let l = g.userData.level;
-			if ( l === target ) continue;
-			l += ( target - l ) * Math.min( 1, dt * ( target > l ? 30 : 7 ) );
-			if ( Math.abs( target - l ) < 0.01 ) l = target;
-			g.userData.level = l;
-			g.material.opacity = l * 0.85 * KEY_GLOW[ this.mode ] * this.intensity * this.powerLevel * ( this.bootT >= 0 ? 0 : 1 );
-			g.visible = l > 0;
+			let target = 0;
+			if ( ! off ) for ( const [ q, w ] of this._keyNeighbours.get( pitch ) ) target = Math.max( target, this.playing[ q ] * w );
+			const u = g.userData;
+			let l = u.level, v = u.vel ?? 0;
+			if ( l === target && v === 0 ) continue;
+			for ( let i = 0; i < n; ++ i ) {
+
+				const w0 = 1 / ( target > l ? KEY_ATTACK : KEY_RELEASE );		// rad/s
+				v += h * ( w0 * w0 * ( target - l ) - 2 * w0 * v );
+				l += h * v;
+
+			}
+
+			if ( l < 0 ) { l = 0; v = Math.max( 0, v ); }
+			if ( Math.abs( target - l ) < 0.002 && Math.abs( v ) < 0.01 ) { l = target; v = 0; }
+			u.level = l;
+			u.vel = v;
+			g.material.opacity = Math.min( 1, l ) * 0.85 * KEY_GLOW[ this.mode ] * this.intensity * this.powerLevel * ( this.bootT >= 0 ? 0 : 1 );
+			g.visible = l > 0.002;
 
 		}
 
