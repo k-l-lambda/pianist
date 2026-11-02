@@ -296,12 +296,12 @@ timeline:
       ease: inOutSine
       path:
         - { position: [ 0.12, 1.12, 0.42 ], target: [ 0.00, 0.90, -0.22 ], fov: 34 }
-  - after: 7.0    # 121 s: the arm up high over the keys
-    camera:
-      duration: 2.0
+  - after: 7.0    # 121 s: the arm up high, a step back, looking down on the piano's top board
+    camera:      # (at 1.235 m) over the glass and the screen; 1.68 m is about the arm's reach
+      duration: 2.2
       ease: inOutSine
       path:
-        - { position: [ 0.08, 1.60, 0.40 ], target: [ 0.00, 0.72, -0.10 ], fov: 34 }
+        - { position: [ 0.06, 1.68, 0.66 ], target: [ 0.00, 1.12, -0.40 ], fov: 38 }
   - after: 6.5    # 127.5 s: a step back, the hold
     camera:
       duration: 2.2
@@ -327,16 +327,22 @@ timeline:
       path:
         - { position: [ 0.05, 1.25, 0.90 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
 
-  # Closing (Footages.local/dialogs/suggest.md). 1.2 s after 琴伤 has ended (and its last moves
-  # finished), the user asks: 欸这台琴卖多少钱？ Someone off camera to the right (the vendor)
-  # answers 0.5 s after the question's speech ends: 想买啊你？关注我视频号就送你一台啊。; the
-  # phone turns a little towards the voice as it starts. Volumes match the speech levels of the
-  # other lines (measured: how-much -24.4 dB, follow-me -31.7, lyrics-fine -18.9 at 0.33); the
-  # vendor ~1.5 dB under the user, a step further away
-  - gap: 1.2
-    audio: { play: user/how-much.opus, volume: 0.62 }
-  - gap: 0.5
-    audio: { play: vendor/follow-me.opus, volume: 1.2 }
+  # Closing (Footages.local/dialogs/suggest.md), over the end of 琴伤: its last notes thin out
+  # from 158 s and the last note-on is at 159.84 s; the user asks just before, 156.4 s into the
+  # song: 欸这台琴卖多少钱？ Someone off camera (the vendor) answers 0.5 s after the question's
+  # speech: 想买啊你？关注我视频号就送你一台啊。; the phone turns a little towards the voice.
+  # (Timed with `after:` off 琴伤's chain, not `gap:`, which would wait for the song's end.)
+  # Where the voices are (scene metres, for the offline sound track's room simulation; tested in
+  # Footages.local/render/closing-spatial): the phone at about (0.05, 1.25, 0.90) facing the
+  # piano, the user's mouth just behind it at (-0.01, 1.54, 1.15). The vendor stands 1.5 m to the
+  # user's left-back (45°), mouth at 1.62 m, facing the user; the user asks turned towards the
+  # vendor, away from the phone. The vendor is turned up (2.4, ~+6 dB) to be clear at the phone
+  # from there; the user's line matches the other user lines' speech level (how-much -24.4 dB
+  # dry, at 0.62)
+  - after: 5.4    # 156.4 s into 琴伤 (the last move was at 151 s)
+    audio: { play: user/how-much.opus, volume: 0.62, facing: [ -0.96, 1.62, 2.26 ] }
+  - after: 1.95   # its speech ends 1.45 s in, + 0.5
+    audio: { play: vendor/follow-me.opus, volume: 2.4, position: [ -0.96, 1.62, 2.26 ], facing: [ -0.01, 1.54, 1.15 ] }
   - after: 0.4
     camera:
       duration: 1.1
