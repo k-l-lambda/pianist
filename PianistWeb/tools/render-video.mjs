@@ -130,6 +130,19 @@ let ffmpeg = null;
 try {
 
 	const page = await browser.newPage( { viewport: { width: W, height: H }, deviceScaleFactor: 1 } );
+	// no hot reload: a source edit during the render must not reload the page (it did, once)
+	await page.addInitScript( () => {
+
+		const WS = window.WebSocket;
+		window.WebSocket = function ( url, protocols ) {
+
+			if ( [ protocols ].flat().some( p => p === 'vite-hmr' || p === 'vite-ping' ) ) return Object.assign( new EventTarget(), { readyState: 0, send() {}, close() {} } );
+			return new WS( url, protocols );
+
+		};
+		Object.assign( window.WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 } );
+
+	} );
 	page.on( 'pageerror', e => console.error( 'page error:', e.message ) );
 	// (the offline FluidSynth logs harmless stub / preset notes while loading the soundfont)
 	page.on( 'console', m => ( m.type() === 'error' || m.type() === 'warning' ) && ! /^fluidsynth: /.test( m.text() ) ? console.error( `page ${ m.type() }:`, m.text() ) : null );

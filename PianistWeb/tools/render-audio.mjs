@@ -132,7 +132,7 @@ function stepFrames( n ) {
 	const P = window.__pianist, out = [];
 	for ( let k = 0; k < n; ++ k ) {
 
-		const s = window.__render.step(), c = P.camera;
+		const s = window.__render.step( { draw: false } ), c = P.camera;		// the timeline only: nothing on the GPU
 		const pose = { t: s.time, frame: s.frame, state: s.state, p: c.position.toArray(), q: c.quaternion.toArray(), mouth: null };
 		const h = P.handheld, info = h?.person?.info;
 		if ( h?.enabled && h.showPerson && info ) {

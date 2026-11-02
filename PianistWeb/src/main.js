@@ -101,6 +101,10 @@ let venue = room;
 room.activate();
 const probe = new GIProbe( renderer, scene );
 const keyShadow = new KeyShadow( renderer );
+// offline render: false while frames only advance the timeline (render-audio.mjs, the skip to
+// --from): state is updated (script, MIDI, recordings, camera, person, keys, roll), nothing drawn
+let drawFrames = true;
+
 const MIRROR_GAIN = 2.5;
 const MIRROR_SIZE = 1024;		// mirror cube face (px): at 256 the reflection shows the texels as steps
 // Offline render: the screen mirror is read at least this rough (from the blurred PMREM levels),
@@ -148,6 +152,7 @@ const handheld = new HandheldMode( {
 	isPathTracing: () => settings.mode === 'pathtrace',
 	specularCapture: ( eye, ahead ) => {
 
+		if ( ! drawFrames ) return;		// offline render, not drawing: no mirror to capture
 		const opts = { lights: venue.specularOff, objects: venue.probeHidden };
 		const panel = piano?.roll?.screen && piano.materials?.panel;
 		if ( panel ) {
@@ -1272,6 +1277,7 @@ function frameBody( dt, scripted = false ) {
 	if ( piano.action?.update( dt ) ) keysMoving = true;
 	// re-render shadow maps only when something moved or the lighting changed (offline render:
 	// every frame)
+	if ( ! drawFrames ) return;		// (in render mode shadows and the mirror are redone every drawn frame)
 	if ( keysMoving || shadowsDirty || RENDER ) {
 
 		renderer.shadowMap.needsUpdate = true;
@@ -1411,21 +1417,28 @@ function startRender() {
 		// skip to `from`: the frames before it are simulated (and drawn) but not captured
 		// (yielding now and then: thousands of frames in one task lost the WebGL context, and a
 		// MIDI file's start, which settles in a promise, stayed pending)
+		// (not drawn: only the timeline moves, a few seconds instead of minutes on the GPU)
+		drawFrames = false;
 		while ( frameNo < Math.round( o.from * o.fps ) ) {
 
 			step();
-			if ( frameNo % 5 === 0 ) await new Promise( r => setTimeout( r, 0 ) );
+			if ( frameNo % 50 === 0 ) await new Promise( r => setTimeout( r, 0 ) );
 
 		}
+
+		drawFrames = true;
 		return { fps: o.fps, from: o.from, to: o.to, width: renderer.domElement.width, height: renderer.domElement.height, sampleRate: synth.context().sampleRate };
 
 	} )();
 	window.__render = {
 		ready,
-		step() {
+		// { draw: false }: advance without drawing (the sound track's pass needs the timeline only)
+		step( { draw = true } = {} ) {
 
 			const t0 = performance.now();
+			drawFrames = draw;
 			step();
+			drawFrames = true;
 			return { frame: frameNo - 1, time: ( frameNo - 1 ) * dt, ms: performance.now() - t0, state: scriptPlayer.playing };
 
 		},
