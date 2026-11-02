@@ -130,6 +130,8 @@ function loadFluid() {
 
 }
 
+const OFFLINE_POLYPHONY = 1024;		// qinshang: within -27 dB of 4096 at ~1/3 the time; 256 differs by -10 dB (cut tails)
+
 /**
  * Replay the piano log into a FluidSynth on the main thread: { L, R, total } (Float32Arrays of
  * [0, to] s). `fx: false`: without FluidSynth's reverb and chorus (on, at its defaults, in live use).
@@ -138,8 +140,12 @@ async function replayPiano( log, { to, sampleRate, fx = true } ) {
 
 	const JS = await loadFluid();
 	const synth = new JS.Synthesizer();
-	// as soundfont.js (createAudioNode)
-	synth.init( sampleRate, fx ? { initialGain: 1.8 } : { initialGain: 1.8, reverbActive: false, chorusActive: false } );
+	// as soundfont.js (createAudioNode), but with OFFLINE_POLYPHONY voices instead of FluidSynth's
+	// default 256 (live, in real time): dense pedalled files keep 250+ voices sounding (one note is
+	// 2-4 voices, its tail rings under the pedal), and at the cap FluidSynth steals voices, cutting
+	// notes short. Offline there is no real-time budget, so none are stolen.
+	const opts = { initialGain: 1.8, polyphony: OFFLINE_POLYPHONY };
+	synth.init( sampleRate, fx ? opts : { ...opts, reverbActive: false, chorusActive: false } );
 	const sf = await ( await fetch( BASE + 'soundfont/piano.sf3' ) ).arrayBuffer();
 	const sfont = await synth.loadSFont( sf );
 	for ( let ch = 0; ch < 16; ++ ch ) {
