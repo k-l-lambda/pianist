@@ -590,28 +590,49 @@ const STREAK_VS = /* glsl */`
 	varying float vLive;
 	varying float vRise;			// 0 at birth .. 1 at the end: the feather tightens, the core brightens
 	${ FIELD }
-	// the head's place at age t: from rest, each flame accelerating in its own way along its
-	// lean, a(t) = A (k+1) (t/T)^k over the profile time T (k < 1 an early push then coasting, k > 1
-	// a drift then a dart); swaying side to side more as it rises; bent a little by the flow
-	vec2 headAt( float t, vec2 b, float t0, float T, float A, float k, float lean, float sw, float sf, float sp, float sf2, float sp2 ) {
-		float u = t / T;
-		float way = A * T * T * pow( max( u, 1e-4 ), k + 2.0 ) / ( k + 2.0 );
-		float side = sw * min( 1.0, way / 0.04 ) * ( 0.7 * sin( sf * t + sp ) + 0.3 * sin( sf2 * t + sp2 ) );
-		return b + vec2( sin( lean ), cos( lean ) ) * way + vec2( side, 0.0 ) + 0.3 * t * field( b, t0 + 0.5 * t );
+	// the push's direction at age t (radians from straight up): upright at birth (th0, a slight
+	// tilt), then turning smoothly by r1.z over [ r1.x, r1.x + r1.y ] and by r2.z over r2's span
+	float heading( float t, float th0, vec3 r1, vec3 r2 ) {
+		return th0 + r1.z * smoothstep( r1.x, r1.x + r1.y, t ) + r2.z * smoothstep( r2.x, r2.x + r2.y, t );
+	}
+	// the head's place at age t: from rest, each flame accelerating in its own way,
+	// |a(t)| = A (k+1) (t/T)^k over the profile time T (k < 1 an early push then coasting, k > 1 a
+	// drift then a dart), along its heading, which turns as it rises (integrated: midpoint steps);
+	// swaying side to side more as it rises; bent a little by the flow
+	vec2 headAt( float t, vec2 b, float t0, float T, float A, float k, float th0, vec3 r1, vec3 r2, float sw, float sf, float sp, float sf2, float sp2 ) {
+		const int N = 12;
+		float dt = t / float( N );
+		vec2 v = vec2( 0.0 ), x = vec2( 0.0 );
+		for ( int i = 0; i < N; ++ i ) {
+			float tm = ( float( i ) + 0.5 ) * dt;
+			float th = heading( tm, th0, r1, r2 );
+			vec2 dv = A * ( k + 1.0 ) * pow( max( tm / T, 1e-4 ), k ) * vec2( sin( th ), cos( th ) ) * dt;
+			x += ( v + 0.5 * dv ) * dt;
+			v += dv;
+		}
+		float side = sw * min( 1.0, length( x ) / 0.04 ) * ( 0.7 * sin( sf * t + sp ) + 0.3 * sin( sf2 * t + sp2 ) );
+		return b + x + vec2( side, 0.0 ) + 0.3 * t * field( b, t0 + 0.5 * t );
 	}
 	void main() {
 		float t0 = aStreak.z, s = aStreak.w;
 		// per flame: its profile time, base acceleration (4x the earlier rise), the shape of its
-		// acceleration, its lean, and its sway (amplitude and two frequencies)
+		// acceleration, its turns, and its sway (amplitude and two frequencies)
 		float T = mix( 0.6, 1.8, h( s * 3.1 ) );
 		float A = exp( mix( log( 0.16 ), log( 1.0 ), h( s * 5.9 ) ) );
 		float k = exp( mix( log( 0.35 ), log( 3.0 ), h( s * 4.3 ) ) );
-		float lean = ( h( s * 2.3 ) - 0.5 ) * 0.3;
 		float sw = mix( 0.002, 0.009, h( s * 4.7 ) ), sf = mix( 5.0, 11.0, h( s * 8.3 ) ), sp = 6.283 * h( s * 1.3 );
 		float sf2 = mix( 13.0, 23.0, h( s * 2.9 ) ), sp2 = 6.283 * h( s * 7.1 );
 		// it lives until T or until it has risen ~0.2 m (the roll's height), whichever is first
 		float tcap = T * pow( 0.2 * ( k + 2.0 ) / ( A * T * T ), 1.0 / ( k + 2.0 ) );
 		float life = min( T, tcap );
+		// its heading: starts up (within ±3°); 85% turn to one side (20-57°) somewhere in the first
+		// half of its life, and 45% then turn back past upright (23-80° back); never below ±60°
+		float th0 = ( h( s * 2.3 ) - 0.5 ) * 0.1;
+		float side1 = h( s * 3.3 ) < 0.5 ? - 1.0 : 1.0;
+		vec3 r1 = vec3( mix( 0.1, 0.5, h( s * 5.1 ) ) * life, mix( 0.12, 0.35, h( s * 6.3 ) ) * life,
+			h( s * 8.9 ) < 0.85 ? side1 * mix( 0.35, 1.0, h( s * 7.7 ) ) : 0.0 );
+		vec3 r2 = vec3( r1.x + r1.y + mix( 0.0, 0.2, h( s * 9.7 ) ) * life, mix( 0.12, 0.3, h( s * 1.7 ) ) * life,
+			h( s * 4.1 ) < 0.45 ? - side1 * mix( 0.4, 1.4, h( s * 2.1 ) ) : 0.0 );
 		float age = uTime - t0;
 		vUv = corner * 2.0 - 1.0;
 		vLive = aStreakInfo.y;
@@ -623,9 +644,9 @@ const STREAK_VS = /* glsl */`
 		}
 		float u = age / life;
 		vRise = u;
-		vec2 p = headAt( age, aStreak.xy, t0, T, A, k, lean, sw, sf, sp, sf2, sp2 );
+		vec2 p = headAt( age, aStreak.xy, t0, T, A, k, th0, r1, r2, sw, sf, sp, sf2, sp2 );
 		// its direction from the path itself (the sway tilts it), upright while it barely moves
-		vec2 q = headAt( max( 0.0, age - 0.03 ), aStreak.xy, t0, T, A, k, lean, sw, sf, sp, sf2, sp2 );
+		vec2 q = headAt( max( 0.0, age - 0.03 ), aStreak.xy, t0, T, A, k, th0, r1, r2, sw, sf, sp, sf2, sp2 );
 		vec2 v = ( p - q ) / 0.03 + vec2( 0.0, 0.02 );
 		vec2 dir = v / max( length( v ), 1e-4 );
 		float speed = A * T * pow( max( age / T, 1e-4 ), k + 1.0 );
@@ -895,6 +916,18 @@ export class PianoRoll {
 			this.flares.userData.noAO = true;
 			this.group.add( this.flares );
 
+			// the same for the notes played on the keyboard, in the live colour (own levels per key)
+			const lgeo = quadCorners( new THREE.InstancedBufferGeometry() );
+			this.liveFlare = new THREE.InstancedBufferAttribute( new Float32Array( ( PITCH_MAX + 1 ) * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
+			lgeo.setAttribute( 'aFlare', this.liveFlare );
+			lgeo.instanceCount = 0;
+			this.liveFlareUniforms = { uColor: { value: this.liveColor }, uIntensity: this.liveUniforms.uIntensity };
+			this.liveFlares = new THREE.Mesh( lgeo, new THREE.ShaderMaterial( { vertexShader: FLARE_VS, fragmentShader: FLARE_FS, uniforms: this.liveFlareUniforms, ...common } ) );
+			this.liveFlares.frustumCulled = false;
+			this.liveFlares.renderOrder = 11;
+			this.liveFlares.userData.noAO = true;
+			this.group.add( this.liveFlares );
+
 		}
 
 		// particles (ring buffer)
@@ -977,6 +1010,8 @@ export class PianoRoll {
 		this.playing = new Float32Array( 128 );	// per pitch: velocity of the sounding note (0 = idle)
 		this.flareDrive = new Float32Array( 128 );	// per pitch: a hit flare's pumping this frame (0.55 + 0.45 vel)
 		this.flareLevel = new Float32Array( 128 );	// per pitch: the hit flare's brightness (decaying, pumped)
+		this.liveFlareDrive = new Float32Array( 128 );	// the same for the live notes (independent of the file's)
+		this.liveFlareLevel = new Float32Array( 128 );
 		this.prevPos = 0;
 		this.time = 0;
 
@@ -1484,7 +1519,7 @@ export class PianoRoll {
 		if ( ! active ) {
 
 			this._fadeKeys( dt, true );
-			if ( ! this.power ) this.liveNotes.length = 0;
+			if ( ! this.power ) { this.liveNotes.length = 0; this.liveFlareLevel.fill( 0 ); }
 			return;
 
 		}
@@ -1643,8 +1678,36 @@ export class PianoRoll {
 
 		const speed = this.height / this.lookahead;		// m/s
 		const t = this.liveTime, rect = this.liveRect.array, info = this.liveInfo.array;
+		const decay = Math.exp( - dt / FLARE_TAU ), drive = this.liveFlareDrive.fill( 0 ), fl = this.liveFlareLevel;
+		for ( const note of this.liveNotes ) if ( note.off === null ) drive[ note.pitch ] = Math.max( drive[ note.pitch ], 0.55 + 0.45 * note.vel );
+		// the hit flares of the held keys: as the file's (always decaying, pumped by a held note at a
+		// rate set by its velocity), on the live clock, so a paused file doesn't stop them
+		const lf = this.liveFlare.array;
+		let nf = 0;
+		for ( let p = PITCH_MIN; p <= PITCH_MAX; ++ p ) {
+
+			fl[ p ] = fl[ p ] * decay + FLARE_GAIN * drive[ p ] * ( 1 - decay );
+			if ( fl[ p ] < 0.003 && drive[ p ] === 0 ) fl[ p ] = 0;
+			if ( fl[ p ] > 0 ) {
+
+				lf[ nf * 3 ] = pitchX( p );
+				lf[ nf * 3 + 1 ] = ( isBlack( p ) ? 0.0098 : WHITE_PITCH * 0.74 ) / 2;
+				lf[ nf * 3 + 2 ] = fl[ p ];
+				++ nf;
+
+			}
+
+		}
+
+		this.liveFlare.needsUpdate = true;
+		this.liveFlare.clearUpdateRanges();
+		this.liveFlare.addUpdateRange( 0, nf * 3 );
+		this.liveFlares.geometry.instanceCount = nf;
 		let n = 0, keep = 0;
 		for ( const note of this.liveNotes ) {
+
+			// lit with its key's flare while held (relative to its settled peak), dimming as it decays once let go
+			note.lit = note.off === null ? Math.min( 1, fl[ note.pitch ] / ( FLARE_GAIN * ( 0.55 + 0.45 * note.vel ) ) ) : ( note.lit ?? 0 ) * decay;
 
 			const y1 = ( t - note.on ) * speed;
 			const y0 = note.off === null ? 0 : ( t - note.off ) * speed;
@@ -1656,7 +1719,7 @@ export class PianoRoll {
 			rect[ n * 4 + 2 ] = note.x + note.w / 2;
 			rect[ n * 4 + 3 ] = Math.min( y1, this.height + 0.05 );
 			info[ n * 2 ] = note.vel;
-			info[ n * 2 + 1 ] = note.off === null ? 1 : 0;
+			info[ n * 2 + 1 ] = note.lit;
 			++ n;
 			// held: it smoulders like a file note (along the bar from the hit line), in the live colour
 			if ( emit && note.off === null && dt > 0 ) {
