@@ -37,6 +37,12 @@ const KEY_GLOW = { music: 0.5, voice: 1 };	// how strongly a note arriving light
 const KEY_SPREAD = 0.016;			// m: a note's glow spreads to its neighbours (Gaussian sigma, ~2/3 of a white key)
 const KEY_ATTACK = 0.035, KEY_RELEASE = 0.22;	// s: the glow's swell and let-go (critically damped follow)
 const GHOST_FADE = 0.5;
+// hit flares: each key's glow is always decaying exponentially (dL/dt = -L / FLARE_TAU), and a sounding
+// note pumps it at a constant rate set by its velocity (FLARE_GAIN * (0.55 + 0.45 vel) / FLARE_TAU), so
+// it rises along a decelerating curve and settles where the pumping balances the decay: at a peak of
+// FLARE_GAIN * (0.55 + 0.45 vel), higher for harder notes. A released (or paused) key just decays.
+const FLARE_TAU = 0.2;				// s
+const FLARE_GAIN = 1.1;
 const MUSIC_FADE_IN = 0.6;			// s, a music (blue) file's roll fading in when it appears (it starts
 									// mid-file, its first look-ahead of bars all at once); voice files
 									// start with silence, their bars come in from the top				// s, bars left on the screen (a paused file) fading out when the next file loads
@@ -421,7 +427,7 @@ const FLARE_VS = /* glsl */`
 	void main() {
 		vUv = corner * 2.0 - 1.0;
 		vS = aFlare.z;
-		vec2 p = vec2( aFlare.x + vUv.x * ( aFlare.y + 0.026 ), vUv.y * 0.03 );
+		vec2 p = vec2( aFlare.x + vUv.x * ( aFlare.y + 0.026 ), vUv.y * 0.015 );		// half the height it had (0.03)
 		gl_Position = projectionMatrix * modelViewMatrix * vec4( p, 0.0005, 1.0 );
 	}
 `;
@@ -969,6 +975,8 @@ export class PianoRoll {
 		this.notes = null;
 		this.events = null;
 		this.playing = new Float32Array( 128 );	// per pitch: velocity of the sounding note (0 = idle)
+		this.flareDrive = new Float32Array( 128 );	// per pitch: a hit flare's pumping this frame (0.55 + 0.45 vel)
+		this.flareLevel = new Float32Array( 128 );	// per pitch: the hit flare's brightness (decaying, pumped)
 		this.prevPos = 0;
 		this.time = 0;
 
@@ -1527,6 +1535,7 @@ export class PianoRoll {
 		if ( ! this.notes || this.notes.length === 0 ) {
 
 			this.bars.geometry.instanceCount = this.flares.geometry.instanceCount = 0;
+			this.flareLevel.fill( 0 );
 			this._flushParticles();
 			this.partUniforms.uTime.value = this.time;
 			this._fadeKeys( dt, true );
@@ -1550,6 +1559,7 @@ export class PianoRoll {
 		}
 
 		this.playing.fill( 0 );
+		const drive = this.flareDrive.fill( 0 );		// per pitch: the strongest sounding note's pumping
 		const rect = this.rect.array, info = this.info.array, flare = this.flare.array;
 		let nb = 0, nf = 0;
 		const horizon = pos + lookahead * 1000;
@@ -1560,9 +1570,12 @@ export class PianoRoll {
 			const n = notes[ i ];
 			if ( n.on > horizon ) break;
 			if ( n.off < pos ) continue;
+
 			const y0 = Math.max( 0, ( n.on - pos ) * speed ), y1 = Math.min( this.height + 0.05, ( n.off - pos ) * speed );
 			if ( y1 <= y0 ) continue;
 			const sounding = player.playing && n.on <= pos;		// paused: frozen, nothing sounds
+			if ( sounding ) drive[ n.pitch ] = Math.max( drive[ n.pitch ], 0.55 + 0.45 * n.vel );
+
 			if ( nb < MAX_BARS ) {
 
 				rect[ nb * 4 ] = n.x - n.w / 2;
@@ -1570,7 +1583,8 @@ export class PianoRoll {
 				rect[ nb * 4 + 2 ] = n.x + n.w / 2;
 				rect[ nb * 4 + 3 ] = y1;
 				info[ nb * 2 ] = n.vel;
-				info[ nb * 2 + 1 ] = sounding ? 1 : 0;
+				// lit while it sounds, with its key's flare (relative to that note's settled peak)
+				info[ nb * 2 + 1 ] = n.on <= pos ? Math.min( 1, this.flareLevel[ n.pitch ] / ( FLARE_GAIN * ( 0.55 + 0.45 * n.vel ) ) ) : 0;
 				++ nb;
 
 			}
@@ -1578,17 +1592,26 @@ export class PianoRoll {
 			if ( sounding ) {
 
 				this.playing[ n.pitch ] = Math.max( this.playing[ n.pitch ], 0.35 + 0.65 * n.vel );
-				if ( nf < MAX_FLARES ) {
-
-					const fresh = Math.max( 0, 1 - ( pos - n.on ) / 400 );		// brighter right after the strike
-					flare[ nf * 3 ] = n.x;
-					flare[ nf * 3 + 1 ] = n.w / 2;
-					flare[ nf * 3 + 2 ] = ( 0.55 + 0.45 * n.vel ) * ( 0.7 + 0.8 * fresh );
-					++ nf;
-
-				}
 
 				if ( emit ) this._emitNote( n.pitch, n.x, n.w, Math.min( y1, this.height ), n.vel, n.on > burstFrom, dt, false );
+
+			}
+
+		}
+
+		// the flares: per key, the decay plus the pumping over dt, solved exactly (any dt, a seek or a
+		// slow frame included): L -> L e^(-dt/tau) + peak (1 - e^(-dt/tau)), peak = FLARE_GAIN * drive
+		const keep = Math.exp( - dt / FLARE_TAU ), fl = this.flareLevel;
+		for ( let p = PITCH_MIN; p <= PITCH_MAX; ++ p ) {
+
+			fl[ p ] = fl[ p ] * keep + FLARE_GAIN * drive[ p ] * ( 1 - keep );
+			if ( fl[ p ] < 0.003 && drive[ p ] === 0 ) fl[ p ] = 0;
+			if ( fl[ p ] > 0 && nf < MAX_FLARES ) {
+
+				flare[ nf * 3 ] = pitchX( p );
+				flare[ nf * 3 + 1 ] = ( isBlack( p ) ? 0.0098 : WHITE_PITCH * 0.74 ) / 2;
+				flare[ nf * 3 + 2 ] = fl[ p ];
+				++ nf;
 
 			}
 
