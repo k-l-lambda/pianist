@@ -210,9 +210,10 @@ composer.addPass( gtaoPass );
 // HDR sanitising before bloom and depth of field: the sun's glare in the glossy screen reaches
 // ~7000 in the half-float buffer; summed in the bloom's blur that overflowed (Inf, then NaN) and
 // the bloom's mips spread it into large black rectangles (offline render, 琴伤 ~72 s). Non-finite
-// values to 0, the rest capped well above anything that still tone-maps below white
+// values to 0, the rest capped at 4096: the glare keeps its halo (256 visibly shrank it), and the
+// bloom's sum of five mips stays under half float's 65504
 const hdrClamp = new ShaderPass( {
-	uniforms: { tDiffuse: { value: null }, uMax: { value: 256 } },
+	uniforms: { tDiffuse: { value: null }, uMax: { value: 4096 } },
 	vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }',
 	fragmentShader: `uniform sampler2D tDiffuse; uniform float uMax; varying vec2 vUv;
 		void main() {
