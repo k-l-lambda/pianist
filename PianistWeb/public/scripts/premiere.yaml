@@ -326,3 +326,20 @@ timeline:
       ease: inOutSine
       path:
         - { position: [ 0.05, 1.25, 0.90 ], target: [ 0.00, 0.86, -0.20 ], fov: 38 }
+
+  # Closing (Footages.local/dialogs/suggest.md). 1.2 s after 琴伤 has ended (and its last moves
+  # finished), the user asks: 欸这台琴卖多少钱？ Someone off camera to the right (the vendor)
+  # answers 0.5 s after the question's speech ends: 想买啊你？关注我视频号就送你一台啊。; the
+  # phone turns a little towards the voice as it starts. Volumes match the speech levels of the
+  # other lines (measured: how-much -24.4 dB, follow-me -31.7, lyrics-fine -18.9 at 0.33); the
+  # vendor ~1.5 dB under the user, a step further away
+  - gap: 1.2
+    audio: { play: user/how-much.opus, volume: 0.62 }
+  - gap: 0.5
+    audio: { play: vendor/follow-me.opus, volume: 1.2 }
+  - after: 0.4
+    camera:
+      duration: 1.1
+      ease: inOutSine
+      path:
+        - { position: [ 0.10, 1.25, 0.90 ], target: [ 0.55, 0.95, -0.05 ], fov: 38 }
