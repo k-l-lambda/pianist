@@ -450,8 +450,8 @@ const FLARE_FS = /* glsl */`
 //  - embers (kind 0): ~1 px specks rising ~0.08 m/s, white-hot -> the roll colour -> dim over ~3 s
 //  - smoke (1): a few large dim puffs from ~4 key widths up, slow, long-lived
 //  - ash (2): sparse dim specks in the smoke
-//  - flames (STREAK_VS): pale flickering streaks from the hit line, slow at first (0.05-0.25 m/s)
-//    then accelerating (1-8 m/s2), quads stretched along their velocity as they speed up
+//  - flames (STREAK_VS): pale flickering streaks from the hit line, slow at first (0.02-0.1 m/s)
+//    then accelerating (1.5-4 m/s2), quads stretched along their velocity as they speed up
 // The colour follows the roll (the reference's white -> pink -> red -> dark red onto the roll's
 // hue); live notes' particles take the live colour.
 const FIELD = /* glsl */`
@@ -585,7 +585,7 @@ const STREAK_VS = /* glsl */`
 		float t0 = aStreak.z, s = aStreak.w;
 		// slow, then fast: a small initial speed and a widely random acceleration (log-uniform, some
 		// barely speed up, some dart off); it dies after ~0.2 m at the latest
-		float v0 = mix( 0.05, 0.25, h( s * 7.7 ) ), acc = exp( mix( log( 1.0 ), log( 8.0 ), h( s * 5.9 ) ) );
+		float v0 = mix( 0.02, 0.10, h( s * 7.7 ) ), acc = exp( mix( log( 1.5 ), log( 4.0 ), h( s * 5.9 ) ) );
 		float life = mix( 0.2, 0.4, h( s * 3.1 ) );
 		life = min( life, ( sqrt( v0 * v0 + 2.0 * acc * 0.22 ) - v0 ) / acc );
 		float age = uTime - t0;
