@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import GUI from 'lil-gui';
 
@@ -205,6 +206,21 @@ const bloomPass = new UnrealBloomPass( new THREE.Vector2( 1, 1 ), settings.bloom
 const outputPass = new OutputPass();
 composer.addPass( renderPass );
 composer.addPass( gtaoPass );
+// HDR sanitising before bloom and depth of field: the sun's glare in the glossy screen reaches
+// ~7000 in the half-float buffer; summed in the bloom's blur that overflowed (Inf, then NaN) and
+// the bloom's mips spread it into large black rectangles (offline render, 琴伤 ~72 s). Non-finite
+// values to 0, the rest capped well above anything that still tone-maps below white
+const hdrClamp = new ShaderPass( {
+	uniforms: { tDiffuse: { value: null }, uMax: { value: 256 } },
+	vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }',
+	fragmentShader: `uniform sampler2D tDiffuse; uniform float uMax; varying vec2 vUv;
+		void main() {
+			vec4 c = texture2D( tDiffuse, vUv );
+			c = mix( c, vec4( 0.0 ), vec4( notEqual( c, c ) ) );		// NaN
+			gl_FragColor = vec4( clamp( c.rgb, 0.0, uMax ), clamp( c.a, 0.0, 1.0 ) );		// Inf, too bright
+		}`,
+} );
+composer.addPass( hdrClamp );
 composer.addPass( bloomPass );
 // depth of field, only for a lens that loses focus for a moment (scripts: `defocus`); off otherwise
 const bokehPass = new BokehPass( scene, camera, { focus: 1, aperture: 0.03, maxblur: 0 } );
