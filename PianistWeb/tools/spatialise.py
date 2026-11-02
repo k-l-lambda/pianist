@@ -43,6 +43,12 @@ AB_SPACING = 0.14					# m
 EARLY_ORDER = 10					# complete to ~45 ms in this room
 SPLICE = (0.040, 0.060)				# s, early -> tail crossfade
 SEED = 1
+# voice directivity (--voices with a facing): the voice split in three bands, each a first-order
+# cardioid-family pattern p + (1 - p) cos θ (near omni low, a cardioid above 2 kHz), as measured
+# speech roughly does; floored at DIR_FLOOR (it never quite nulls behind the head)
+DIR_SPLITS = (500, 2000)
+DIR_P = (0.85, 0.65, 0.5)
+DIR_FLOOR = 0.18
 
 # absorption per octave band; walls after the scene (room.js): the piano against the back wall
 # (south, z min), the window with curtains on the right (east, x max). `scale` tunes RT60:
@@ -126,14 +132,21 @@ class Track:
 
 # ---- impulse responses
 
-def rir_pairs(dims, room, order, srcs, mics, fs, ray=False):
-	"""RIRs[s][m] for sources and mics (room coordinates); `ray`: hybrid with ray tracing."""
+def rir_pairs(dims, room, order, srcs, mics, fs, ray=False, dirs=None):
+	"""RIRs[s][m] for sources and mics (room coordinates); `ray`: hybrid with ray tracing. `dirs`:
+	per source None (omni) or (p, toward: a room point the source faces), image sources only."""
 	pra.random.seed(numpy=SEED, libroom=SEED)		# its numpy and C++ (ray tracing) generators: repeatable
 	r = pra.ShoeBox(dims, fs=fs, materials=materials(room), max_order=order, air_absorption=True, ray_tracing=ray, use_rand_ism=False)
 	if ray:
 		r.set_ray_tracing(receiver_radius=0.5, n_rays=30000, energy_thres=1e-7, time_thres=3.5)
-	for s in srcs:
-		r.add_source(list(s))
+	for k, s in enumerate(srcs):
+		d = dirs[k] if dirs else None
+		if d is None:
+			r.add_source(list(s))
+		else:
+			v = np.asarray(d[1], float) - np.asarray(s, float)
+			az = np.degrees(np.arctan2(v[1], v[0])); col = np.degrees(np.arccos(np.clip(v[2] / (np.linalg.norm(v) + 1e-9), -1, 1)))
+			r.add_source(list(s), directivity=pra.directivities.CardioidFamily(pra.directivities.DirectionVector(az, col, degrees=True), d[0]))
 	r.add_microphone_array(np.array(mics).T)
 	r.compute_rir()
 	return [[np.asarray(r.rir[m][s], float) for m in range(len(mics))] for s in range(len(srcs))]
@@ -144,14 +157,21 @@ OFFSET = pra.constants.get('frac_delay_length') // 2		# samples: pyroomacoustics
 
 def early(args):
 	"""Reflections only (the order-0 part removed), from t = 0 (emission), faded out over SPLICE."""
-	dims, room, srcs, mics, fs, absorption = args
+	dims, room, srcs, mics, fs, absorption = args[:6]
+	dirs = args[6] if len(args) > 6 else None
+	active = args[7] if len(args) > 7 else None		# sources silent around this update: zeros
 	global ABSORPTION
 	ABSORPTION = absorption		# (in the worker processes too)
-	full = rir_pairs(dims, room, EARLY_ORDER, srcs, mics, fs)
-	direct = rir_pairs(dims, room, 0, srcs, mics, fs)
 	n = int(SPLICE[1] * fs)
+	idx = [k for k in range(len(srcs)) if active is None or active[k]]
+	if not idx:
+		return [[np.zeros(n) for _ in mics] for _ in srcs]
+	sub = [srcs[k] for k in idx]
+	sdirs = [dirs[k] for k in idx] if dirs else None
+	full = rir_pairs(dims, room, EARLY_ORDER, sub, mics, fs, dirs=sdirs)
+	direct = rir_pairs(dims, room, 0, sub, mics, fs, dirs=sdirs)
 	fade = splice_fade(fs, n)
-	out = []
+	got = []
 	for fs_, ds in zip(full, direct):
 		row = []
 		for h, d in zip(fs_, ds):
@@ -160,7 +180,10 @@ def early(args):
 			x = x[OFFSET:OFFSET + n]
 			x = np.pad(x, (0, n - len(x)))
 			row.append(x * fade)
-		out.append(row)
+		got.append(row)
+	out = [[np.zeros(n) for _ in mics] for _ in srcs]
+	for j, k in enumerate(idx):
+		out[k] = got[j]
 	return out
 
 
@@ -263,6 +286,8 @@ def main():
 	ap.add_argument('--report')
 	ap.add_argument('--stems', help='also write the spatialised piano / speech as <STEMS>.piano.wav, <STEMS>.speech.wav')
 	ap.add_argument('--jobs', type=int, default=min(8, os.cpu_count() or 1))
+	ap.add_argument('--voices', help='JSON [ { file, position: [x,y,z] | null (the mouth), facing: [x,y,z] | null } ] (scene metres): '
+	                'recordings elsewhere than the phone holder\'s mouth, or turned; a facing gets directivity')
 	a = ap.parse_args()
 	global ABSORPTION
 	ABSORPTION = a.absorption
@@ -284,14 +309,37 @@ def main():
 	sources = [('piano-bass', 'piano', piano[:, 0], geo.clamp(geo(ps['bass']))),
 	           ('piano-treble', 'piano', piano[:, 1], geo.clamp(geo(ps['treble']))),
 	           ('speech', 'speech', speech, None)]
+	facing = [None, None, None]		# per source: None or (p, room point faced)
+	dry_speech = speech.copy()
+	for k, v in enumerate(json.load(open(a.voices)) if a.voices else []):
+		x, fsv = sf.read(v['file'], dtype='float64', always_2d=True)
+		assert fsv == fs, 'voice stem at another rate'
+		x = np.pad(x.mean(1), (0, max(0, n - len(x))))[:n]
+		dry_speech += x
+		pos = geo.clamp(geo(v['position'])) if v.get('position') else None
+		if not v.get('facing'):
+			sources.append((f'voice{k}', 'speech', x, pos)); facing.append(None)
+			continue
+		toward = geo(v['facing'])
+		lo = ss.butter(4, DIR_SPLITS[0], 'low', fs=fs, output='sos'); hi = ss.butter(4, DIR_SPLITS[1], 'high', fs=fs, output='sos')
+		mid = ss.butter(4, DIR_SPLITS, 'band', fs=fs, output='sos')
+		for b, (sos, p) in enumerate(zip((lo, mid, hi), DIR_P)):
+			sources.append((f'voice{k}-band{b}', 'speech', ss.sosfiltfilt(sos, x), pos)); facing.append((p, toward))
 
 	# reflection updates every `hop` frames
 	fps = pose['fps']
 	hop = int(round(a.hop / fps * fs))
 	times = np.arange(0, n + hop, hop) / fs
 	src_at = lambda s, t: s[3] if s[3] is not None else track.at(track.mouth, t)[0]
-	jobs = [(geo.dims, a.room, [src_at(s, t) for s in sources], [track.at(m, t)[0] for m in track.mics], fs) for t in times]
-	jobs = [j + (a.absorption,) for j in jobs]
+	# a source counts at an update if it sounds within a reflection's reach of it (silent: skipped)
+	win = int(SPLICE[1] * fs) + 2 * hop
+	def near(x):		# any sound within `win` samples (a running sum, not a convolution: stems are long)
+		c = np.concatenate([[0], np.cumsum(np.abs(x) > 1e-6)])
+		i = np.arange(len(x))
+		return c[np.minimum(len(x), i + win)] - c[np.maximum(0, i - win)] > 0
+	act = [near(s[2]) for s in sources]
+	jobs = [(geo.dims, a.room, [src_at(s, t) for s in sources], [track.at(m, t)[0] for m in track.mics], fs, a.absorption,
+	         facing, [bool(act[i][min(n - 1, int(t * fs))]) for i in range(len(sources))]) for t in times]
 	with ProcessPoolExecutor(a.jobs) as ex:
 		E = list(ex.map(early, jobs, chunksize=4))		# E[k][source][mic]
 	t_early = time.time() - t0
@@ -300,7 +348,7 @@ def main():
 	mid = float(np.median(track.t))
 	ref_srcs = [src_at(s, mid) for s in sources]
 	ref_mics = [track.at(m, mid)[0] for m in track.mics]
-	ref_early = early((geo.dims, a.room, ref_srcs, ref_mics, fs, a.absorption))
+	ref_early = early((geo.dims, a.room, ref_srcs, ref_mics, fs, a.absorption, facing))
 	T, tail_gain = tails(geo.dims, a.room, ref_srcs, ref_mics, fs, a.stereo, ref_early)
 
 	# render
@@ -308,22 +356,41 @@ def main():
 	mic_t = [track.at(m, tt) for m in track.mics]
 	mouth_t = track.at(track.mouth, tt)
 	groups = {'piano': np.zeros((nm, n)), 'speech': np.zeros((nm, n))}
+	speech_wet = np.zeros((nm, n))		# the phone holder's own lines alone
 	for si, s in enumerate(sources):
 		x = s[2]
-		if not x.any():
+		nz = np.flatnonzero(np.abs(x) > 1e-9)
+		if not len(nz):
 			continue
-		src = s[3] if s[3] is not None else mouth_t
+		# only where it sounds (voices are seconds in minutes), from a little before to its tail
+		i0 = max(0, nz[0] - fs // 10)
+		i1 = min(n, nz[-1] + 1 + max(len(T[si][m]) for m in range(nm)))
+		xs = x[i0:i1]
+		src = s[3] if s[3] is not None else mouth_t[i0:i1]
 		for m in range(nm):
-			y = direct_path(x, fs, src, mic_t[m])
-			y += varying(x, [E[k][si][m] for k in range(len(times))], hop)
-			y += ss.oaconvolve(x, T[si][m])[:n]
-			groups[s[1]][m] += y
+			mic = mic_t[m][i0:i1]
+			y = direct_path(xs, fs, src, mic)
+			if facing[si]:		# the pattern towards the mic, per sample
+				p, toward = facing[si]
+				k = i1 - i0
+				f = np.broadcast_to(toward, (k, 3)) - np.broadcast_to(src, (k, 3))
+				d = mic - np.broadcast_to(src, (k, 3))
+				cos = np.sum(f * d, -1) / (np.linalg.norm(f, axis=-1) * np.linalg.norm(d, axis=-1) + 1e-9)
+				y *= np.maximum(DIR_FLOOR, p + (1 - p) * cos)
+			y += varying(x, [E[k][si][m] for k in range(len(times))], hop)[i0:i1]
+			y += ss.oaconvolve(xs, T[si][m])[:i1 - i0]
+			groups[s[1]][m][i0:i1] += y
+			if s[0] == 'speech':
+				speech_wet[m][i0:i1] += y
 
 	# each group at the RMS of its dry stem (the script's balance)
-	dry = {'piano': lrms(piano.reshape(-1)), 'speech': lrms(speech)}
+	# (speech: from the phone holder's own lines alone, so the voices placed elsewhere keep their
+	# distance and directivity relative to them, and adding a voice leaves the other lines as they were)
+	dry = {'piano': lrms(piano.reshape(-1)), 'speech': lrms(speech) if speech.any() else lrms(dry_speech)}
+	ref = {'piano': groups['piano'], 'speech': speech_wet if speech.any() else groups['speech']}
 	scale = {}
 	for g, y in groups.items():
-		wet = lrms(y.reshape(-1))
+		wet = lrms(ref[g].reshape(-1))
 		scale[g] = dry[g] / wet if wet > 0 else 0.0
 		groups[g] = y * scale[g]
 	out = groups['piano'] + groups['speech']
@@ -351,9 +418,14 @@ def main():
 				h[:len(rev)] += rev
 				h += T[si][m]
 				# direct energy: a unit impulse of 1 / r (as direct_path)
-				e_dir = (1 / r) ** 2
+				g = 1.0
+				if facing[si]:		# the direct sound through the pattern, as rendered
+					p, toward = facing[si]
+					f, d = np.asarray(toward) - ref_srcs[si], ref_mics[m] - ref_srcs[si]
+					g = max(DIR_FLOOR, p + (1 - p) * float(f @ d) / (np.linalg.norm(f) * np.linalg.norm(d) + 1e-9))
+				e_dir = (g / r) ** 2
 				hd = h.copy()
-				hd[d0] += 1 / r
+				hd[d0] += g / r
 				rows.append(dict(distance_m=round(float(r), 3), drr_db=round(float(10 * np.log10(e_dir / np.sum(h ** 2))), 1),
 				                 t30_s={str(f): round(t30(hd, fs, f), 2) for f in BANDS[1:5]}))
 			rep['sources'][s[0]] = rows

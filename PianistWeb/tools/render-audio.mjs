@@ -279,10 +279,24 @@ try {
 		const stems = { piano: side( 'piano.wav' ), speech: side( 'speech.wav' ) };
 		fs.writeFileSync( stems.piano, await fetchChunks( 'roomChunk', 0, st.piano ) );
 		fs.writeFileSync( stems.speech, await fetchChunks( 'roomChunk', st.piano, st.speech ) );
+		// voices elsewhere than the phone holder's mouth (script audio: position / facing)
+		const voices = [];
+		let at = st.piano + st.speech;
+		for ( const [ k, v ] of st.voices.entries() ) {
+
+			const file = side( `voice${ k }.wav` );
+			fs.writeFileSync( file, await fetchChunks( 'roomChunk', at, v.length ) );
+			at += v.length;
+			voices.push( { file, position: v.position, facing: v.facing } );
+
+		}
+
+		if ( voices.length ) fs.writeFileSync( side( 'voices.json' ), JSON.stringify( voices, null, 1 ) );
 		const pose = side( 'pose.json' ), mix = side( 'room.wav' );
 		fs.writeFileSync( pose, JSON.stringify( { fps: opt.fps, ...await page.evaluate( sceneSources ), frames: poses } ) );
 		const args = [ path.join( root, 'tools/spatialise.py' ), '--piano', stems.piano, '--speech', stems.speech, '--pose', pose, '--out', mix,
 			'--room', opt.room, '--stereo', opt.stereo, '--absorption', String( opt.absorption ), '--report', side( 'room.json' ) ];
+		if ( voices.length ) args.push( '--voices', side( 'voices.json' ) );
 		if ( opt.keep ) args.push( '--stems', side( 'room' ) );
 		await run( roomPython, args );
 		// back through the live output stage

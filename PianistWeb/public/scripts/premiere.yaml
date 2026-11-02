@@ -336,13 +336,13 @@ timeline:
   # Footages.local/render/closing-spatial): the phone at about (0.05, 1.25, 0.90) facing the
   # piano, the user's mouth just behind it at (-0.01, 1.54, 1.15). The vendor stands 1.5 m to the
   # user's left-back (45°), mouth at 1.62 m, facing the user; the user asks turned towards the
-  # vendor, away from the phone. The vendor is turned up (2.4, ~+6 dB) to be clear at the phone
+  # vendor, away from the phone. The vendor is turned up (3.6, ~+9.5 dB) to be clear at the phone
   # from there; the user's line matches the other user lines' speech level (how-much -24.4 dB
   # dry, at 0.62)
   - after: 5.4    # 156.4 s into 琴伤 (the last move was at 151 s)
     audio: { play: user/how-much.opus, volume: 0.62, facing: [ -0.96, 1.62, 2.26 ] }
   - after: 1.95   # its speech ends 1.45 s in, + 0.5
-    audio: { play: vendor/follow-me.opus, volume: 2.4, position: [ -0.96, 1.62, 2.26 ], facing: [ -0.01, 1.54, 1.15 ] }
+    audio: { play: vendor/follow-me.opus, volume: 3.6, position: [ -0.96, 1.62, 2.26 ], facing: [ -0.01, 1.54, 1.15 ] }
   - after: 0.4
     camera:
       duration: 1.1

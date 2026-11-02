@@ -230,27 +230,45 @@ export async function renderAudio( log, { from, to, sampleRate, volume } ) {
 }
 
 /**
- * The dry stems of [0, to] s, before the output: { piano: [ L, R ], speech: mono } (Float32Arrays
- * at `sampleRate`); `fx` as replayPiano. Recordings at their volume, downmixed to mono.
+ * The dry stems of [0, to] s, before the output: { piano: [ L, R ], speech: mono, voices } (Float32Arrays
+ * at `sampleRate`); `fx` as replayPiano. Recordings at their volume, downmixed to mono: `speech`
+ * those at the phone holder's mouth facing the phone (no position / facing given), `voices` one
+ * stem per other place: [ { position, facing, signal } ] (scene metres; position null: the mouth).
  */
 export async function renderStems( log, { to, sampleRate, fx = false } ) {
 
 	const { L, R, total } = await replayPiano( log, { to, sampleRate, fx } );
-	const ctx = new OfflineAudioContext( 1, total, sampleRate );
+	const groups = new Map();		// key -> { position, facing, clips }
 	for ( const c of log.clips ) {
 
-		const t = c.t / 1000;
-		if ( t >= to ) continue;
-		const src = ctx.createBufferSource(), gain = ctx.createGain();
-		src.buffer = c.buffer;
-		gain.gain.value = c.volume;
-		src.connect( gain ).connect( ctx.destination );
-		src.start( t, c.from );
-		if ( Number.isFinite( c.stopAt ) ) src.stop( c.stopAt / 1000 );
+		if ( c.t / 1000 >= to ) continue;
+		const key = c.position || c.facing ? JSON.stringify( [ c.position, c.facing ] ) : '';
+		if ( ! groups.has( key ) ) groups.set( key, { position: c.position ?? null, facing: c.facing ?? null, clips: [] } );
+		groups.get( key ).clips.push( c );
 
 	}
 
-	return { piano: [ L, R ], speech: ( await ctx.startRendering() ).getChannelData( 0 ) };
+	const mix = async clips => {
+
+		const ctx = new OfflineAudioContext( 1, total, sampleRate );
+		for ( const c of clips ) {
+
+			const src = ctx.createBufferSource(), gain = ctx.createGain();
+			src.buffer = c.buffer;
+			gain.gain.value = c.volume;
+			src.connect( gain ).connect( ctx.destination );
+			src.start( c.t / 1000, c.from );
+			if ( Number.isFinite( c.stopAt ) ) src.stop( c.stopAt / 1000 );
+
+		}
+
+		return ( await ctx.startRendering() ).getChannelData( 0 );
+
+	};
+	const speech = await mix( groups.get( '' )?.clips ?? [] );
+	const voices = [];
+	for ( const [ key, g ] of groups ) if ( key ) voices.push( { position: g.position, facing: g.facing, signal: await mix( g.clips ) } );
+	return { piano: [ L, R ], speech, voices };
 
 }
 
@@ -370,8 +388,9 @@ function wav( buffer, start ) {
 /**
  * The room simulation's side of window.__render (tools/render-audio.mjs). Data goes as base64 in
  * chunks (page.evaluate passes strings):
- *  - stems( to, fx ): the dry stems as float WAVs, piano (stereo) then speech (mono), into one
- *    buffer -> { piano, speech } (base64 lengths), read with roomChunk( i, size );
+ *  - stems( to, fx ): the dry stems as float WAVs, piano (stereo), speech (mono), then each voice
+ *    stem (mono) into one buffer -> { piano, speech, voices: [ { position, facing, length } ] }
+ *    (base64 lengths), read with roomChunk( i, size );
  *  - mixBegin(), mixChunk( s ), mixMaster(): a float stereo WAV from 0 s through the live output,
  *    cut at `from` -> { length, peak }, the 16-bit WAV read with roomChunk.
  */
@@ -388,10 +407,11 @@ export function roomAPI( log, { from, sampleRate, volume } ) {
 	return {
 		async stems( to, fx = false ) {
 
-			const { piano, speech } = await renderStems( log, { to, sampleRate, fx } );
+			const { piano, speech, voices } = await renderStems( log, { to, sampleRate, fx } );
 			const p = b64( floatWav( piano, sampleRate ) ), s = b64( floatWav( [ speech ], sampleRate ) );
-			out = p + s;
-			return { piano: p.length, speech: s.length, sampleRate };
+			const v = voices.map( x => b64( floatWav( [ x.signal ], sampleRate ) ) );
+			out = p + s + v.join( '' );
+			return { piano: p.length, speech: s.length, voices: voices.map( ( x, i ) => ( { position: x.position, facing: x.facing, length: v[ i ].length } ) ), sampleRate };
 
 		},
 		roomChunk: ( i, size ) => out.slice( i, i + size ),
