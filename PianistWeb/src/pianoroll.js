@@ -23,7 +23,7 @@ const MAX_STREAKS = RENDER ? 2048 : 512;
 // see PART_VS: embers per second from each of a sounding key's emitters (1 .. EMITTERS, a velocity
 // 0..1 scales the rate), x3 right after the strike; smoke, ash and flames (streaks) per key and second
 const EMITTERS = 3, EMBER_RATE = [ 200, 240 ];
-const SMOKE = 3, ASH = 8, STREAKS = 9, STREAK_STRIKE = 1;
+const SMOKE = 3, ASH = 8, STREAKS = 2.5, STREAK_STRIKE = 0.35;
 const FLAME_COLOR = null;			// the flames' colour, null: the roll's (e.g. 0xff4020 for red ones)
 const MAX_FLARES = RENDER ? 512 : 128;		// hit flares drawn at once
 const WHITE_TOP = 0.0222, BLACK_TOP = 0.0345;	// key-mesh local heights of the key tops
@@ -450,8 +450,8 @@ const FLARE_FS = /* glsl */`
 //  - embers (kind 0): ~1 px specks rising ~0.08 m/s, white-hot -> the roll colour -> dim over ~3 s
 //  - smoke (1): a few large dim puffs from ~4 key widths up, slow, long-lived
 //  - ash (2): sparse dim specks in the smoke
-//  - flames (STREAK_VS): thin bright streaks shooting up from the hit line (0.5-1 m/s, 2-4 cm,
-//    ~0.15 s), quads stretched along their velocity
+//  - flames (STREAK_VS): pale flickering streaks from the hit line, slow at first (0.05-0.25 m/s)
+//    then accelerating (1-8 m/s2), quads stretched along their velocity as they speed up
 // The colour follows the roll (the reference's white -> pink -> red -> dark red onto the roll's
 // hue); live notes' particles take the live colour.
 const FIELD = /* glsl */`
@@ -568,8 +568,9 @@ const PART_FS = /* glsl */`
 	}
 `;
 
-// flames: a quad from the streak's tail to its head, along its velocity, a few px wide; they shoot
-// up through the ember zone (~6 key widths) in ~0.2 s
+// flames: a quad from the streak's tail to its head, along its velocity, a few px wide with a soft
+// falloff; slow at first, then accelerating (some barely, some darting off), stretched with their
+// speed, wobbling a little, flickering, easing out
 const STREAK_VS = /* glsl */`
 	attribute vec2 corner;
 	attribute vec4 aStreak;			// birth x, birth y, t0, seed
@@ -582,7 +583,11 @@ const STREAK_VS = /* glsl */`
 	${ FIELD }
 	void main() {
 		float t0 = aStreak.z, s = aStreak.w;
-		float life = mix( 0.16, 0.3, h( s * 3.1 ) );
+		// slow, then fast: a small initial speed and a widely random acceleration (log-uniform, some
+		// barely speed up, some dart off); it dies after ~0.2 m at the latest
+		float v0 = mix( 0.05, 0.25, h( s * 7.7 ) ), acc = exp( mix( log( 1.0 ), log( 8.0 ), h( s * 5.9 ) ) );
+		float life = mix( 0.2, 0.4, h( s * 3.1 ) );
+		life = min( life, ( sqrt( v0 * v0 + 2.0 * acc * 0.22 ) - v0 ) / acc );
 		float age = uTime - t0;
 		vUv = corner * 2.0 - 1.0;
 		vLive = aStreakInfo.y;
@@ -591,30 +596,40 @@ const STREAK_VS = /* glsl */`
 			vA = 0.0;
 			return;
 		}
-		float speed = mix( 0.6, 1.0, h( s * 7.7 ) );
-		float len = mix( 0.025, 0.045, h( s * 5.9 ) );
-		vec2 dir0 = normalize( vec2( ( h( s * 2.3 ) - 0.5 ) * 0.2, 1.0 ) );
-		// the head: straight up fast, bent a little by the flow
+		// a slight random tilt and a wobble in direction
+		float tilt = ( h( s * 2.3 ) - 0.5 ) * 0.3, ww = mix( 14.0, 30.0, h( s * 4.7 ) ), wp = 6.283 * h( s * 8.3 );
+		// the head: up, bent a little by the flow
 		vec2 p = aStreak.xy;
 		float t = 0.0;
-		for ( int i = 0; i < 16; i ++ ) {
+		for ( int i = 0; i < 21; i ++ ) {
 			if ( t >= age ) break;
-			float d = min( 0.02, age - t );
-			p += d * ( dir0 * speed + 0.3 * field( p, t0 + t ) );
+			float d = min( 0.02, age - t ), tm = t + 0.5 * d;
+			float an = tilt + 0.12 * sin( ww * tm + wp );
+			p += d * ( vec2( sin( an ), cos( an ) ) * ( v0 + acc * tm ) + 0.3 * field( p, t0 + t ) );
 			t += d;
 		}
-		vec2 v = dir0 * speed + 0.3 * field( p, uTime );
+		float speed = v0 + acc * age;
+		float an = tilt + 0.12 * sin( ww * age + wp );
+		vec2 v = vec2( sin( an ), cos( an ) ) * speed + 0.3 * field( p, uTime );
 		vec2 dir = v / max( length( v ), 1e-4 );
-		float l = min( len, speed * age + 0.002 );		// grows out of the hit line
+		// the stretch follows the speed (short at first, longer as it speeds up), not longer than the
+		// way it came; it shrinks over the last ~40% of its life
+		float u = age / life, out_ = 1.0 - smoothstep( 0.6, 1.0, u );
+		float l = min( min( 0.05, speed * mix( 0.022, 0.035, h( s * 6.9 ) ) ), v0 * age + 0.5 * acc * age * age + 0.002 ) * mix( 0.25, 1.0, out_ );
 		vec2 tail = max( p - dir * l, vec2( - 1e3, 0.0 ) );
 		vec2 nrm = vec2( dir.y, - dir.x );		// (corner.x to the right of the motion: the quad stays front-facing)
 		vec4 mvh = modelViewMatrix * vec4( p, 0.004, 1.0 );
-		float wpx = 3.0;						// px across (core + halo)
+		float wpx = 5.0;						// px across (a soft core and falloff)
 		float wm = wpx * max( - mvh.z, 0.05 ) / max( uScale, 1.0 );
 		vec2 at = mix( tail, p, corner.y ) + nrm * vUv.x * wm;
 		gl_Position = projectionMatrix * modelViewMatrix * vec4( at, 0.004, 1.0 );
-		float fade = smoothstep( 0.0, 0.02, age ) * ( 1.0 - smoothstep( 0.6, 1.0, age / life ) );		// bright all the way up
-		vA = aStreakInfo.x * fade;
+		// eases out over the last ~40%; flickers in and out (per-flame, a few Hz, now and then near 0)
+		float fade = smoothstep( 0.0, 0.025, age ) * out_ * out_;
+		float f1 = mix( 30.0, 60.0, h( s * 9.1 ) ), f2 = mix( 55.0, 95.0, h( s * 1.9 ) );
+		float n = 0.5 + 0.35 * sin( f1 * age + 6.283 * h( s * 3.7 ) ) + 0.3 * sin( f2 * age + 6.283 * h( s * 6.1 ) );
+		float flick = smoothstep( 0.0, 0.7, n );
+		float peak = mix( 0.35, 1.0, pow( h( s * 2.7 ), 2.5 ) );		// its own peak: most dim, a few bright
+		vA = aStreakInfo.x * peak * fade * flick;
 	}
 `;
 
@@ -627,11 +642,12 @@ const STREAK_FS = /* glsl */`
 	varying float vLive;
 	void main() {
 		float x = vUv.x;
-		float across = exp( - x * x * 5.0 );
+		float across = exp( - x * x * 3.5 );		// soft across
 		float along = vUv.y * 0.5 + 0.5;		// 0 tail .. 1 head
 		vec3 base = mix( uFlame, uLiveFlame, vLive );
-		vec3 col = mix( base, vec3( 1.0, 0.97, 0.95 ), 0.25 + 0.6 * along * along ) * across;
-		col *= ( 0.25 + 0.75 * smoothstep( 0.0, 0.6, along ) ) * 5.0;
+		// mostly the roll colour, white-hot only at the very head
+		vec3 col = mix( base, vec3( 1.0, 0.97, 0.95 ), 0.12 + 0.5 * smoothstep( 0.75, 1.0, along ) ) * across;
+		col *= ( 0.2 + 0.8 * smoothstep( 0.0, 0.6, along ) ) * 7.0 * ( 1.0 - 0.4 * smoothstep( 0.9, 1.0, along ) );
 		gl_FragColor = vec4( col * vA * uIntensity, 1.0 );
 	}
 `;
