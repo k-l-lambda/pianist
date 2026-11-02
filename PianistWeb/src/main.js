@@ -38,7 +38,8 @@ await new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
 //   #?gi&grand-black&pathtrace&handheld&screen&script=path/to/scene.yaml
 // Bare words in the hash: a piano style id, `realtime` / `pathtrace`, or a flag (gi, handheld,
 // screen, loading, capture). key=value: style, mode, gi=0|1, exposure, shadow=vsm, preset, shake,
-// script (a name in public/scripts/, a path from the site root, or a URL). Changing the hash
+// script (a name in public/scripts/, a path from the site root, or a URL), at (start the script
+// that far in: 95, 1:35, 1:35.5; the part before runs silently at once). Changing the hash
 // reloads the scene with the new parameters.
 const params = new URLSearchParams( location.search );
 for ( const [ key, value ] of new URLSearchParams( location.hash.replace( /^#\??/, '' ) ) ) {
@@ -632,7 +633,20 @@ fetch( new URL( 'midi/open.mid', new URL( import.meta.env.BASE_URL, location.hre
 	.then( buffer => roll.bootLength = Math.max( 1, bootSound.load( buffer, 'open.mid' ).duration / 1000 - BOOT_SHORTER ) )
 	.catch( err => console.warn( 'power-on sound unavailable:', err ) );
 
-function setScreenPower( on ) {
+/** `instant`: on at once, without the boot animation and chime (a script started mid-way). */
+function setScreenPower( on, { instant = false } = {} ) {
+
+	if ( instant ) {
+
+		bootSound.stop();
+		roll.setPower( on );
+		roll.bootT = - 1;
+		roll.bootMesh.visible = false;
+		roll.powerLevel = on ? 1 : 0;
+		powerButton?.setAttribute( 'aria-pressed', String( on ) );
+		return;
+
+	}
 
 	if ( on && ! roll.power ) {
 
@@ -935,10 +949,11 @@ const scriptPlayer = new ScriptPlayer( {
 	// speech and other recordings, through the same output (volume slider, limiter) as the piano
 	audio: {
 		decode: data => synth.context().decodeAudioData( data ),
-		play: ( buffer, { volume = 1, from = 0, name } = {} ) => {
+		play: ( buffer, { volume = 1, from = 0, name, position, facing } = {} ) => {
 
-			// offline render: logged for the sound track, `playing` on the render clock
-			if ( RENDER ) return audioLog.clip( buffer, { volume, from, name } );
+			// offline render: logged for the sound track, `playing` on the render clock (with the
+			// voice's place and facing, for the room simulation)
+			if ( RENDER ) return audioLog.clip( buffer, { volume, from, name, position, facing } );
 			const ctx = synth.context();
 			synth.resume();
 			const src = ctx.createBufferSource(), gain = ctx.createGain();
@@ -1048,14 +1063,25 @@ fScript.add( scriptState, 'state' ).name( 'State' ).disable();
 
 // A script opened from the URL plays as soon as audio can start. Browsers allow that only after a
 // click on the page (resume() then never settles), so after a moment a Play button asks for one.
+/** "95", "1:35" or "1:35.5" -> s. */
+function parseClock( text ) {
+
+	const p = String( text ).split( ':' ).map( Number );
+	const s = p.reduce( ( a, v ) => a * 60 + v, 0 );
+	return Number.isFinite( s ) && s > 0 ? s : 0;
+
+}
+
 function startWhenAudible() {
 
 	const ctx = synth.context();
 	const overlay = document.getElementById( 'start' );
+	// #?script=…&at=95 (or 1:35): start that far into the timeline
+	const at = params.has( 'at' ) ? parseClock( params.get( 'at' ) ) : 0;
 	const go = () => {
 
 		overlay.classList.remove( 'show' );
-		scriptPlayer.play();
+		scriptPlayer.playFrom( at );
 
 	};
 	if ( ctx.state === 'running' ) return go();

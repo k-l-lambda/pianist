@@ -45,7 +45,9 @@
 //                                  # same, but paused: the roll stays frozen where it was
 //     - gap: 0.4
 //       audio: user/hello.opus     # an audio file (site's audio/ folder, ./ = from the script);
-//                                  # or { play: name, volume: 0.8, from: 0 } | stop
+//                                  # or { play: name, volume: 0.8, from: 0 } | stop; for the
+//                                  # offline sound track: position: [x, y, z] (the voice; default
+//                                  # the phone holder's mouth), facing: [x, y, z] (where it is turned)
 //   audio:                         # optional aliases, like midi:
 //     - after: 1.6
 //       play:                      # notes played by hand on the piano (live: sound, keys, the
@@ -62,6 +64,137 @@
 import * as THREE from 'three';
 import { parse } from 'yaml';
 import { parseMidiEvents } from './midi.js';
+
+const SKIP_STEP = 0.01;		// s, playFrom()'s steps through the skipped part
+const MIDI_TAIL = 500;		// ms the MIDI player keeps playing past a file's end (its release)
+
+/**
+ * The script's context while playFrom() skips ahead: like `real`, but the MIDI player, recordings,
+ * the screen, played notes and the status icon only simulated (times from the player's clock);
+ * goLive() then starts on `real` whatever is still going and hands every simulated object over to
+ * its real counterpart (busy() checks made during the skip keep working).
+ */
+function skipContext( real, player ) {
+
+	const ctx = Object.create( real );
+	const timers = [];
+	let live = false, power = null, rollMode = null, subtitle = '', status = null;
+	const now = () => player.time;
+	const durations = new Map();
+	const midi = {
+		buf: null, name: null, dur: 0, pos0: 0, t0: 0, running: false,
+		load( buf, name ) {
+
+			if ( live ) return real.midi.load( buf, name );
+			if ( ! durations.has( buf.byteLength + name ) ) durations.set( buf.byteLength + name, parseMidiEvents( buf.slice( 0 ) ).duration );
+			Object.assign( this, { buf, name, dur: durations.get( buf.byteLength + name ), pos0: 0, running: false } );
+
+		},
+		seek( ms ) {
+
+			if ( live ) return real.midi.seek( ms );
+			this.pos0 = Math.max( 0, Math.min( ms, this.dur ) );
+			this.t0 = now();
+
+		},
+		play() {
+
+			if ( live ) return real.midi.play();
+			if ( this.pos0 >= this.dur ) this.pos0 = 0;
+			this.running = true;
+			this.t0 = now();
+
+		},
+		pause() {
+
+			if ( live ) return real.midi.pause();
+			this.pos0 = this.position;
+			this.running = false;
+
+		},
+		resume() { return live ? real.midi.resume() : this.play(); },
+		stop() {
+
+			if ( live ) return real.midi.stop();
+			this.running = false;
+			this.pos0 = 0;
+
+		},
+		fadeOut( seconds, opts = {} ) {
+
+			if ( live ) return real.midi.fadeOut( seconds, opts );
+			return new Promise( done => timers.push( { at: now() + seconds, run: () => {
+
+				if ( opts.pause ) this.pause(); else this.stop();
+				done();
+
+			} } ) );
+
+		},
+		get position() { return live ? real.midi.position : this.running ? this.pos0 + ( now() - this.t0 ) * 1000 : this.pos0; },
+		get playing() { return live ? real.midi.playing : this.running; },
+	};
+	const sounds = [];
+	ctx.midi = midi;
+	ctx.audio = { ...real.audio, play( buffer, { volume = 1, from = 0, name, ...opts } = {} ) {
+
+		if ( live ) return real.audio.play( buffer, { volume, from, name, ...opts } );
+		const h = { buffer, volume, from, name, opts, t0: now(), stopped: false, real: null,
+			get playing() { return this.real ? this.real.playing : ! this.stopped && now() < this.t0 + buffer.duration - from; },
+			stop() { if ( this.real ) this.real.stop(); this.stopped = true; } };
+		sounds.push( h );
+		return h;
+
+	} };
+	ctx.setScreenPower = on => live ? real.setScreenPower( on ) : power = on;
+	ctx.screenBusy = () => live ? real.screenBusy?.() ?? false : false;
+	ctx.noteOn = ( ...a ) => live && real.noteOn?.( ...a );
+	ctx.noteOff = ( ...a ) => live && real.noteOff?.( ...a );
+	ctx.setRollMode = m => live ? real.setRollMode?.( m ) : rollMode = m;
+	ctx.setSubtitle = t => live ? real.setSubtitle?.( t ) : subtitle = t;
+	ctx.setStatus = ( st, level ) => live ? real.setStatus?.( st, level ) : status = st;
+	ctx.defocus = ( ...a ) => live && real.defocus?.( ...a );
+	ctx.tick = () => {
+
+		if ( midi.running && midi.position > midi.dur + MIDI_TAIL ) {
+
+			midi.running = false;
+			midi.pos0 = midi.dur;
+
+		}
+
+		for ( let i = timers.length - 1; i >= 0; -- i ) if ( timers[ i ].at <= now() ) timers.splice( i, 1 )[ 0 ].run();
+
+	};
+	ctx.goLive = () => {
+
+		// (the simulated state first: once live, the stubs read the real objects)
+		const pos = midi.position, running = midi.running, t = now();
+		live = true;
+		if ( power !== null ) real.setScreenPower( power, { instant: true } );
+		if ( rollMode ) real.setRollMode?.( rollMode );
+		// the MIDI file: where it is now, playing or (paused) frozen on the screen
+		if ( midi.buf && ( running || pos > 0 ) && pos < midi.dur ) {
+
+			real.midi.load( midi.buf, midi.name );
+			real.midi.seek( pos );
+			if ( running ) real.midi.play();
+
+		}
+
+		real.setSubtitle?.( running ? subtitle : '' );
+		for ( const h of sounds ) if ( ! h.stopped && t < h.t0 + h.buffer.duration - h.from ) {
+
+			h.real = real.audio.play( h.buffer, { volume: h.volume, from: h.from + t - h.t0, name: h.name, ...h.opts } );
+
+		}
+
+		if ( status ) real.setStatus?.( status );
+
+	};
+	return ctx;
+
+}
 
 // note name (C4 = 60; F2, G#2, Ab2, A#2) or MIDI number -> MIDI number
 const STEPS = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
@@ -301,7 +434,15 @@ export class ScriptPlayer {
 			const a = e.audio;
 			if ( a === 'stop' ) out.audio = { action: 'stop' };
 			else if ( typeof a === 'string' ) out.audio = { play: a, volume: 1, from: 0 };
-			else out.audio = { play: a.play, volume: Number( a.volume ?? 1 ), from: Number( a.from ?? 0 ) };
+			else {
+
+				out.audio = { play: a.play, volume: Number( a.volume ?? 1 ), from: Number( a.from ?? 0 ) };
+				// where the voice comes from, and where it is turned (scene metres; for the offline
+				// sound track's room simulation): position defaults to the phone holder's mouth
+				if ( a.position !== undefined ) out.audio.position = vec( a.position, `${ where }.audio.position` ).toArray();
+				if ( a.facing !== undefined ) out.audio.facing = vec( a.facing, `${ where }.audio.facing` ).toArray();
+
+			}
 			if ( out.audio.play !== undefined && ! out.audio.play ) throw new Error( `${ where }.audio: give a file` );
 
 		}
@@ -360,6 +501,41 @@ export class ScriptPlayer {
 		this._listens = [];				// { until, start, from, env } of user recordings
 		this.ctx.setStatus?.( 'idle' );
 		this._state( 'playing' );
+
+	}
+
+	/**
+	 * Play from `from` s into the timeline: everything before it runs at once, silent (MIDI files
+	 * and recordings simulated from their lengths, no screen animation, no played notes), so the
+	 * events' times come out as in a full run; then whatever is still going at `from` starts
+	 * there (the MIDI file seeked, recordings from their offset, the screen on without its boot).
+	 */
+	async playFrom( from ) {
+
+		this.play();
+		if ( ! ( from > 0 ) ) return;
+		const real = this.ctx, sim = skipContext( real, this );
+		this.ctx = sim;
+		this._skipping = true;
+		try {
+
+			let i = 0;
+			while ( this.playing && this.time < from - 1e-6 ) {
+
+				this.update( Math.min( SKIP_STEP, from - this.time ) );
+				sim.tick();
+				if ( ++ i % 400 === 0 ) await new Promise( r => setTimeout( r, 0 ) );		// (the page stays responsive)
+				else await null;		// (a MIDI start settles in a promise)
+
+			}
+
+		} finally {
+
+			this.ctx = real;
+			this._skipping = false;
+			sim.goLive();
+
+		}
 
 	}
 
@@ -600,7 +776,7 @@ export class ScriptPlayer {
 			} else {
 
 				const file = this.script.audioAliases[ e.audio.play ] ?? e.audio.play;
-				const h = this.ctx.audio.play( this._audioBuffers.get( file ), { volume: e.audio.volume, from: e.audio.from, name: file } );
+				const h = this.ctx.audio.play( this._audioBuffers.get( file ), { volume: e.audio.volume, from: e.audio.from, name: file, position: e.audio.position, facing: e.audio.facing } );
 				this._sounds.push( h );
 				// finished when the speech ends (its trailing silence does not count)
 				const sp = this._audioSpeech.get( file ), from = e.audio.from || 0;

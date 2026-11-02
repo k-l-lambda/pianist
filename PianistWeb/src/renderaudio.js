@@ -79,9 +79,9 @@ export class AudioLog {
 	}
 
 	/** A recording started now; returns its handle ({ playing, stop() }) on the render clock. */
-	clip( buffer, { volume = 1, from = 0, name = '' } = {} ) {
+	clip( buffer, { volume = 1, from = 0, name = '', position = null, facing = null } = {} ) {
 
-		const c = { t: clock.now(), buffer, name, volume, from: Math.max( 0, from ), stopAt: Infinity };
+		const c = { t: clock.now(), buffer, name, volume, from: Math.max( 0, from ), stopAt: Infinity, position, facing };
 		this.clips.push( c );
 		const end = c.t + 1000 * Math.max( 0, buffer.duration - c.from );
 		return {
@@ -101,7 +101,7 @@ export class AudioLog {
 
 		return {
 			events: this.events.length + this.pending.length,
-			clips: this.clips.map( c => ( { t: c.t / 1000, name: c.name, volume: c.volume, from: c.from, stop: Number.isFinite( c.stopAt ) ? c.stopAt / 1000 : null } ) ),
+			clips: this.clips.map( c => ( { t: c.t / 1000, name: c.name, volume: c.volume, from: c.from, stop: Number.isFinite( c.stopAt ) ? c.stopAt / 1000 : null, position: c.position, facing: c.facing } ) ),
 		};
 
 	}
