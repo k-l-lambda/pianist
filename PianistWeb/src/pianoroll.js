@@ -23,7 +23,7 @@ const MAX_STREAKS = RENDER ? 2048 : 512;
 // see PART_VS: embers per second from each of a sounding key's emitters (1 .. EMITTERS, a velocity
 // 0..1 scales the rate), x3 right after the strike; smoke, ash and flames (streaks) per key and second
 const EMITTERS = 3, EMBER_RATE = [ 200, 240 ];
-const SMOKE = 3, ASH = 8, STREAKS = 2.5, STREAK_STRIKE = 0.35;
+const SMOKE = 3, ASH = 8, STREAKS = 0.75, STREAK_STRIKE = 0.105;
 const FLAME_COLOR = null;			// the flames' colour, null: the roll's (e.g. 0xff4020 for red ones)
 const MAX_FLARES = RENDER ? 512 : 128;		// hit flares drawn at once
 const WHITE_TOP = 0.0222, BLACK_TOP = 0.0345;	// key-mesh local heights of the key tops
@@ -450,8 +450,9 @@ const FLARE_FS = /* glsl */`
 //  - embers (kind 0): ~1 px specks rising ~0.08 m/s, white-hot -> the roll colour -> dim over ~3 s
 //  - smoke (1): a few large dim puffs from ~4 key widths up, slow, long-lived
 //  - ash (2): sparse dim specks in the smoke
-//  - flames (STREAK_VS): pale flickering streaks from the hit line, slow at first (0.02-0.1 m/s)
-//    then accelerating (1.5-4 m/s2), quads stretched along their velocity as they speed up
+//  - flames (STREAK_VS): pale flickering spindles from the hit line, from rest, each
+//    accelerating in its own way (0.16-1 m/s2, early push or late dart), swaying as they rise; a
+//    wide dim feather at birth drawing in to a bright core, quads stretched along their velocity as they speed up
 // The colour follows the roll (the reference's white -> pink -> red -> dark red onto the roll's
 // hue); live notes' particles take the live colour.
 const FIELD = /* glsl */`
@@ -540,6 +541,7 @@ const PART_VS = /* glsl */`
 `;
 
 const PART_FS = /* glsl */`
+	const float PART_BRIGHT = 0.25;		// embers, smoke and ash, all of them
 	uniform vec3 uColor;
 	uniform vec3 uLiveColor;
 	uniform float uIntensity;
@@ -564,7 +566,7 @@ const PART_FS = /* glsl */`
 			vec3 k = u < 0.2 ? mix( hot, lit, u / 0.2 ) : u < 0.45 ? mix( lit, base, ( u - 0.2 ) / 0.25 ) : mix( base, cool, ( u - 0.45 ) / 0.55 );
 			col = k * 5.0 * exp( - r2 * 2.5 );
 		}
-		gl_FragColor = vec4( col * vA * uIntensity, 1.0 );
+		gl_FragColor = vec4( col * vA * uIntensity * PART_BRIGHT, 1.0 );
 	}
 `;
 
@@ -580,52 +582,65 @@ const STREAK_VS = /* glsl */`
 	varying vec2 vUv;
 	varying float vA;
 	varying float vLive;
+	varying float vRise;			// 0 at birth .. 1 at the end: the feather tightens, the core brightens
 	${ FIELD }
+	// the head's place at age t: from rest, each flame accelerating in its own way along its
+	// lean, a(t) = A (k+1) (t/T)^k over the profile time T (k < 1 an early push then coasting, k > 1
+	// a drift then a dart); swaying side to side more as it rises; bent a little by the flow
+	vec2 headAt( float t, vec2 b, float t0, float T, float A, float k, float lean, float sw, float sf, float sp, float sf2, float sp2 ) {
+		float u = t / T;
+		float way = A * T * T * pow( max( u, 1e-4 ), k + 2.0 ) / ( k + 2.0 );
+		float side = sw * min( 1.0, way / 0.04 ) * ( 0.7 * sin( sf * t + sp ) + 0.3 * sin( sf2 * t + sp2 ) );
+		return b + vec2( sin( lean ), cos( lean ) ) * way + vec2( side, 0.0 ) + 0.3 * t * field( b, t0 + 0.5 * t );
+	}
 	void main() {
 		float t0 = aStreak.z, s = aStreak.w;
-		// slow, then fast: a small initial speed and a widely random acceleration (log-uniform, some
-		// barely speed up, some dart off); it dies after ~0.2 m at the latest
-		float v0 = mix( 0.02, 0.10, h( s * 7.7 ) ), acc = exp( mix( log( 1.5 ), log( 4.0 ), h( s * 5.9 ) ) );
-		float life = mix( 0.2, 0.4, h( s * 3.1 ) );
-		life = min( life, ( sqrt( v0 * v0 + 2.0 * acc * 0.22 ) - v0 ) / acc );
+		// per flame: its profile time, base acceleration (4x the earlier rise), the shape of its
+		// acceleration, its lean, and its sway (amplitude and two frequencies)
+		float T = mix( 0.6, 1.8, h( s * 3.1 ) );
+		float A = exp( mix( log( 0.16 ), log( 1.0 ), h( s * 5.9 ) ) );
+		float k = exp( mix( log( 0.35 ), log( 3.0 ), h( s * 4.3 ) ) );
+		float lean = ( h( s * 2.3 ) - 0.5 ) * 0.3;
+		float sw = mix( 0.002, 0.009, h( s * 4.7 ) ), sf = mix( 5.0, 11.0, h( s * 8.3 ) ), sp = 6.283 * h( s * 1.3 );
+		float sf2 = mix( 13.0, 23.0, h( s * 2.9 ) ), sp2 = 6.283 * h( s * 7.1 );
+		// it lives until T or until it has risen ~0.2 m (the roll's height), whichever is first
+		float tcap = T * pow( 0.2 * ( k + 2.0 ) / ( A * T * T ), 1.0 / ( k + 2.0 ) );
+		float life = min( T, tcap );
 		float age = uTime - t0;
 		vUv = corner * 2.0 - 1.0;
 		vLive = aStreakInfo.y;
 		if ( ! ( age >= 0.0 && age <= life ) ) {
 			gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
 			vA = 0.0;
+			vRise = 0.0;
 			return;
 		}
-		// a slight random tilt and a wobble in direction
-		float tilt = ( h( s * 2.3 ) - 0.5 ) * 0.3, ww = mix( 14.0, 30.0, h( s * 4.7 ) ), wp = 6.283 * h( s * 8.3 );
-		// the head: up, bent a little by the flow
-		vec2 p = aStreak.xy;
-		float t = 0.0;
-		for ( int i = 0; i < 21; i ++ ) {
-			if ( t >= age ) break;
-			float d = min( 0.02, age - t ), tm = t + 0.5 * d;
-			float an = tilt + 0.12 * sin( ww * tm + wp );
-			p += d * ( vec2( sin( an ), cos( an ) ) * ( v0 + acc * tm ) + 0.3 * field( p, t0 + t ) );
-			t += d;
-		}
-		float speed = v0 + acc * age;
-		float an = tilt + 0.12 * sin( ww * age + wp );
-		vec2 v = vec2( sin( an ), cos( an ) ) * speed + 0.3 * field( p, uTime );
+		float u = age / life;
+		vRise = u;
+		vec2 p = headAt( age, aStreak.xy, t0, T, A, k, lean, sw, sf, sp, sf2, sp2 );
+		// its direction from the path itself (the sway tilts it), upright while it barely moves
+		vec2 q = headAt( max( 0.0, age - 0.03 ), aStreak.xy, t0, T, A, k, lean, sw, sf, sp, sf2, sp2 );
+		vec2 v = ( p - q ) / 0.03 + vec2( 0.0, 0.02 );
 		vec2 dir = v / max( length( v ), 1e-4 );
-		// the stretch follows the speed (short at first, longer as it speeds up), not longer than the
-		// way it came; it shrinks over the last ~40% of its life
-		float u = age / life, out_ = 1.0 - smoothstep( 0.6, 1.0, u );
-		float l = min( min( 0.05, speed * mix( 0.022, 0.035, h( s * 6.9 ) ) ), v0 * age + 0.5 * acc * age * age + 0.002 ) * mix( 0.25, 1.0, out_ );
+		float speed = A * T * pow( max( age / T, 1e-4 ), k + 1.0 );
+		// its own size: born large (1.8x, a big dim glow), drawing in to it as it rises, a little
+		// longer when fast; shrinks as it fades out over the last ~40%
+		float out_ = 1.0 - smoothstep( 0.6, 1.0, u );
+		float grow = smoothstep( 0.0, 0.05, u ) * mix( 1.8, 1.0, smoothstep( 0.0, 0.6, u ) );
+		float l = mix( 0.012, 0.03, h( s * 6.9 ) ) * grow * ( 0.75 + 0.25 * min( 1.0, speed / 0.5 ) );
+		l = max( l, 0.003 ) * mix( 0.35, 1.0, out_ );
 		vec2 tail = max( p - dir * l, vec2( - 1e3, 0.0 ) );
 		vec2 nrm = vec2( dir.y, - dir.x );		// (corner.x to the right of the motion: the quad stays front-facing)
 		vec4 mvh = modelViewMatrix * vec4( p, 0.004, 1.0 );
-		float wpx = 5.0;						// px across (a soft core and falloff)
-		float wm = wpx * max( - mvh.z, 0.05 ) / max( uScale, 1.0 );
+		// the quad's width: the feather is wide at first (half the length) and draws in as it rises
+		// (to a fifth); 3-16 px on screen
+		float px = max( - mvh.z, 0.05 ) / max( uScale, 1.0 );
+		float wm = clamp( mix( 0.5, 0.2, smoothstep( 0.0, 0.6, u ) ) * l, 3.0 * px, 26.0 * px );
 		vec2 at = mix( tail, p, corner.y ) + nrm * vUv.x * wm;
 		gl_Position = projectionMatrix * modelViewMatrix * vec4( at, 0.004, 1.0 );
 		// eases out over the last ~40%; flickers in and out (per-flame, a few Hz, now and then near 0)
-		float fade = smoothstep( 0.0, 0.025, age ) * out_ * out_;
-		float f1 = mix( 30.0, 60.0, h( s * 9.1 ) ), f2 = mix( 55.0, 95.0, h( s * 1.9 ) );
+		float fade = smoothstep( 0.0, 0.06, age ) * out_ * out_;
+		float f1 = mix( 12.0, 24.0, h( s * 9.1 ) ), f2 = mix( 22.0, 38.0, h( s * 1.9 ) );
 		float n = 0.5 + 0.35 * sin( f1 * age + 6.283 * h( s * 3.7 ) ) + 0.3 * sin( f2 * age + 6.283 * h( s * 6.1 ) );
 		float flick = smoothstep( 0.0, 0.7, n );
 		float peak = mix( 0.35, 1.0, pow( h( s * 2.7 ), 2.5 ) );		// its own peak: most dim, a few bright
@@ -634,21 +649,31 @@ const STREAK_VS = /* glsl */`
 `;
 
 const STREAK_FS = /* glsl */`
+	const float FLAME_BRIGHT = 0.6;		// the flames overall
 	uniform vec3 uFlame;
 	uniform vec3 uLiveFlame;
 	uniform float uIntensity;
 	varying vec2 vUv;
 	varying float vA;
 	varying float vLive;
+	varying float vRise;
 	void main() {
-		float x = vUv.x;
-		float across = exp( - x * x * 3.5 );		// soft across
+		// a spindle: pointed at both ends, widest a little ahead of the middle, feathered all round.
+		// At birth a wide, soft, dim glow; as it rises the feather draws in and the light gathers in
+		// a bright core
+		float r = smoothstep( 0.0, 0.7, vRise );
 		float along = vUv.y * 0.5 + 0.5;		// 0 tail .. 1 head
+		float half_ = pow( sin( 3.14159 * clamp( along, 0.0, 1.0 ) ), 0.8 ) * ( 0.8 + 0.2 * along );
+		float x = vUv.x / max( half_, 1e-3 );
+		float soft = mix( 1.2, 2.6, r ), sharp = mix( 5.0, 11.0, r );		// the feather's falloff: wide -> tight
+		float body = exp( - x * x * soft ) * smoothstep( 0.0, 0.2, half_ );
+		float core = exp( - x * x * sharp ) * smoothstep( 0.25, 0.6, half_ );
 		vec3 base = mix( uFlame, uLiveFlame, vLive );
-		// mostly the roll colour, white-hot only at the very head
-		vec3 col = mix( base, vec3( 1.0, 0.97, 0.95 ), 0.12 + 0.5 * smoothstep( 0.75, 1.0, along ) ) * across;
-		col *= ( 0.2 + 0.8 * smoothstep( 0.0, 0.6, along ) ) * 7.0 * ( 1.0 - 0.4 * smoothstep( 0.9, 1.0, along ) );
-		gl_FragColor = vec4( col * vA * uIntensity, 1.0 );
+		// the feather in the note's colour, kept dim enough not to tone-map to white (bright blue
+		// reads white under AgX); only the core goes white-hot
+		float feather = max( body - core, 0.0 );
+		vec3 col = base * feather * mix( 0.3, 1.4, r ) + mix( base, vec3( 1.0, 0.97, 0.95 ), 0.6 ) * core * mix( 0.15, 6.0, r );
+		gl_FragColor = vec4( col * vA * uIntensity * FLAME_BRIGHT, 1.0 );
 	}
 `;
 
