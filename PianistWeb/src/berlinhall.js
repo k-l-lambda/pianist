@@ -30,7 +30,14 @@ const FINISH = {
 	gilt: { metalness: 0.7 },
 	ivoryGilt: { metalness: 0.7 },
 };
-const LAMP_EMISSIVE = 2;		// the chandeliers' and candles' emissive at lamps = 1
+// the hall's chandeliers: two rows of seven over the stalls and the stage, their candle rings
+// (2.3 m across) at 10.2 m (measured in the packs' frame: x, y, z)
+export const BERLIN_CHANDELIERS = [ - 4.75, 4.75 ].flatMap( x => [ - 8.8, - 4.1, 0.5, 5.2, 9.8, 14.4, 19.0 ].map( z => [ x, 10.2, z ] ) );
+// emissive materials by what lights them (the source's material names): the chandeliers and the
+// wall sconces with the house lights, the candelabras' candles round the stalls with `lamps`
+const LAMP_GROUP = { 'kronleuchter': 'house', 'kerzenstaender_klein': 'house', 'kerzen-2-low': 'lamps' };
+const LAMP_TINT = '#ffd29a';
+const LAMP_EMISSIVE = { house: 14, lamps: 6 };		// emissive intensity per unit of the preset's value (bright: lit bulbs and candles saturate)
 
 /** Attribute -> plain Float32 (the packs are quantised: normalised integers). */
 function toFloat( attr ) {
@@ -53,7 +60,8 @@ function hallMaterial( m, anisotropy ) {
 	} );
 	if ( m.sheen ) Object.assign( p, { sheen: m.sheen, sheenColor: m.sheenColor, sheenRoughness: m.sheenRoughness } );
 	for ( const t of [ p.map, p.normalMap, p.roughnessMap, p.emissiveMap ] ) if ( t ) t.anisotropy = anisotropy;
-	p.userData = { look, lamp: !! m.userData.lamp };
+	p.userData = { look, lamp: !! m.userData.lamp, lampGroup: m.userData.lamp ? LAMP_GROUP[ m.name ] ?? 'lamps' : null };
+	if ( p.userData.lamp ) p.emissive.set( LAMP_TINT );		// candle-warm, not white
 	return p;
 
 }
@@ -65,10 +73,15 @@ export function berlinToHall( pianoZ ) {
 
 }
 
-/** Set the chandeliers' and candles' glow (`lamps`: the lighting preset's, 1 normal). */
-export function setBerlinLamps( group, lamps ) {
+/** The lamps' glow: the chandeliers and sconces at `house`, the candelabras at `lamps` (the preset's). */
+export function setBerlinLamps( group, { house, lamps } ) {
 
-	for ( const m of group?.userData.lamps ?? [] ) m.emissiveIntensity = LAMP_EMISSIVE * lamps;
+	for ( const m of group?.userData.lamps ?? [] ) {
+
+		const v = m.userData.lampGroup === 'house' ? house : lamps;
+		m.emissiveIntensity = LAMP_EMISSIVE[ m.userData.lampGroup ] * v;
+
+	}
 
 }
 

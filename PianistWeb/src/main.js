@@ -776,15 +776,18 @@ fRoom.add( room.params, 'foliage' ).name( 'Foliage shadow' ).onChange( relight )
 const fHall = gui.addFolder( 'Hall' ).close().hide();
 const hallView = { view: 'At the piano' };
 // the shell: procedural, or the Konzerthaus Berlin's Großer Saal (local packs: src/berlinhall.js)
-const setHallModel = name => hall.setModel( name ).then( () => {
+// (the Berlin hall by default: loaded when the hall is first entered; ?hall=procedural for the other)
+const setHallModel = name => hall.setModel( name );
+hall.onModel = () => {		// the shell shown changed (or Berlin finished loading): its presets and lights
 
-	refreshLighting();
+	if ( venue === hall ) buildLightFolder();
+	if ( piano ) refreshLighting();
 	shadowsDirty = true;
 	ptDirty = true;
 
-} );
-fHall.add( hall, 'model', { 'Procedural': 'procedural', 'Konzerthaus Berlin': 'berlin' } ).name( 'Model' ).onChange( setHallModel );
-if ( params.get( 'hall' ) === 'berlin' ) setHallModel( 'berlin' );
+};
+fHall.add( hall, 'model', { 'Konzerthaus Berlin': 'berlin', 'Procedural': 'procedural' } ).name( 'Model' ).onChange( setHallModel );
+if ( params.get( 'hall' ) === 'procedural' ) hall.model = 'procedural';
 fHall.add( hallView, 'view', [ 'At the piano', ...Object.keys( hall.views() ) ] ).name( 'View' ).onChange( name => {
 
 	const off = piano.group.position;

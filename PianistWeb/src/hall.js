@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { boxProjectUV } from './geometry.js';
-import { BERLIN, berlinToHall, loadBerlinHall, setBerlinLamps } from './berlinhall.js';
+import { BERLIN, BERLIN_CHANDELIERS, berlinToHall, loadBerlinHall, setBerlinLamps } from './berlinhall.js';
 
 // dimensions (m), hall frame; about 0.65 of the real hall
 export const HALL = {
@@ -59,6 +59,33 @@ export const HALL_PRESETS = {
 	'House lights up': { key: 600, keyColor: '#fff1de', top: 260, topColor: '#ffe4c0', topAngle: 24, wash: 4, washColor: '#ffd9ad', house: 3.5, houseColor: '#ffd29c', lamps: 1, env: 1, exposure: 0.85 },
 	'Rehearsal': { key: 500, keyColor: '#ffffff', top: 250, topColor: '#fff8ee', topAngle: 26, wash: 9, washColor: '#f6f1e8', house: 2.4, houseColor: '#f6efe3', lamps: 0.4, env: 1, exposure: 0.9 },
 };
+
+// the Konzerthaus Berlin (src/berlinhall.js): the same presets, its house lights its 14
+// chandeliers (and the wall sconces' glow), its lamps the candelabras round the stalls
+export const BERLIN_PRESETS = {
+	'Spotlight': { key: 0, keyColor: '#fff1de', top: 1000, topColor: '#fff0dc', topAngle: 15, wash: 0.04, washColor: '#ffd9ad', house: 0.06, houseColor: '#ffc98a', lamps: 0.15, env: 0.12, exposure: 1.25 },
+	'Recital': { key: 900, keyColor: '#fff1de', top: 420, topColor: '#ffe4c0', topAngle: 24, wash: 3, washColor: '#ffd9ad', house: 0.3, houseColor: '#ffcf94', lamps: 0.5, env: 0.3, exposure: 0.95 },
+	'House lights up': { key: 600, keyColor: '#fff1de', top: 260, topColor: '#ffe4c0', topAngle: 24, wash: 2, washColor: '#ffd9ad', house: 0.8, houseColor: '#ffd29c', lamps: 1, env: 0.5, exposure: 0.8 },
+	'Rehearsal': { key: 500, keyColor: '#ffffff', top: 250, topColor: '#fff8ee', topAngle: 26, wash: 6, washColor: '#f6f1e8', house: 0.6, houseColor: '#ffe2bd', lamps: 0.3, env: 0.45, exposure: 0.85 },
+};
+const CHANDELIER_CD = 45;		// each chandelier's intensity (cd) at house = 1
+// and its glow: an additive halo round its lit candle ring (without bloom a lit chandelier reads
+// as white crystal only); its size (m) and brightness at house = 1
+const GLOW_SIZE = 4.2, GLOW = 3.5;
+const GLOW_FRONT = 1.5;		// m: each halo drawn this far towards the eye (not hidden in its chandelier's crystal)
+
+/** A soft round glow (radial falloff), white: tinted by the sprite's colour. */
+function glowTexture() {
+
+	const c = document.createElement( 'canvas' ); c.width = c.height = 128;
+	const g = c.getContext( '2d' ), r = g.createRadialGradient( 64, 64, 0, 64, 64, 64 );
+	r.addColorStop( 0, 'rgba(255,255,255,1)' ); r.addColorStop( 0.08, 'rgba(255,255,255,0.8)' ); r.addColorStop( 0.2, 'rgba(255,255,255,0.3)' );
+	r.addColorStop( 0.45, 'rgba(255,255,255,0.07)' ); r.addColorStop( 1, 'rgba(255,255,255,0)' );
+	g.fillStyle = r; g.fillRect( 0, 0, 128, 128 );
+	const t = new THREE.CanvasTexture( c ); t.colorSpace = THREE.SRGBColorSpace;
+	return t;
+
+}
 
 const PIANO_Z = - HALL.pianoAt;
 const H_WASH = HALL.shellWall + HALL.coveRise - 0.35;		// the stage wash, under the shell's ceiling
@@ -114,9 +141,8 @@ export class ConcertHall {
 		this.scene = scene;
 		this.baker = baker;
 		this.highQuality = true;
-		this.presets = HALL_PRESETS;
 		this.preset = 'Spotlight';
-		this.light = { ...HALL_PRESETS[ this.preset ] };
+		this.light = { ...BERLIN_PRESETS[ this.preset ] };
 		this.group = new THREE.Group();
 		this.group.name = 'hall';
 		this.lights = new THREE.Group();
@@ -155,10 +181,12 @@ export class ConcertHall {
 
 		this._buildLights();
 		this.rebuild();
-		// the shell: 'procedural' (built here) or 'berlin' (src/berlinhall.js, loaded on demand)
-		this.model = 'procedural';
+		// the shell: 'berlin' (src/berlinhall.js, loaded when the hall is first entered) or
+		// 'procedural' (built here; also when the Berlin packs are not there)
+		this.model = 'berlin';
 		this.berlin = null;			// its group once loaded (null: not loaded, or not there)
 		this.loading = Promise.resolve();
+		this.onModel = null;		// called when the shell shown changes (main.js: lights, GUI)
 
 	}
 
@@ -167,6 +195,7 @@ export class ConcertHall {
 		this.active = true;
 		this.scene.add( this.group, this.lights );
 		if ( this.berlin ) this.scene.add( this.berlin );
+		if ( this.model === 'berlin' && ! this._berlinTried ) this.setModel( 'berlin' );		// (first entry: load it)
 		this._showModel();
 		this.updateLights();
 
@@ -184,6 +213,7 @@ export class ConcertHall {
 	 * Berlin packs are not there). */
 	setModel( name ) {
 
+		const was = this.berlinShown;
 		this.model = name;
 		if ( name === 'berlin' && ! this.berlin && ! this._berlinTried ) {
 
@@ -194,18 +224,29 @@ export class ConcertHall {
 
 				this.berlin = g;
 				this.berlinLoading = false;
-				this.updateLights();		// (its lamps)
 				if ( g && this.active ) this.scene.add( g );
-				this._showModel();
+				this._shellChanged( false );
 
 			} );
 
-		} else this._showModel();
+		} else this._shellChanged( was );
 		return this.loading;
 
 	}
 
 	get berlinShown() { return this.model === 'berlin' && !! this.berlin; }
+
+	/** The presets of the shell shown (the procedural one's while Berlin loads or is not there). */
+	get presets() { return this.berlinShown ? BERLIN_PRESETS : HALL_PRESETS; }
+
+	_shellChanged( was ) {
+
+		this._showModel();
+		if ( this.berlinShown !== was ) Object.assign( this.light, this.presets[ this.preset ] );		// the preset, in this shell
+		this.updateLights();
+		this.onModel?.();
+
+	}
 
 	_showModel() {
 
@@ -303,13 +344,14 @@ export class ConcertHall {
 
 	lightControls() {
 
+		const berlin = this.berlinShown;
 		return [
 			[ 'key', 0, 3000, 10, 'Front spot' ], [ 'keyColor', 'color', 'Front spot color' ],
 			[ 'top', 0, 3000, 10, 'Top light' ], [ 'topColor', 'color', 'Top light color' ],
 			[ 'wash', 0, 30, 0.1, 'Stage wash' ], [ 'washColor', 'color', 'Stage wash color' ],
-			[ 'house', 0, 10, 0.01, 'House lights' ], [ 'houseColor', 'color', 'House color' ],
+			berlin ? [ 'house', 0, 3, 0.01, 'Chandeliers' ] : [ 'house', 0, 10, 0.01, 'House lights' ], [ 'houseColor', 'color', berlin ? 'Chandelier color' : 'House color' ],
 			[ 'topAngle', 5, 40, 0.5, 'Top light cone (°)' ],
-			[ 'lamps', 0, 3, 0.01, 'Lamps (ceiling, Tiara)' ],
+			[ 'lamps', 0, 3, 0.01, berlin ? 'Candelabras' : 'Lamps (ceiling, Tiara)' ],
 			[ 'env', 0, 1.5, 0.01, 'Ambient (probe)' ],
 		];
 
@@ -1163,6 +1205,64 @@ export class ConcertHall {
 		house.rotation.set( - Math.PI / 2, 0, 0 );
 		this.lights.add( house );
 		this.house = house;
+		// the Berlin hall's chandeliers (no shadows: they hang high, over the stalls and the stage),
+		// each with its glow
+		const glowMap = glowTexture();
+		this.chandeliers = BERLIN_CHANDELIERS.map( p => {
+
+			const l = new THREE.PointLight( '#ffcf94', 0, 0, 2 );
+			l.position.copy( this.fromBerlin( ...p ) );
+			l.visible = false;
+			const glow = new THREE.Sprite( new THREE.SpriteMaterial( { map: glowMap, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false, toneMapped: true } ) );
+			glow.position.copy( this.fromBerlin( p[ 0 ], p[ 1 ] + 0.25, p[ 2 ] ) );
+			glow.scale.setScalar( GLOW_SIZE );
+			glow.visible = false;
+			const at = glow.position.clone(), eye = new THREE.Vector3();
+			glow.onBeforeRender = ( r, s, camera ) => {		// (before three.js computes its model-view)
+
+				eye.setFromMatrixPosition( camera.matrixWorld ).sub( at );
+				const d = eye.length();
+				glow.matrixWorld.setPosition( eye.multiplyScalar( Math.min( GLOW_FRONT, 0.5 * d ) / Math.max( d, 1e-3 ) ).add( at ) );
+
+			};
+			l.userData.glow = glow;
+			this.lights.add( l, glow );
+			return l;
+
+		} );
+		this._placed = null;
+		this._placeLights();
+
+	}
+
+	/** The stage lights where the shell shown has room for them. */
+	_placeLights() {
+
+		const berlin = this.berlinShown;
+		if ( this._placed === berlin ) return;
+		this._placed = berlin;
+		const piano = this.toWorld( 0, 0.7, PIANO_Z ), floor = this.toWorld( 0, 0, PIANO_Z );
+		if ( berlin ) {
+
+			// Berlin: the front spot from the dress circle's height, between the chandelier rows;
+			// the top light under the ceiling (16 m) over the piano; the wash over the stage's
+			// risers (17 m across, 11 m deep)
+			const B = ( x, y, z ) => this.fromBerlin( x, y, z );
+			this.keySpot.position.copy( B( 2.5, 11.5, 10 ) );
+			this.topSpot.position.copy( B( 0, 13.5, - BERLIN.pianoAt + 0.3 ) );
+			this.wash.position.copy( B( 0, 12.5, - 5.5 ) );
+			this.wash.width = 10; this.wash.height = 13;
+
+		} else {
+
+			this.keySpot.position.copy( this.toWorld( 2.5, 11.5, 9 ) );
+			this.topSpot.position.copy( this.toWorld( 0, 7.9, PIANO_Z + 0.3 ) );		// under the vault
+			this.wash.position.copy( this.toWorld( 0, H_WASH, - HALL.stageDepth * 0.4 ) );
+			this.wash.width = 4; this.wash.height = 9;
+
+		}
+		this.keySpot.target.position.copy( piano );
+		this.topSpot.target.position.copy( floor );
 		this.lights.updateMatrixWorld( true );
 
 	}
@@ -1180,13 +1280,25 @@ export class ConcertHall {
 		this.wash.intensity = L.wash;
 		this.wash.color.set( L.washColor );
 		this.wash.visible = L.wash > 0;
+		this._placeLights();
+		const berlin = this.berlinShown;
 		this.house.intensity = L.house;
 		this.house.color.set( L.houseColor );
-		this.house.visible = L.house > 0;
+		this.house.visible = L.house > 0 && ! berlin;
+		for ( const c of this.chandeliers ) {
+
+			c.intensity = CHANDELIER_CD * L.house;
+			c.color.set( L.houseColor );
+			c.visible = berlin && L.house > 0;
+			const g = c.userData.glow;
+			g.material.color.set( L.houseColor ).multiplyScalar( GLOW * L.house );
+			g.visible = c.visible;
+
+		}
 		this.materials.lamp.emissiveIntensity = 5 * L.lamps;
 		this.materials.glow.emissiveIntensity = 0.15 + 0.25 * L.house;
 		this.materials.glow.emissive.set( L.houseColor );
-		setBerlinLamps( this.berlin, L.lamps );
+		setBerlinLamps( this.berlin, { house: L.house, lamps: L.lamps } );
 		const size = this.highQuality ? 4096 : 2048;
 		if ( this.keySpot.shadow.mapSize.x !== size ) {
 

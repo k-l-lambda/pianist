@@ -636,9 +636,11 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// the display, in place of fallboard and music desk: a glossy black slab leaning back
 		// from the felt, its front face the screen (M.panel: the piano roll plays on it, the
 		// handheld mode's planar mirror uses it)
+		// (only the face is glass: the back, towards the lid and the hall, and the edges are matte)
 		const geo = new THREE.BoxGeometry( SCREEN_W, SCREEN_H, SCREEN_T );
 		geo.translate( 0, SCREEN_H / 2, - SCREEN_T / 2 - 0.0005 );
-		const screen = mesh( geo, M.panel );
+		const back = M.panelBack ?? M.panel;
+		const screen = mesh( geo, [ back, back, back, back, M.panel, back ] );		// box groups: ±x, ±y, +z (the face), -z
 		screen.name = 'panel';
 		screen.position.copy( SCREEN_BOTTOM );
 		screen.rotation.x = - SCREEN_LEAN;

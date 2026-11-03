@@ -64,6 +64,7 @@ function shared( baker ) {
 		} ),
 		keyBlack: phys( { color: '#0b0b0c', roughness: 0.32, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.25 } ),
 		keybed: phys( { color: '#141210', roughness: 0.8 } ),
+		panelBack: phys( { color: '#0a0a0a', roughness: 0.8 } ),		// the grand's display: its back and edges
 		spruce: woodMaterial( baker.spruce(), { clearcoat: 0.3, clearcoatRoughness: 0.3 } ),
 		interior: woodMaterial( baker.darkInterior() ),
 	};
