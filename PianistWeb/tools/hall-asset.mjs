@@ -400,7 +400,7 @@ say( `bands of ${ BAND } m${ opt.simplify ? `, simplified to ${ opt.errorPx } px
 // 5. packs: join each group by material, instance the mirrored ones, quantise, compress
 const meta = { frame: 'metres, y up, x across (audience right +), z from the stage front edge to the back of the hall (stage z < 0), y 0 at the stalls floor',
 	stageFloor: { front: 0.61, back: 1.68 }, cameraZone: CAMERA_ZONE,
-	source: 'Footages.local/Berlin-Hall geometry; own materials; licence: check before publishing',
+	source: 'Footages.local/Berlin-Hall geometry; own materials;',
 	options: { errorPx: opt.errorPx, lockBorder: opt.lockBorder, simplify: opt.simplify, band: BAND } };
 for ( const pack of [ 'stage', 'house' ] ) {
 
