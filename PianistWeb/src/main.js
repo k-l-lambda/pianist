@@ -1325,7 +1325,7 @@ function frameBody( dt, scripted = false ) {
 	} else {
 
 		composer.render();
-		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
+		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ venue === hall && hall.berlinLoading ? 'hall loading… · ' : '' }${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
 
 	}
 

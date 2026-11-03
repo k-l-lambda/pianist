@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { boxProjectUV } from './geometry.js';
-import { BERLIN, berlinToHall, loadBerlinHall } from './berlinhall.js';
+import { BERLIN, berlinToHall, loadBerlinHall, setBerlinLamps } from './berlinhall.js';
 
 // dimensions (m), hall frame; about 0.65 of the real hall
 export const HALL = {
@@ -188,9 +188,13 @@ export class ConcertHall {
 		if ( name === 'berlin' && ! this.berlin && ! this._berlinTried ) {
 
 			this._berlinTried = true;
-			this.loading = loadBerlinHall( { toWorld: TO_WORLD, pianoZ: PIANO_Z, materials: this.materials } ).then( g => {
+			this.berlinLoading = true;		// (meanwhile neither shell shows: not the procedural one first)
+			this._showModel();
+			this.loading = loadBerlinHall( { toWorld: TO_WORLD, pianoZ: PIANO_Z } ).then( g => {
 
 				this.berlin = g;
+				this.berlinLoading = false;
+				this.updateLights();		// (its lamps)
 				if ( g && this.active ) this.scene.add( g );
 				this._showModel();
 
@@ -205,7 +209,7 @@ export class ConcertHall {
 
 	_showModel() {
 
-		this.group.visible = ! this.berlinShown;
+		this.group.visible = ! this.berlinShown && ! ( this.model === 'berlin' && this.berlinLoading );
 		if ( this.berlin ) this.berlin.visible = this.berlinShown;
 
 	}
@@ -1182,6 +1186,7 @@ export class ConcertHall {
 		this.materials.lamp.emissiveIntensity = 5 * L.lamps;
 		this.materials.glow.emissiveIntensity = 0.15 + 0.25 * L.house;
 		this.materials.glow.emissive.set( L.houseColor );
+		setBerlinLamps( this.berlin, L.lamps );
 		const size = this.highQuality ? 4096 : 2048;
 		if ( this.keySpot.shadow.mapSize.x !== size ) {
 
