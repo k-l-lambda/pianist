@@ -418,16 +418,31 @@ const BAR_FS = /* glsl */`
 	}
 `;
 
+// The screen's rectangle on the roll plane (local metres: x across, y up from the hit line), uClip =
+// ( xmin, xmax, ymin, ymax ): what the particles and flares draw is cut at its edges, as a display
+// shows nothing beyond its glass (a spark drifting off the side, a smoke puff spilling below the
+// hit line or a flame darting out sideways used to be drawn over the cabinet)
+const CLIP = /* glsl */`
+	uniform vec4 uClip;
+	float inScreen( vec2 p ) {
+		vec2 w = max( fwidth( p ), vec2( 1e-6 ) );
+		vec2 lo = clamp( ( p - uClip.xz ) / w + 0.5, 0.0, 1.0 ), hi = clamp( ( uClip.yw - p ) / w + 0.5, 0.0, 1.0 );
+		return lo.x * lo.y * hi.x * hi.y;
+	}
+`;
+
 // soft flare where a sounding note meets the keys
 const FLARE_VS = /* glsl */`
 	attribute vec2 corner;
 	attribute vec3 aFlare;			// x, half width, strength
 	varying vec2 vUv;
 	varying float vS;
+	varying vec2 vLocal;
 	void main() {
 		vUv = corner * 2.0 - 1.0;
 		vS = aFlare.z;
 		vec2 p = vec2( aFlare.x + vUv.x * ( aFlare.y + 0.026 ), vUv.y * 0.015 );		// half the height it had (0.03)
+		vLocal = p;
 		gl_Position = projectionMatrix * modelViewMatrix * vec4( p, 0.0005, 1.0 );
 	}
 `;
@@ -437,11 +452,13 @@ const FLARE_FS = /* glsl */`
 	uniform float uIntensity;
 	varying vec2 vUv;
 	varying float vS;
+	varying vec2 vLocal;
+	${ CLIP }
 	void main() {
 		float f = exp( - dot( vUv * vec2( 4.4, 5.2 ), vUv * vec2( 4.4, 5.2 ) ) );		// outer halo at half the reach
 		float core = exp( - dot( vUv * vec2( 4.0, 9.0 ), vUv * vec2( 4.0, 9.0 ) ) );
 		vec3 col = mix( uColor, vec3( 1.0 ), 0.65 ) * core * 2.6 + uColor * f * 1.1 * 0.15;		// outer halo at 15%
-		gl_FragColor = vec4( col * vS * uIntensity, 1.0 );
+		gl_FragColor = vec4( col * vS * uIntensity * inScreen( vLocal ), 1.0 );
 	}
 `;
 
@@ -488,9 +505,15 @@ const PART_VS = /* glsl */`
 	varying float vKind;
 	varying float vAge;
 	varying float vLive;
+	varying vec3 vC;				// the sprite's centre, view space
+	varying vec3 vAx, vAy;			// the roll plane's x and y axes, view space
+	varying float vPx;				// the sprite's half size, view-space metres at the centre's depth
+	varying vec2 vCl;				// the centre, plane-local
 	${ FIELD }
 	void main() {
 		float t0 = aSpawn.x, s = aSpawn.y, code = aSpawn.z, e = position.z;
+		vAx = mat3( modelViewMatrix ) * vec3( 1.0, 0.0, 0.0 );
+		vAy = mat3( modelViewMatrix ) * vec3( 0.0, 1.0, 0.0 );
 		float live = step( 2.5, code ); float kind = code - 4.0 * live;
 		bool ember = kind < 0.5, smoke = abs( kind - 1.0 ) < 0.5;
 		float life = ember ? mix( 1.6, 2.6, h( s * 3.1 ) ) : smoke ? mix( 4.0, 6.0, h( s * 3.1 ) ) : mix( 3.0, 4.5, h( s * 3.1 ) );
@@ -527,6 +550,8 @@ const PART_VS = /* glsl */`
 		float z = 0.002 + ( smoke ? 0.006 : 0.003 ) * h( s * 4.1 );
 		vec4 mv = modelViewMatrix * vec4( q, z, 1.0 );
 		gl_Position = projectionMatrix * mv;
+		vC = mv.xyz;
+		vCl = q;
 		float size, a;
 		if ( ember ) {
 			size = mix( 0.0009, 0.0015, h( s * 6.7 ) ) * ( h( s * 8.1 ) < 0.1 ? 1.8 : 1.0 );
@@ -541,6 +566,7 @@ const PART_VS = /* glsl */`
 		// (finite and bounded whatever the camera does)
 		float px = size * uScale / max( - mv.z, 0.05 );
 		gl_PointSize = clamp( px, 1.0, 512.0 );
+		vPx = 0.5 * gl_PointSize * max( - mv.z, 0.05 ) / max( uScale, 1.0 );
 		// (sub-pixel specks: dimmer, as the sprite cannot shrink below 1 px)
 		vA = aSpawn.w * a * ( smoke ? 1.0 : clamp( px, 0.0, 1.0 ) );
 	}
@@ -555,11 +581,26 @@ const PART_FS = /* glsl */`
 	varying float vKind;
 	varying float vAge;
 	varying float vLive;
+	varying vec3 vC;
+	varying vec3 vAx, vAy;
+	varying float vPx;
+	varying vec2 vCl;
+	${ CLIP }
 	void main() {
 		vec3 base = mix( uColor, uLiveColor, vLive );
 		vec2 c = gl_PointCoord * 2.0 - 1.0;
 		float r2 = dot( c, c );
 		if ( r2 > 1.0 ) discard;
+		// this fragment on the roll plane: the sprite is a camera-facing square at its centre's
+		// depth; the eye ray through this point of it meets the plane (through the centre) at...
+		vec3 onSprite = vC + vec3( c.x, - c.y, 0.0 ) * vPx;		// (gl_PointCoord: y down)
+		vec3 n = cross( vAx, vAy );
+		vec3 hit = onSprite * ( dot( vC, n ) / dot( onSprite, n ) );
+		vec3 d = hit - vC;
+		// ...plane-local coordinates (the centre's own, from its view-space place)
+		vec2 local = vec2( dot( d, vAx ) / dot( vAx, vAx ), dot( d, vAy ) / dot( vAy, vAy ) ) + vCl;
+		float clip = inScreen( local );
+		if ( clip <= 0.0 ) discard;
 		vec3 col;
 		if ( vKind > 0.5 && vKind < 1.5 ) {
 			col = base * 0.03 * ( 1.0 - r2 ) * ( 1.0 - r2 );		// smoke: dim, the roll's hue darkened
@@ -572,7 +613,7 @@ const PART_FS = /* glsl */`
 			vec3 k = u < 0.2 ? mix( hot, lit, u / 0.2 ) : u < 0.45 ? mix( lit, base, ( u - 0.2 ) / 0.25 ) : mix( base, cool, ( u - 0.45 ) / 0.55 );
 			col = k * 5.0 * exp( - r2 * 2.5 );
 		}
-		gl_FragColor = vec4( col * vA * uIntensity * PART_BRIGHT, 1.0 );
+		gl_FragColor = vec4( col * vA * uIntensity * PART_BRIGHT * clip, 1.0 );
 	}
 `;
 
@@ -589,6 +630,7 @@ const STREAK_VS = /* glsl */`
 	varying float vA;
 	varying float vLive;
 	varying float vRise;			// 0 at birth .. 1 at the end: the feather tightens, the core brightens
+	varying vec2 vLocal;			// plane-local (for the screen clip)
 	${ FIELD }
 	// the push's direction at age t (radians from straight up): upright at birth (th0, a slight
 	// tilt), then turning smoothly by r1.z over [ r1.x, r1.x + r1.y ] and by r2.z over r2's span
@@ -664,6 +706,7 @@ const STREAK_VS = /* glsl */`
 		float px = max( - mvh.z, 0.05 ) / max( uScale, 1.0 );
 		float wm = clamp( mix( 0.5, 0.2, smoothstep( 0.0, 0.6, u ) ) * l, 3.0 * px, 26.0 * px );
 		vec2 at = mix( tail, p, corner.y ) + nrm * vUv.x * wm;
+		vLocal = at;
 		gl_Position = projectionMatrix * modelViewMatrix * vec4( at, 0.004, 1.0 );
 		// eases out over the last ~40%; flickers in and out (per-flame, a few Hz, now and then near 0)
 		float fade = smoothstep( 0.0, 0.06, age ) * out_ * out_;
@@ -684,6 +727,8 @@ const STREAK_FS = /* glsl */`
 	varying float vA;
 	varying float vLive;
 	varying float vRise;
+	varying vec2 vLocal;
+	${ CLIP }
 	void main() {
 		// a spindle: pointed at both ends, widest a little ahead of the middle, feathered all round.
 		// At birth a wide, soft, dim glow; as it rises the feather draws in and the light gathers in
@@ -700,7 +745,7 @@ const STREAK_FS = /* glsl */`
 		// reads white under AgX); only the core goes white-hot
 		float feather = max( body - core, 0.0 );
 		vec3 col = base * feather * mix( 0.3, 1.4, r ) + mix( base, vec3( 1.0, 0.97, 0.95 ), 0.6 ) * core * mix( 0.15, 6.0, r );
-		gl_FragColor = vec4( col * vA * uIntensity * FLAME_BRIGHT, 1.0 );
+		gl_FragColor = vec4( col * vA * uIntensity * FLAME_BRIGHT * inScreen( vLocal ), 1.0 );
 	}
 `;
 
@@ -902,6 +947,9 @@ export class PianoRoll {
 
 		}
 
+		// the screen's rectangle, for the particles' and flares' clip (set on mount)
+		this.clipUniform = { value: new THREE.Vector4( - 0.65, 0.65, 0, 0.3 ) };
+
 		// hit flares
 		{
 
@@ -909,7 +957,7 @@ export class PianoRoll {
 			this.flare = new THREE.InstancedBufferAttribute( new Float32Array( MAX_FLARES * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			geo.setAttribute( 'aFlare', this.flare );
 			geo.instanceCount = 0;
-			this.flareUniforms = { uColor: { value: this.color }, uIntensity: { value: 1 } };
+			this.flareUniforms = { uColor: { value: this.color }, uIntensity: { value: 1 }, uClip: this.clipUniform };
 			this.flares = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: FLARE_VS, fragmentShader: FLARE_FS, uniforms: this.flareUniforms, ...common } ) );
 			this.flares.frustumCulled = false;
 			this.flares.renderOrder = 11;
@@ -921,7 +969,7 @@ export class PianoRoll {
 			this.liveFlare = new THREE.InstancedBufferAttribute( new Float32Array( ( PITCH_MAX + 1 ) * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			lgeo.setAttribute( 'aFlare', this.liveFlare );
 			lgeo.instanceCount = 0;
-			this.liveFlareUniforms = { uColor: { value: this.liveColor }, uIntensity: this.liveUniforms.uIntensity };
+			this.liveFlareUniforms = { uColor: { value: this.liveColor }, uIntensity: this.liveUniforms.uIntensity, uClip: this.clipUniform };
 			this.liveFlares = new THREE.Mesh( lgeo, new THREE.ShaderMaterial( { vertexShader: FLARE_VS, fragmentShader: FLARE_FS, uniforms: this.liveFlareUniforms, ...common } ) );
 			this.liveFlares.frustumCulled = false;
 			this.liveFlares.renderOrder = 11;
@@ -938,7 +986,7 @@ export class PianoRoll {
 			this.pSpawn = new THREE.BufferAttribute( new Float32Array( MAX_PARTICLES * 4 ).fill( - 1e6 ), 4 ).setUsage( THREE.DynamicDrawUsage );
 			geo.setAttribute( 'position', this.pPos );
 			geo.setAttribute( 'aSpawn', this.pSpawn );
-			this.partUniforms = { uColor: { value: this.color }, uLiveColor: { value: this.liveColor }, uTime: { value: 0 }, uScale: { value: 1000 }, uIntensity: { value: 1 } };
+			this.partUniforms = { uColor: { value: this.color }, uLiveColor: { value: this.liveColor }, uTime: { value: 0 }, uScale: { value: 1000 }, uIntensity: { value: 1 }, uClip: this.clipUniform };
 			this.points = new THREE.Points( geo, new THREE.ShaderMaterial( { vertexShader: PART_VS, fragmentShader: PART_FS, uniforms: this.partUniforms, ...common } ) );
 			this.points.frustumCulled = false;
 			this.points.renderOrder = 12;
@@ -964,7 +1012,7 @@ export class PianoRoll {
 			geo.setAttribute( 'aStreakInfo', this.sInfo );
 			geo.instanceCount = MAX_STREAKS;			// (dead ones collapse in the shader)
 			const flame = FLAME_COLOR === null ? null : new THREE.Color( FLAME_COLOR );
-			this.streakUniforms = { uFlame: { value: flame ?? this.color }, uLiveFlame: { value: flame ?? this.liveColor }, uTime: this.partUniforms.uTime, uScale: this.partUniforms.uScale, uIntensity: this.partUniforms.uIntensity };
+			this.streakUniforms = { uFlame: { value: flame ?? this.color }, uLiveFlame: { value: flame ?? this.liveColor }, uTime: this.partUniforms.uTime, uScale: this.partUniforms.uScale, uIntensity: this.partUniforms.uIntensity, uClip: this.clipUniform };
 			this.streaks = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: STREAK_VS, fragmentShader: STREAK_FS, uniforms: this.streakUniforms, ...common } ) );
 			this.streaks.frustumCulled = false;
 			this.streaks.renderOrder = 12;
@@ -1038,6 +1086,9 @@ export class PianoRoll {
 			.setPosition( R.origin.clone().addScaledVector( normal, LIFT ) );
 		this.height = R.height;
 		this.barUniforms.uHeight.value = R.height;
+		// the screen's glass: its width centred on the origin, from the hit line (the roll plane's
+		// bottom edge) to its top
+		this.clipUniform.value.set( - ( R.width ?? 1.3 ) / 2, ( R.width ?? 1.3 ) / 2, 0, R.height );
 		this.screen = !! R.screen;
 		this.bootMesh.scale.set( R.width ?? 1.3, R.height, 1 );
 		this.subMesh.position.y = R.height;
