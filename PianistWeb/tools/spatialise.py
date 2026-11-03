@@ -41,7 +41,7 @@ C = 343.0							# m/s, as pyroomacoustics
 BANDS = [125, 250, 500, 1000, 2000, 4000]
 AB_SPACING = 0.14					# m
 EARLY_ORDER = 10					# complete to ~45 ms in this room
-SPLICE = (0.040, 0.060)				# s, early -> tail crossfade
+SPLICE = (0.040, 0.060)				# s, early -> tail crossfade (a room's `splice` overrides it)
 SEED = 1
 # voice directivity (--voices with a facing): the voice split in three bands, each a first-order
 # cardioid-family pattern p + (1 - p) cos θ (near omni low, a cardioid above 2 kHz), as measured
@@ -73,14 +73,74 @@ ROOMS = {
 }
 
 
+# The concert hall (hall.js: Carnegie Hall at ~0.65) as a shoebox from the stage's back wall to
+# the hall's (world x), wall to wall (z), stage floor to ceiling. Surfaces from the BRAS
+# database's chamber music hall (CR3, the small hall of the Konzerthaus Berlin) and auditorium
+# (CR4, TU Berlin) — absorption fitted to their measured reverberation (Eyring), scattering as
+# given; octave means of the third-octave values (BRAS v3, DOI 10.14279/depositonce-6726.3,
+# CC BY-SA 4.0). Rows: (absorption, scattering) at BANDS.
+BRAS = {
+	'CR3_ceiling': ([0.092, 0.078, 0.111, 0.108, 0.111, 0.175], [0.05, 0.061, 0.086, 0.121, 0.172, 0.242]),
+	'CR3_floor': ([0.066, 0.079, 0.066, 0.056, 0.045, 0.067], [0.05, 0.05, 0.053, 0.072, 0.101, 0.143]),
+	'CR3_plaster': ([0.113, 0.147, 0.126, 0.11, 0.098, 0.133], [0.05, 0.05, 0.051, 0.066, 0.094, 0.132]),
+	'CR3_seating': ([0.209, 0.373, 0.382, 0.339, 0.415, 0.363], [0.214, 0.304, 0.429, 0.606, 0.858, 0.99]),
+	'CR3_stagePanels': ([0.044, 0.087, 0.083, 0.079, 0.074, 0.101], [0.05, 0.05, 0.05, 0.05, 0.05, 0.055]),
+	'CR3_structuredPlaster': ([0.133, 0.101, 0.149, 0.151, 0.137, 0.133], [0.067, 0.096, 0.136, 0.192, 0.271, 0.383]),
+	'CR4_parquet': ([0.058, 0.036, 0.033, 0.048, 0.087, 0.101], [0.05, 0.05, 0.05, 0.06, 0.085, 0.121]),
+	'CR4_woodPanels': ([0.078, 0.129, 0.14, 0.147, 0.123, 0.125], [0.053, 0.074, 0.105, 0.148, 0.21, 0.296]),
+}
+# a recital audience: BRAS measured CR3's seats empty; occupied / unoccupied upholstered seating
+# per band after Beranek (Concert Halls and Opera Houses, 2004: ~0.62/0.49 ... 0.85/0.70)
+OCCUPIED = [1.15, 1.25, 1.35, 1.35, 1.25, 1.2]
+BRAS['seated'] = ([min(0.95, a * k) for a, k in zip(BRAS['CR3_seating'][0], OCCUPIED)], BRAS['CR3_seating'][1])
+
+
+def blend(**parts):
+	"""Area-weighted mix of BRAS surfaces (name=fraction of the wall, summing to 1)."""
+	assert abs(sum(parts.values()) - 1) < 1e-6, parts
+	a = sum(np.array(BRAS[k][0]) * f for k, f in parts.items())
+	s = sum(np.array(BRAS[k][1]) * f for k, f in parts.items())
+	return dict(a=[round(float(v), 3) for v in a], s=[round(float(v), 3) for v in s])
+
+
+# walls of the hall shoebox (scene x: stage end -> back of the hall; pyroomacoustics: west = x
+# min, east = x max, south = y min = scene z min, north = scene z max). Fractions estimated from
+# hall.js's figures: the floor 40 % stage boards and aisles, 60 % seats; the side walls a third
+# stage (shell panels low, plaster above), two thirds house (tier fronts, mouldings and the
+# plaster between, the boxes' and dress circle's seats at the openings); the back wall mostly the
+# deep balcony and dress circle (seats), the rest their fronts and the plaster round them.
+HALL_WALLS = dict(
+	floor=blend(CR4_parquet=0.2, CR3_floor=0.2, seated=0.6),
+	ceiling=blend(CR3_ceiling=0.75, CR3_structuredPlaster=0.25),		# flat plaster, the oval recess and lamp rings
+	west=blend(CR3_stagePanels=0.35, CR4_woodPanels=0.15, CR3_plaster=0.5),		# the shell's back wall, the cove above
+	east=blend(seated=0.5, CR3_structuredPlaster=0.35, CR3_plaster=0.15),
+	south=blend(CR3_stagePanels=0.16, CR3_plaster=0.12, CR3_structuredPlaster=0.5, seated=0.22),
+	north=blend(CR3_stagePanels=0.16, CR3_plaster=0.12, CR3_structuredPlaster=0.5, seated=0.22),
+)
+# scale per band: CR3's fitted values (a 2,350 m3 hall) times this give T30 ~2.0-2.2 / 2.0 / 1.7-1.8 / 1.75-1.95 /
+# 1.7-1.8 / 1.7-1.9 s (125-4k, the report at the piano, premiere 61-91 s; this 8,350 m3 box): a full hall's
+# ~1.8 s at mid, bass ratio ~1.15
+ROOMS['hall'] = dict(scale=[1.65, 1.4, 1.44, 1.5, 1.38, 1.3], walls=HALL_WALLS,
+                     splice=(0.080, 0.110),		# the side walls' reflections (~50-60 ms) by image sources
+                     rays=100000, tail=4.5)		# ~8,000 m3: more rays for a smooth tail; a longer one
+
+
 ABSORPTION = 1.0					# --absorption: times the room's (shorter RT60 above 1)
+
+
+def use_room(room):
+	"""The room's early -> tail splice (in the worker processes too)."""
+	global SPLICE
+	SPLICE = ROOMS[room].get('splice', (0.040, 0.060))
 
 
 def materials(room):
 	p = ROOMS[room]
-	return {w: pra.Material({'description': w, 'coeffs': list(np.clip(np.array(c) * p['scale'] * ABSORPTION, 0.01, 0.95)), 'center_freqs': BANDS},
-	                        {'description': w, 'coeffs': [p['scattering']] * 6, 'center_freqs': BANDS})
-	        for w, c in p['walls'].items()}
+	def mat(w, c):
+		a, s = (c['a'], c['s']) if isinstance(c, dict) else (c, [p['scattering']] * 6)
+		return pra.Material({'description': w, 'coeffs': list(np.clip(np.array(a) * np.asarray(p['scale']) * ABSORPTION, 0.01, 0.95)), 'center_freqs': BANDS},
+		                    {'description': w, 'coeffs': list(s), 'center_freqs': BANDS})
+	return {w: mat(w, c) for w, c in p['walls'].items()}
 
 
 # ---- geometry: scene (x right, y up, z towards the viewer) -> room (pyroomacoustics: x, y, z up, from 0)
@@ -138,7 +198,7 @@ def rir_pairs(dims, room, order, srcs, mics, fs, ray=False, dirs=None):
 	pra.random.seed(numpy=SEED, libroom=SEED)		# its numpy and C++ (ray tracing) generators: repeatable
 	r = pra.ShoeBox(dims, fs=fs, materials=materials(room), max_order=order, air_absorption=True, ray_tracing=ray, use_rand_ism=False)
 	if ray:
-		r.set_ray_tracing(receiver_radius=0.5, n_rays=30000, energy_thres=1e-7, time_thres=3.5)
+		r.set_ray_tracing(receiver_radius=0.5, n_rays=ROOMS[room].get('rays', 30000), energy_thres=1e-7, time_thres=ROOMS[room].get('tail', 3.5))
 	for k, s in enumerate(srcs):
 		d = dirs[k] if dirs else None
 		if d is None:
@@ -162,6 +222,7 @@ def early(args):
 	active = args[7] if len(args) > 7 else None		# sources silent around this update: zeros
 	global ABSORPTION
 	ABSORPTION = absorption		# (in the worker processes too)
+	use_room(room)
 	n = int(SPLICE[1] * fs)
 	idx = [k for k in range(len(srcs)) if active is None or active[k]]
 	if not idx:
@@ -291,6 +352,7 @@ def main():
 	a = ap.parse_args()
 	global ABSORPTION
 	ABSORPTION = a.absorption
+	use_room(a.room)
 	t0 = time.time()
 
 	piano, fs = sf.read(a.piano, dtype='float64', always_2d=True)

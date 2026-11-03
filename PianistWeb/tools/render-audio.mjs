@@ -4,15 +4,15 @@
 // render-video.mjs, steps the same simulated clock frame by frame without capturing, and logs the
 // phone camera every frame. Then:
 //   --room off      the live sound track (src/renderaudio.js renderAudio: what render-video.mjs muxes);
-//   --room living | bare   the dry stems (piano without FluidSynth's reverb and chorus, speech) and
+//   --room living | bare | hall   the dry stems (piano without FluidSynth's reverb and chorus, speech) and
 //                   the pose log go to tools/spatialise.py (shoebox room of the scene, the image
 //                   following the phone; --stereo ab: two omnis 14 cm apart along the phone, or
 //                   mono), and its mix comes back through the live output stage (master gain ->
-//                   compressor).
+//                   compressor). Default: the venue's (the room: living, the concert hall: hall).
 // --mux: put the sound track on a rendered video (its frames copied as they are).
 //
 //   node tools/render-audio.mjs <script.yaml> [--fps 25] [--from 0] [--to <s>] [--out track.wav]
-//        [--room living|bare|off] [--stereo ab|mono] [--absorption 1] [--keep]
+//        [--room living|bare|hall|off] [--stereo ab|mono] [--absorption 1] [--keep]
 //        [--mux video.mp4 --video-out out.mp4] [--size 640x360] [--url http://localhost:5184/]
 //
 // --fps / --from / --to as given to render-video.mjs for the video (same timeline). --keep: keep
@@ -33,7 +33,7 @@ const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..
 
 // ---- arguments ----
 const argv = process.argv.slice( 2 );
-const opt = { fps: 25, from: 0, to: null, out: null, size: '640x360', url: null, room: 'living', stereo: 'ab', absorption: 1, keep: false, mux: null, videoOut: null };
+const opt = { fps: 25, from: 0, to: null, out: null, size: '640x360', url: null, room: null, stereo: 'ab', absorption: 1, keep: false, mux: null, videoOut: null };
 let script = null;
 for ( let i = 0; i < argv.length; ++ i ) {
 
@@ -66,19 +66,19 @@ for ( let i = 0; i < argv.length; ++ i ) {
 
 }
 
-if ( ! script ) throw new Error( 'usage: node tools/render-audio.mjs <script.yaml> [--fps 25] [--from 0] [--to s] [--out track.wav] [--room living|bare|off] [--stereo ab|mono]' );
+if ( ! script ) throw new Error( 'usage: node tools/render-audio.mjs <script.yaml> [--fps 25] [--from 0] [--to s] [--out track.wav] [--room living|bare|hall|off] [--stereo ab|mono]' );
 const [ W, H ] = opt.size.split( 'x' ).map( Number );
 if ( ! ( W > 0 && H > 0 ) ) throw new Error( `--size ${ opt.size }: give WxH` );
 if ( ! ( opt.fps > 0 ) || ! ( opt.from >= 0 ) || ( opt.to !== null && ! ( opt.to > opt.from ) ) ) throw new Error( 'bad --fps / --from / --to' );
-if ( ! [ 'off', 'living', 'bare' ].includes( opt.room ) ) throw new Error( `--room ${ opt.room }: off, living or bare` );
+if ( opt.room !== null && ! [ 'off', 'living', 'bare', 'hall' ].includes( opt.room ) ) throw new Error( `--room ${ opt.room }: off, living, bare or hall` );
 if ( opt.stereo === 'hrtf' ) throw new Error( '--stereo hrtf: not implemented (ab or mono)' );
 if ( ! [ 'ab', 'mono' ].includes( opt.stereo ) ) throw new Error( `--stereo ${ opt.stereo }: ab or mono` );
 if ( ! ( opt.absorption > 0 ) ) throw new Error( 'bad --absorption' );
 if ( opt.mux && ! opt.videoOut ) throw new Error( '--mux: give --video-out' );
 const roomPython = process.env.ROOM_PYTHON ?? path.resolve( root, '../.venv-audio/bin/python' );
-if ( opt.room !== 'off' && ! fs.existsSync( roomPython ) ) throw new Error( `--room ${ opt.room }: no Python at ${ roomPython } (set ROOM_PYTHON; needs pyroomacoustics)` );
-opt.out ??= path.basename( script ).replace( /\.ya?ml$/i, '' ) + ( opt.room === 'off' ? '.dry' : `.room-${ opt.room }-${ opt.stereo }` ) + '.wav';
-fs.mkdirSync( path.dirname( path.resolve( opt.out ) ), { recursive: true } );
+if ( opt.room !== 'off' && ! fs.existsSync( roomPython ) ) throw new Error( `--room ${ opt.room ?? '(the venue\'s)' }: no Python at ${ roomPython } (set ROOM_PYTHON; needs pyroomacoustics)` );
+const outName = () => path.basename( script ).replace( /\.ya?ml$/i, '' ) + ( opt.room === 'off' ? '.dry' : `.room-${ opt.room }-${ opt.stereo }` ) + '.wav';
+if ( opt.out ) fs.mkdirSync( path.dirname( path.resolve( opt.out ) ), { recursive: true } );
 
 // ---- dev server (as render-video.mjs) ----
 let vite = null;
@@ -173,9 +173,9 @@ function sceneSources() {
 	const at = ( fx, fy, fz ) => [ lo[ 0 ] + fx * ( hi[ 0 ] - lo[ 0 ] ), lo[ 1 ] + fy * ( hi[ 1 ] - lo[ 1 ] ), lo[ 2 ] + fz * ( hi[ 2 ] - lo[ 2 ] ) ];
 	const grand = P.settings.style.startsWith( 'grand' );
 	const piano = grand ? { bass: at( 0.3, 0.7, 0.35 ), treble: at( 0.7, 0.7, 0.65 ) } : { bass: at( 0.25, 0.65, 0.2 ), treble: at( 0.75, 0.65, 0.2 ) };
-	const r = P.room;
+	const { acoustics, ...room } = P.venue.acousticBox();
 	return {
-		room: { minX: - r.params.width / 2, maxX: r.params.width / 2, minZ: r.backWallZ, maxZ: r.backWallZ + r.params.depth, height: r.params.height },
+		room, acoustics,
 		sources: { piano: { ...piano, style: P.settings.style, bounds: [ lo, hi ] } },
 	};
 
@@ -194,7 +194,7 @@ const browser = await chromium.launch( {
 	args: [ '--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required' ],
 } );
 const tmp = fs.mkdtempSync( path.join( os.tmpdir(), 'pianist-audio-' ) );
-const base = path.resolve( opt.out ).replace( /\.wav$/i, '' );
+let base = null;		// --out without .wav (once the room is known)
 const side = name => opt.keep ? `${ base }.${ name }` : path.join( tmp, name );
 try {
 
@@ -220,6 +220,13 @@ try {
 	await page.goto( new URL( '#?' + hash, opt.url ).href, { waitUntil: 'commit' } );
 	await page.waitForFunction( () => window.__render, null, { timeout: 120000 } );
 	await page.evaluate( () => window.__render.ready );
+	// no --room: the venue's (the piano's style picks it: uprights in the room, grands in the hall)
+	const venueRoom = await page.evaluate( () => window.__pianist.venue.acousticBox().acoustics );
+	opt.room ??= venueRoom;
+	if ( opt.room !== 'off' && opt.room !== venueRoom ) console.log( `room ${ opt.room } (the venue's: ${ venueRoom })` );
+	opt.out ??= outName();
+	fs.mkdirSync( path.dirname( path.resolve( opt.out ) ), { recursive: true } );
+	base = path.resolve( opt.out ).replace( /\.wav$/i, '' );
 
 	// step the clock as render-video.mjs does (frame k at k / fps), in batches
 	const t0 = Date.now();

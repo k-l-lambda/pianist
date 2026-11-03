@@ -129,6 +129,13 @@ export class Room {
 
 	}
 
+	/** The offline sound's shoebox (tools/spatialise.py): the walls (world), the ceiling's height. */
+	acousticBox() {
+
+		return { ...this.bounds(), height: this.params.height, acoustics: 'living' };
+
+	}
+
 	/** GUI rows for the lighting folder: [ key, min, max, step, label ] or [ key, 'color', label ]. */
 	lightControls() {
 

@@ -210,6 +210,16 @@ export class ConcertHall {
 
 	}
 
+	/** The offline sound's shoebox (tools/spatialise.py, room `hall`): the stage's back wall to the
+	 * hall's, wall to wall, the stage floor to the ceiling (world; the parquet below the stage's
+	 * floor, the shell's lower ceiling and the tiers are in its surfaces, not its shape). */
+	acousticBox() {
+
+		const H = HALL, a = this.toWorld( - H.width / 2, 0, - H.stageDepth ), b = this.toWorld( H.width / 2, 0, H.length );
+		return { minX: Math.min( a.x, b.x ), maxX: Math.max( a.x, b.x ), minZ: Math.min( a.z, b.z ), maxZ: Math.max( a.z, b.z ), height: H.ceiling, acoustics: 'hall' };
+
+	}
+
 	/** Viewpoints (world): a seat in the stalls, the dress circle, the side of the stage. */
 	views() {
 
