@@ -775,6 +775,16 @@ fRoom.add( room.params, 'foliage' ).name( 'Foliage shadow' ).onChange( relight )
 // the hall's viewpoints
 const fHall = gui.addFolder( 'Hall' ).close().hide();
 const hallView = { view: 'At the piano' };
+// the shell: procedural, or the Konzerthaus Berlin's Großer Saal (local packs: src/berlinhall.js)
+const setHallModel = name => hall.setModel( name ).then( () => {
+
+	refreshLighting();
+	shadowsDirty = true;
+	ptDirty = true;
+
+} );
+fHall.add( hall, 'model', { 'Procedural': 'procedural', 'Konzerthaus Berlin': 'berlin' } ).name( 'Model' ).onChange( setHallModel );
+if ( params.get( 'hall' ) === 'berlin' ) setHallModel( 'berlin' );
 fHall.add( hallView, 'view', [ 'At the piano', ...Object.keys( hall.views() ) ] ).name( 'View' ).onChange( name => {
 
 	const off = piano.group.position;
@@ -1403,6 +1413,7 @@ function startRender() {
 			}
 
 		};
+		await hall.loading;		// ?hall=berlin: the packs
 		await until( () => handheld.person.info, 'the person cut-out' );
 		await until( () => roll.bootAnim?.ready, 'the boot artwork' );
 		await until( () => roll.bootLength !== null, 'the power-on chime' );

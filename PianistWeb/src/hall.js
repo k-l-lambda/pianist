@@ -19,6 +19,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { boxProjectUV } from './geometry.js';
+import { BERLIN, berlinToHall, loadBerlinHall } from './berlinhall.js';
 
 // dimensions (m), hall frame; about 0.65 of the real hall
 export const HALL = {
@@ -154,6 +155,10 @@ export class ConcertHall {
 
 		this._buildLights();
 		this.rebuild();
+		// the shell: 'procedural' (built here) or 'berlin' (src/berlinhall.js, loaded on demand)
+		this.model = 'procedural';
+		this.berlin = null;			// its group once loaded (null: not loaded, or not there)
+		this.loading = Promise.resolve();
 
 	}
 
@@ -161,6 +166,8 @@ export class ConcertHall {
 
 		this.active = true;
 		this.scene.add( this.group, this.lights );
+		if ( this.berlin ) this.scene.add( this.berlin );
+		this._showModel();
 		this.updateLights();
 
 	}
@@ -169,6 +176,44 @@ export class ConcertHall {
 
 		this.active = false;
 		this.scene.remove( this.group, this.lights );
+		if ( this.berlin ) this.scene.remove( this.berlin );
+
+	}
+
+	/** The shell: 'procedural' or 'berlin'. Resolves once it shows (the procedural one when the
+	 * Berlin packs are not there). */
+	setModel( name ) {
+
+		this.model = name;
+		if ( name === 'berlin' && ! this.berlin && ! this._berlinTried ) {
+
+			this._berlinTried = true;
+			this.loading = loadBerlinHall( { toWorld: TO_WORLD, pianoZ: PIANO_Z, materials: this.materials } ).then( g => {
+
+				this.berlin = g;
+				if ( g && this.active ) this.scene.add( g );
+				this._showModel();
+
+			} );
+
+		} else this._showModel();
+		return this.loading;
+
+	}
+
+	get berlinShown() { return this.model === 'berlin' && !! this.berlin; }
+
+	_showModel() {
+
+		this.group.visible = ! this.berlinShown;
+		if ( this.berlin ) this.berlin.visible = this.berlinShown;
+
+	}
+
+	/** World point of a point in the Berlin packs' frame. */
+	fromBerlin( x, y, z ) {
+
+		return new THREE.Vector3( x, y, z ).applyMatrix4( berlinToHall( PIANO_Z ) ).applyMatrix4( TO_WORLD );
 
 	}
 
@@ -205,6 +250,12 @@ export class ConcertHall {
 	/** The stage floor (world). */
 	bounds() {
 
+		if ( this.berlinShown ) {		// the front strip, before the first riser
+
+			const a = this.fromBerlin( - BERLIN.stageWidth / 2 + 1.5, 0, - BERLIN.apronDepth + 0.2 ), b = this.fromBerlin( BERLIN.stageWidth / 2 - 1.5, 0, - 0.3 );
+			return { minX: Math.min( a.x, b.x ), maxX: Math.max( a.x, b.x ), minZ: Math.min( a.z, b.z ), maxZ: Math.max( a.z, b.z ) };
+
+		}
 		const H = HALL, a = this.toWorld( - H.stageWidth / 2 + 0.4, 0, - H.stageDepth + 0.4 ), b = this.toWorld( H.stageWidth / 2 - 0.4, 0, H.lip - 0.3 );
 		return { minX: Math.min( a.x, b.x ), maxX: Math.max( a.x, b.x ), minZ: Math.min( a.z, b.z ), maxZ: Math.max( a.z, b.z ) };
 
@@ -223,6 +274,18 @@ export class ConcertHall {
 	/** Viewpoints (world): a seat in the stalls, the dress circle, the side of the stage. */
 	views() {
 
+		if ( this.berlinShown ) {		// the same names: the stalls, a side gallery, the back gallery, the stage
+
+			const t = this.fromBerlin( 0, BERLIN.apronHeight + 0.9, - BERLIN.pianoAt ), B = ( x, y, z ) => this.fromBerlin( x, y, z );
+			return {
+				'Stalls, row 8': { position: B( 3.6, 1.2, 10 ), target: B( 0, BERLIN.apronHeight + 1.0, - BERLIN.pianoAt ) },
+				'Dress circle': { position: B( - 9.4, 8.3, 6 ), target: t },
+				'Balcony': { position: B( - 3, 5.3, 21.5 ), target: t },
+				'From the stage': { position: B( - 2.5, BERLIN.apronHeight + 1.7, - 2.3 ), target: B( 0, 4, 15 ) },
+				'The shell': { position: B( 2.2, 2.8, 4 ), target: B( - 1, 4, - 8 ) },
+			};
+
+		}
 		const t = this.toWorld( 0, 0.9, PIANO_Z );
 		return {
 			'Stalls, row 8': { position: this.toWorld( 3.6, - HALL.stageHeight + 0.05 * 7.5 + 1.25, 10 ), target: this.toWorld( 0, 2.6, PIANO_Z ) },
