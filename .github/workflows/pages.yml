@@ -23,6 +23,8 @@ jobs:
         working-directory: PianistWeb
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true  # public/berlinhall/*.glb
       - uses: actions/setup-node@v4
         with:
           node-version: 22
