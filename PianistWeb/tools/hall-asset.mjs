@@ -29,8 +29,14 @@
 // atlas of just their UV islands (TEXCOORD_1), cut from the originals at the density each needs
 // (1 screen pixel a texel at its nearest; a big island in NEAR_TILE pieces), scaled down together to fit `--near-budget` megatexels,
 // each at most its original's; an island that would gain less than NEAR_GAIN x the texture it has
-// now stays as it was. A near material lives in the pack most of its near triangles are in. Its ORM, normal and emissive stay the pack's (TEXCOORD_0: they are
+// now stays as it was. A near material lives in the pack most of its near triangles are in. The
+// busts beside the stage (NEAR_FIXED): out to 9 m, at a fixed density, outside the budget. Its ORM, normal and emissive stay the pack's (TEXCOORD_0: they are
 // smooth); a base texture only near triangles used shrinks to what the far ones need.
+// With `--generated` (the generated sources: tools/floor-detail.mjs, tools/floor-grille.mjs; needs
+// --originals): the floor's vents as decal meshes (a quad each, mapped as its baked grille, in the
+// pack most of them are in; their own colour and normal maps, alpha blended: extras.grille), and
+// the stage floor's grain (its texture in the stage floor's materials' emissive slot, their
+// emissive factor 0: extras.floorDetail; src/berlinhall.js multiplies the albedo by it).
 // Output frame: metres, y up, x across (the audience's right +), z from the stage's front edge
 // towards the back of the hall (the stage at z < 0), y 0 at the stalls floor (the stage's front
 // at 0.61 m). The frame and the options are in each GLB's extras.
@@ -38,6 +44,7 @@
 //   node tools/hall-asset.mjs --src <Berlin_Hall_textured_preview.glb> [--out public/berlinhall]
 //        [--error-px 1] [--texel 2] [--max-texture 2048] [--house-texture 1024] [--lock-border] [--no-simplify]
 //        [--originals <dir of the full-size textures>] [--near 4] [--near-budget 8]
+//        [--generated <dir of the generated sources>] [--log <file>]
 //
 // --no-simplify: the same output without simplification (to compare against).
 
@@ -49,11 +56,13 @@ import { NodeIO, PropertyType } from '@gltf-transform/core';
 import { EXTMeshoptCompression, EXTTextureWebP, KHRMaterialsSheen, KHRMeshQuantization } from '@gltf-transform/extensions';
 import { cloneDocument, join, prune, quantize, reorder, simplifyPrimitive, weldPrimitive } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
+import { detailTexture, DETAIL_RAW } from './floor-detail.mjs';
+import { GRILLES, grilleItems, grilleRaw, grilleTextures } from './floor-grille.mjs';
 
 const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..' );
 
 // ---- options ----
-const opt = { src: null, out: 'public/berlinhall', errorPx: 1, texel: 2, maxTexture: 2048, houseTexture: 1024, lockBorder: false, simplify: true, originals: null, near: 4, nearBudget: 8 };
+const opt = { src: null, out: 'public/berlinhall', errorPx: 1, texel: 2, maxTexture: 2048, houseTexture: 1024, lockBorder: false, simplify: true, originals: null, near: 4, nearBudget: 8, generated: null, log: null };
 const argv = process.argv.slice( 2 );
 for ( let i = 0; i < argv.length; ++ i ) {
 
@@ -69,9 +78,12 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--originals' ) opt.originals = path.resolve( v() );
 	else if ( a === '--near' ) opt.near = Number( v() );
 	else if ( a === '--near-budget' ) opt.nearBudget = Number( v() );
+	else if ( a === '--generated' ) opt.generated = path.resolve( v() );
+	else if ( a === '--log' ) opt.log = path.resolve( v() );
 	else throw new Error( `unknown argument ${ a }` );
 
 }
+if ( opt.generated && ! opt.originals ) throw new Error( '--generated needs --originals (the grilles are found in them)' );
 if ( ! opt.src ) throw new Error( 'usage: node tools/hall-asset.mjs --src <the textured GLB> [--out public/berlinhall] ...' );
 const SRC = path.resolve( opt.src ), OUT = path.resolve( root, opt.out );
 fs.mkdirSync( OUT, { recursive: true } );
@@ -90,6 +102,10 @@ const DETAIL_SIGMA = 1 / 400;		// of the width: the fine detail (normals, roughn
 const NEAR_GAIN = 1.3;			// a near island's density over the stage pack's own, at least
 const NEAR_PAD = 4;				// atlas texels round each near island (filtering, mips)
 const NEAR_TILE = 1 / 8;			// near islands cut at this grid in UV (each piece at its own nearest's density)
+// faces: the busts beside the stage are looked at closer than their distance says (the eye goes to
+// them, the view zooms): near islands out to `within` m, at a fixed density (texels per UV unit:
+// as a texture of that size), outside the budget
+const NEAR_FIXED = Object.fromEntries( [ 'wagner-buesten', 'brahms-buesten', 'haendel-buesten-low' ].map( n => [ n, { within: 9, density: 1024 } ] ) );
 const NEAR_EDGE = 1.2;			// m: near triangles longer than this split (the stalls floor: a few big ones), red-green
 const MATCH = 0.97;				// an original: its thumbnail's correlation with the source's texture
 
@@ -728,6 +744,7 @@ for ( const [ m, e ] of mats ) {
 	if ( ! o ) continue;
 	e.original = o;
 	e.base = ( await sharp( Buffer.from( m.getBaseColorTexture().getImage() ) ).metadata() ).width;
+	const fixed = NEAR_FIXED[ m.getName() ], within = fixed?.within ?? opt.near;
 	const byKey = new Map();
 	for ( const p of e.prims ) {
 
@@ -735,7 +752,7 @@ for ( const [ m, e ] of mats ) {
 		const parent = new Int32Array( p.getAttribute( 'POSITION' ).getCount() ).map( ( _, i ) => i );
 		const find = x => { while ( parent[ x ] !== x ) x = parent[ x ] = parent[ parent[ x ] ]; return x; };
 		const near = [];
-		for ( let t = 0; t < T.pack.length; ++ t ) if ( T.dist[ t ] < opt.near && T.uvArea[ t ] ) {
+		for ( let t = 0; t < T.pack.length; ++ t ) if ( T.dist[ t ] < within && T.uvArea[ t ] ) {
 
 			near.push( t );
 			const a = find( I[ 3 * t ] ), b = find( I[ 3 * t + 1 ] ), c = find( I[ 3 * t + 2 ] );
@@ -763,7 +780,7 @@ for ( const [ m, e ] of mats ) {
 			}
 			const key = [ u0, v0, u1, v1 ].map( x => Math.round( x * 8192 ) ).join( ',' ) + '/' + ts.length;
 			let s = byKey.get( key );
-			if ( ! s ) { s = { u0, v0, u1, v1, ideal: dens, cap: o.w, tris: [] }; byKey.set( key, s ); e.islands.push( s ); }
+			if ( ! s ) { s = { u0, v0, u1, v1, ideal: dens, cap: o.w, fixed: fixed ? Math.min( fixed.density, o.w ) : 0, tris: [] }; byKey.set( key, s ); e.islands.push( s ); }
 			s.ideal = Math.max( s.ideal, dens );
 			s.tris.push( [ p, ts ] );
 
@@ -780,10 +797,11 @@ for ( const [ m, e ] of mats ) {
 // the budget: one scale on what each island needs, each at most its original's density (so one
 // at its cap keeps it while the rest share the budget); an island gaining too little over the
 // texture it has now stays as it was, and the rest share the budget again
+for ( const e of mats.values() ) for ( const s of e.islands ) if ( s.fixed ) s.dens = s.fixed;		// (the faces: as they are)
 const texelsAt = ( list, k ) => list.reduce( ( a, s ) => a + ( s.u1 - s.u0 ) * ( s.v1 - s.v0 ) * Math.min( s.ideal * k, s.cap ) ** 2, 0 );
 for ( let pass = 0; pass < 4; ++ pass ) {
 
-	const list = [ ...mats.values() ].flatMap( e => e.islands );
+	const list = [ ...mats.values() ].flatMap( e => e.islands ).filter( s => ! s.fixed );
 	if ( ! list.length ) break;
 	let lo = 0, hi = 1;
 	if ( texelsAt( list, hi ) > opt.nearBudget * 1e6 ) for ( let i = 0; i < 40; ++ i ) { const k = ( lo + hi ) / 2; if ( texelsAt( list, k ) > opt.nearBudget * 1e6 ) hi = k; else lo = k; }
@@ -791,7 +809,7 @@ for ( let pass = 0; pass < 4; ++ pass ) {
 
 		if ( ! e.islands.length ) continue;
 		const ref = sizeFor( needOf( e, e.nearPack, 'all' ), e.base, e.nearPack ? opt.houseTexture : opt.maxTexture ) || e.base;		// (no near islands yet: all its triangles)
-		e.islands = e.islands.filter( s => { s.dens = Math.min( s.ideal * hi, s.cap ); return s.dens >= NEAR_GAIN * ref; } );
+		e.islands = e.islands.filter( s => { if ( s.fixed ) return true; s.dens = Math.min( s.ideal * hi, s.cap ); return s.dens >= NEAR_GAIN * ref; } );
 
 	}
 
@@ -925,10 +943,66 @@ await doc.transform( prune( { keepLeaves: true, keepAttributes: true, propertyTy
 say( '  ' + Object.entries( perLook ).map( ( [ k, [ a, b ] ] ) => `${ k } ${ a } -> ${ b }` ).join( ', ' ) );
 say( `bands of ${ BAND } m${ opt.simplify ? `, simplified to ${ opt.errorPx } px${ opt.lockBorder ? ' (borders locked)' : '' }` : '' }: ${ before } -> ${ after } triangles stored` );
 
+// 4b. the generated parts: the vents' decals, the stage floor's grain
+const grains = [];		// the stage floor's materials (the grain on them in step 5)
+if ( opt.generated ) {
+
+	const buffer = doc.getRoot().listBuffers()[ 0 ], src = await new NodeIO().registerExtensions( [ EXTTextureWebP ] ).read( SRC );
+	for ( const kind of Object.keys( GRILLES ) ) {
+
+		const raw = path.join( opt.generated, grilleRaw( kind ) );
+		if ( ! fs.existsSync( raw ) ) { say( `  no ${ grilleRaw( kind ) }: no ${ kind } grilles` ); continue; }
+		const [ T, { items, note } ] = [ await grilleTextures( opt.originals, kind, fs.readFileSync( raw ) ), await grilleItems( opt.originals, kind, src ) ];
+		// a quad each: centre c, the decal's +u and +v half-axes a, b (a little larger: PAD), lifted
+		const PAD = 1.05, LIFT = 0.0015, n = items.length;
+		const pos = new Float32Array( 12 * n ), nor = new Float32Array( 12 * n ), uv = new Float32Array( 8 * n ), idx = new Uint32Array( 6 * n );
+		items.forEach( ( [ x, y, z, ax, az, bx, bz ], i ) => {
+
+			[ [ 0, 0 ], [ 1, 0 ], [ 1, 1 ], [ 0, 1 ] ].forEach( ( [ su, sv ], k ) => {
+
+				const fu = ( 2 * su - 1 ) * PAD, fv = ( 2 * sv - 1 ) * PAD, o = 3 * ( 4 * i + k );
+				pos[ o ] = x + fu * ax + fv * bx; pos[ o + 1 ] = y + LIFT; pos[ o + 2 ] = z + fu * az + fv * bz;
+				nor[ o + 1 ] = 1; uv[ 2 * ( 4 * i + k ) ] = su; uv[ 2 * ( 4 * i + k ) + 1 ] = sv;
+
+			} );
+			// corners c - a - b, c + a - b, c + a + b, c - a + b: (q, q+1, q+2)'s normal is along a x b;
+			// up where (a x b)·y > 0 (counter-clockwise from above), else the other way round
+			const up = az * bx - ax * bz > 0, q = 4 * i;
+			idx.set( up ? [ q, q + 1, q + 2, q, q + 2, q + 3 ] : [ q, q + 2, q + 1, q, q + 3, q + 2 ], 6 * i );
+
+		} );
+		const g = GRILLES[ kind ];
+		const mat = doc.createMaterial( `grille-${ kind }` ).setBaseColorFactor( [ 1, 1, 1, 1 ] ).setRoughnessFactor( 0.45 ).setMetallicFactor( g.metalness ?? 0.3 ).setAlphaMode( 'BLEND' )
+			.setBaseColorTexture( doc.createTexture( `grille-${ kind }` ).setImage( T.color ).setMimeType( 'image/webp' ) )
+			.setNormalTexture( doc.createTexture( `grille-${ kind }-normal` ).setImage( T.normal ).setMimeType( 'image/webp' ) )
+			.setExtras( { look: 'grille', grille: kind } );
+		const prim = doc.createPrimitive().setMaterial( mat ).setIndices( doc.createAccessor().setType( 'SCALAR' ).setArray( idx ).setBuffer( buffer ) )
+			.setAttribute( 'POSITION', doc.createAccessor().setType( 'VEC3' ).setArray( pos ).setBuffer( buffer ) )
+			.setAttribute( 'NORMAL', doc.createAccessor().setType( 'VEC3' ).setArray( nor ).setBuffer( buffer ) )
+			.setAttribute( 'TEXCOORD_0', doc.createAccessor().setType( 'VEC2' ).setArray( uv ).setBuffer( buffer ) );
+		const pack = items.filter( i => i[ 2 ] < STAGE_Z ).length * 2 >= n ? 'stage' : 'house';
+		group( pack ).addChild( doc.createNode( `grilles-${ kind }` ).setMesh( doc.createMesh( `grilles-${ kind }` ).addPrimitive( prim ) ) );
+		texBytes[ pack ] += T.color.length + T.normal.length; gpu[ pack ] += 2 * 1024 * 1024 * 4 * 4 / 3;
+		say( `  grilles ${ kind }: ${ n } decals (${ note }) in the ${ pack } pack; ${ T.note }; ${ ( ( T.color.length + T.normal.length ) / 1024 ).toFixed( 0 ) } KB` );
+
+	}
+	const raw = path.join( opt.generated, DETAIL_RAW );
+	if ( fs.existsSync( raw ) ) {
+
+		const D = await detailTexture( fs.readFileSync( raw ) ), tex = doc.createTexture( 'floor-detail' ).setImage( D.webp ).setMimeType( 'image/webp' );
+		for ( const [ m, e ] of mats ) if ( e.look === 'stageFloor' ) { grains.push( m ); if ( e.nearMaterial ) grains.push( e.nearMaterial ); }
+		for ( const m of grains ) m.setExtras( { ...m.getExtras(), floorDetail: true } );
+		grains.tex = tex;
+		say( `  floor grain: ${ ( D.webp.length / 1024 ).toFixed( 0 ) } KB on ${ grains.map( m => m.getName() ).join( ', ' ) }` );
+
+	} else say( `  no ${ DETAIL_RAW }: no floor grain` );
+
+}
+
 // 5. packs: each its own textures, joined by material, quantised, compressed
 const meta = { frame: 'metres, y up, x across (audience right +), z from the stage front edge to the back of the hall (stage z < 0), y 0 at the stalls floor',
 	stageFloor: { front: 0.61, back: 1.68 }, cameraZone: CAMERA_ZONE,
-	source: `${ path.basename( SRC ) }: geometry and baked textures; PBR maps derived (tools/hall-asset.mjs)`,
+	source: `${ path.basename( SRC ) }: geometry and baked textures; PBR maps derived (tools/hall-asset.mjs)${ opt.generated ? '; floor grilles and grain from generated sources (tools/floor-grille.mjs, tools/floor-detail.mjs)' : '' }`,
 	options: { errorPx: opt.errorPx, texel: opt.texel, maxTexture: opt.maxTexture, houseTexture: opt.houseTexture, percentile: PERCENTILE, near: opt.originals ? { within: opt.near, budget: opt.nearBudget, gain: NEAR_GAIN } : null, lockBorder: opt.lockBorder, simplify: opt.simplify, band: BAND } };
 for ( const pack of [ 'stage', 'house' ] ) {
 
@@ -944,6 +1018,8 @@ for ( const pack of [ 'stage', 'house' ] ) {
 		}
 
 	}
+	// the stage floor's grain: in its materials' emissive slot (their emissive black: it only rides)
+	for ( const m of grains ) m.setEmissiveTexture( grains.tex ).setEmissiveFactor( [ 0, 0, 0 ] );
 	const d = cloneDocument( doc ), s = d.getRoot().getDefaultScene() ?? d.getRoot().listScenes()[ 0 ];
 	for ( const n of s.listChildren() ) if ( n.getName() !== pack ) { n.traverse( c => c.getMesh()?.dispose() ); n.dispose(); }
 	await d.transform( prune( { keepAttributes: true } ), join( { keepNamed: false } ), prune( { keepAttributes: true } ) );		// (prune drops UVs no texture uses: keep)
@@ -957,4 +1033,4 @@ for ( const pack of [ 'stage', 'house' ] ) {
 
 }
 say( `done in ${ ( ( Date.now() - t0 ) / 1000 ).toFixed( 0 ) } s` );
-fs.writeFileSync( path.join( OUT, opt.simplify ? 'build.log' : 'build.full.log' ), log.join( '\n' ) + '\n' );
+if ( opt.log ) fs.writeFileSync( opt.log, log.join( '\n' ) + '\n' );		// (not in OUT: that is served)

@@ -40,6 +40,42 @@ const LAMP_GROUP = { 'kronleuchter': 'house', 'kerzenstaender_klein': 'house', '
 const LAMP_TINT = '#ffd29a';
 const LAMP_EMISSIVE = { house: 14, lamps: 6 };		// emissive intensity per unit of the preset's value (bright: lit bulbs and candles saturate)
 
+// the stage floor's grain (tools/floor-detail.mjs: a generated maple surface, grey about 128; in
+// the packs: the stage floor's materials' emissive slot, extras.floorDetail): tiled in world space
+// along its boards (the packs' z: the atlas has the boards along u, the packs' z), multiplying the
+// albedo on horizontal faces (not the risers' fronts)
+const FLOOR_DETAIL = { tile: 0.6, strength: 1, along: [ 0, 0, 1 ], across: [ 1, 0, 0 ] };
+
+// the floor's vents (tools/floor-grille.mjs; in the packs: a decal mesh per kind, extras.grille):
+// alpha blended over the baked ones, drawn in front of the floor (polygon offset)
+const GRILLE_OFFSET = { polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 4 };
+
+/** `material` with the floor's grain detail (`tex`; `along`, `across`: world directions). */
+function addFloorDetail( material, tex, along, across ) {
+
+	const u = { uFloorDetail: { value: tex }, uFloorAlong: { value: along }, uFloorAcross: { value: across }, uFloorTile: { value: FLOOR_DETAIL.tile }, uFloorStrength: { value: FLOOR_DETAIL.strength } };
+	material.userData.floorDetail = u;
+	material.onBeforeCompile = shader => {
+
+		Object.assign( shader.uniforms, u );
+		shader.vertexShader = shader.vertexShader
+			.replace( '#include <common>', '#include <common>\nvarying vec3 vFloorPos;\nvarying float vFloorUp;' )
+			.replace( '#include <project_vertex>', '#include <project_vertex>\nvFloorPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\nvFloorUp = normalize( mat3( modelMatrix ) * objectNormal ).y;' );
+		shader.fragmentShader = shader.fragmentShader
+			.replace( '#include <common>', '#include <common>\nuniform sampler2D uFloorDetail;\nuniform vec3 uFloorAlong, uFloorAcross;\nuniform float uFloorTile, uFloorStrength;\nvarying vec3 vFloorPos;\nvarying float vFloorUp;' )
+			.replace( '#include <map_fragment>', `#include <map_fragment>
+			{
+				vec2 fuv = vec2( dot( vFloorPos, uFloorAlong ), dot( vFloorPos, uFloorAcross ) ) / uFloorTile;
+				float fd = texture2D( uFloorDetail, fuv ).r / 0.502;		// (about 1: 128 / 255)
+				diffuseColor.rgb *= mix( 1.0, fd, uFloorStrength * smoothstep( 0.7, 0.95, abs( vFloorUp ) ) );
+			}` );
+
+	};
+	material.customProgramCacheKey = () => 'berlinFloorDetail';
+	material.needsUpdate = true;
+
+}
+
 /** Attribute -> plain Float32 (the packs are quantised: normalised integers). */
 function toFloat( attr ) {
 
@@ -53,15 +89,18 @@ function toFloat( attr ) {
 function hallMaterial( m, anisotropy ) {
 
 	const look = m.userData.look ?? '', f = FINISH[ look ] ?? {};
+	const grain = m.userData.floorDetail ? m.emissiveMap : null;		// (its emissive slot carries the grain: not an emissive)
 	const p = new THREE.MeshPhysicalMaterial( {
 		name: m.name, color: m.color, map: m.map, roughness: m.roughness, metalness: f.metalness ?? m.metalness, roughnessMap: m.roughnessMap, metalnessMap: m.metalnessMap,
 		aoMap: m.aoMap, aoMapIntensity: m.aoMapIntensity, normalMap: m.normalMap, normalScale: m.normalScale,
-		emissive: m.emissive, emissiveMap: m.emissiveMap, emissiveIntensity: m.emissiveIntensity,
-		clearcoat: f.clearcoat ?? 0, clearcoatRoughness: f.clearcoatRoughness ?? 0, side: THREE.DoubleSide,
+		emissive: m.emissive, emissiveMap: grain ? null : m.emissiveMap, emissiveIntensity: m.emissiveIntensity,
+		transparent: m.transparent, depthWrite: m.depthWrite, ...( m.userData.grille ? GRILLE_OFFSET : {} ),
+		clearcoat: f.clearcoat ?? 0, clearcoatRoughness: f.clearcoatRoughness ?? 0, side: m.userData.grille ? THREE.FrontSide : THREE.DoubleSide,
 	} );
 	if ( m.sheen ) Object.assign( p, { sheen: m.sheen, sheenColor: m.sheenColor, sheenRoughness: m.sheenRoughness } );
 	for ( const t of [ p.map, p.normalMap, p.roughnessMap, p.emissiveMap ] ) if ( t ) t.anisotropy = anisotropy;
-	p.userData = { look, lamp: !! m.userData.lamp, lampGroup: m.userData.lamp ? LAMP_GROUP[ m.name.replace( /-near$/, '' ) ] ?? 'lamps' : null };
+	p.userData = { look, lamp: !! m.userData.lamp, lampGroup: m.userData.lamp ? LAMP_GROUP[ m.name.replace( /-near$/, '' ) ] ?? 'lamps' : null, grille: m.userData.grille ?? null, grain };
+	if ( grain ) { grain.wrapS = grain.wrapT = THREE.RepeatWrapping; grain.colorSpace = THREE.NoColorSpace; grain.anisotropy = anisotropy; grain.needsUpdate = true; }
 	if ( p.userData.lamp ) p.emissive.set( LAMP_TINT );		// candle-warm, not white
 	return p;
 
@@ -137,6 +176,8 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
 
 	}
 
+	const along = new THREE.Vector3( ...FLOOR_DETAIL.along ).transformDirection( M ), across = new THREE.Vector3( ...FLOOR_DETAIL.across ).transformDirection( M );
+	for ( const mat of parts.keys() ) if ( mat.userData.grain ) addFloorDetail( mat, mat.userData.grain, along, across );
 	const group = new THREE.Group();
 	group.name = 'berlinHall';
 	group.userData.lamps = [ ...parts.keys() ].filter( m => m.userData.lamp );
@@ -145,8 +186,9 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
 		const geo = mergeGeometries( geos, false );
 		geos.forEach( g => g.dispose() );
 		const mesh = new THREE.Mesh( geo, mat );
-		mesh.castShadow = ! mat.userData.lamp;
+		mesh.castShadow = ! mat.userData.lamp && ! mat.userData.grille;
 		mesh.receiveShadow = true;
+		if ( mat.userData.grille ) { mesh.userData.noAO = true; mesh.renderOrder = 1; }		// (transparent: not in GTAO's depth; after the floor)
 		mesh.name = `berlinHall:${ mat.name }`;
 		group.add( mesh );
 
