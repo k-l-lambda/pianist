@@ -1,7 +1,8 @@
 // The Konzerthaus Berlin's Großer Saal as the concert hall's shell: tools/hall-asset.mjs's two packs
 // (public/berlinhall/{stage,house}.glb; when missing, the hall stays procedural), with their own
 // PBR materials (made from the source's baked textures: albedo, ORM, normal; gold leaf metallic,
-// velvet with sheen; the chandeliers' and candles' emissive).
+// velvet with sheen; the chandeliers' and candles' emissive); near the piano, `-near` materials
+// whose albedo is a sharper atlas on uv1.
 //
 // The packs' frame (metres, y up, x across with the audience's right +, z from the stage's front
 // edge towards the back of the hall, y 0 at the stalls floor) -> the hall frame (hall.js: y 0 at
@@ -60,7 +61,7 @@ function hallMaterial( m, anisotropy ) {
 	} );
 	if ( m.sheen ) Object.assign( p, { sheen: m.sheen, sheenColor: m.sheenColor, sheenRoughness: m.sheenRoughness } );
 	for ( const t of [ p.map, p.normalMap, p.roughnessMap, p.emissiveMap ] ) if ( t ) t.anisotropy = anisotropy;
-	p.userData = { look, lamp: !! m.userData.lamp, lampGroup: m.userData.lamp ? LAMP_GROUP[ m.name ] ?? 'lamps' : null };
+	p.userData = { look, lamp: !! m.userData.lamp, lampGroup: m.userData.lamp ? LAMP_GROUP[ m.name.replace( /-near$/, '' ) ] ?? 'lamps' : null };
 	if ( p.userData.lamp ) p.emissive.set( LAMP_TINT );		// candle-warm, not white
 	return p;
 
@@ -118,7 +119,8 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
 			if ( ! ours.has( o.material ) ) ours.set( o.material, hallMaterial( o.material, anisotropy ) );
 			const mat = ours.get( o.material );
 			const geo = new THREE.BufferGeometry();
-			for ( const k of [ 'position', 'normal', 'uv' ] ) geo.setAttribute( k, toFloat( o.geometry.attributes[ k ] ) );
+			// (uv1: a near material's albedo atlas, tools/hall-asset.mjs --originals)
+			for ( const k of [ 'position', 'normal', 'uv', 'uv1' ] ) if ( o.geometry.attributes[ k ] ) geo.setAttribute( k, toFloat( o.geometry.attributes[ k ] ) );
 			geo.setIndex( o.geometry.index.clone() );
 			const W = new THREE.Matrix4().multiplyMatrices( M, o.matrixWorld );
 			geo.applyMatrix4( W );

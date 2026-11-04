@@ -24,12 +24,20 @@
 // its triangles, by UV area) at that distance, at most `--max-texture` (the stage pack) or
 // `--house-texture` (the house): the stage's own sharp, the house's smaller. Normals and ORM at
 // half the albedo's size.
+// Near the camera (`--originals`: the source's textures at full size, 2-6.5k): the triangles
+// within `--near` m of where the camera goes get their own material, whose albedo is a compact
+// atlas of just their UV islands (TEXCOORD_1), cut from the originals at the density each needs
+// (1 screen pixel a texel at its nearest; a big island in NEAR_TILE pieces), scaled down together to fit `--near-budget` megatexels,
+// each at most its original's; an island that would gain less than NEAR_GAIN x the texture it has
+// now stays as it was. A near material lives in the pack most of its near triangles are in. Its ORM, normal and emissive stay the pack's (TEXCOORD_0: they are
+// smooth); a base texture only near triangles used shrinks to what the far ones need.
 // Output frame: metres, y up, x across (the audience's right +), z from the stage's front edge
 // towards the back of the hall (the stage at z < 0), y 0 at the stalls floor (the stage's front
 // at 0.61 m). The frame and the options are in each GLB's extras.
 //
 //   node tools/hall-asset.mjs --src <Berlin_Hall_textured_preview.glb> [--out public/berlinhall]
 //        [--error-px 1] [--texel 2] [--max-texture 2048] [--house-texture 1024] [--lock-border] [--no-simplify]
+//        [--originals <dir of the full-size textures>] [--near 4] [--near-budget 8]
 //
 // --no-simplify: the same output without simplification (to compare against).
 
@@ -45,7 +53,7 @@ import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..' );
 
 // ---- options ----
-const opt = { src: null, out: 'public/berlinhall', errorPx: 1, texel: 2, maxTexture: 2048, houseTexture: 1024, lockBorder: false, simplify: true };
+const opt = { src: null, out: 'public/berlinhall', errorPx: 1, texel: 2, maxTexture: 2048, houseTexture: 1024, lockBorder: false, simplify: true, originals: null, near: 4, nearBudget: 8 };
 const argv = process.argv.slice( 2 );
 for ( let i = 0; i < argv.length; ++ i ) {
 
@@ -58,6 +66,9 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--house-texture' ) opt.houseTexture = Number( v() );
 	else if ( a === '--lock-border' ) opt.lockBorder = true;
 	else if ( a === '--no-simplify' ) opt.simplify = false;
+	else if ( a === '--originals' ) opt.originals = path.resolve( v() );
+	else if ( a === '--near' ) opt.near = Number( v() );
+	else if ( a === '--near-budget' ) opt.nearBudget = Number( v() );
 	else throw new Error( `unknown argument ${ a }` );
 
 }
@@ -76,6 +87,11 @@ const LIGHT_SIGMA = 1 / 48;		// of the texture's width: the scale of the baked l
 const DELIGHT = 0;				// how much of it (1: all; the rest stays: the hall's light and shade, as in its renders)
 const AO = 1;					// the part of the darkening taken out kept as occlusion
 const DETAIL_SIGMA = 1 / 400;		// of the width: the fine detail (normals, roughness)
+const NEAR_GAIN = 1.3;			// a near island's density over the stage pack's own, at least
+const NEAR_PAD = 4;				// atlas texels round each near island (filtering, mips)
+const NEAR_TILE = 1 / 8;			// near islands cut at this grid in UV (each piece at its own nearest's density)
+const NEAR_EDGE = 1.2;			// m: near triangles longer than this split (the stalls floor: a few big ones), red-green
+const MATCH = 0.97;				// an original: its thumbnail's correlation with the source's texture
 
 // ---- the source's frame -> ours. Source world: cm, z up; the hall's axis at x = -35.5 cm, the
 // stage's front edge at y = 1205 cm (its floor there 804 cm, the stalls' 743 cm), the stage
@@ -305,6 +321,202 @@ async function derive( image, uv, look ) {
 
 }
 
+/** The originals (`dir`) for the materials' baked textures (`mats`: material -> ...): material -> { file, w, h }. */
+async function matchOriginals( dir, mats ) {
+
+	const thumb = async input => {		// 48² grey, zero mean, unit length
+
+		const { data } = await sharp( input ).removeAlpha().resize( 48, 48, { fit: 'fill' } ).greyscale().raw().toBuffer( { resolveWithObject: true } );
+		const a = Float32Array.from( data ), m = a.reduce( ( s, v ) => s + v, 0 ) / a.length;
+		let l = 0; for ( let i = 0; i < a.length; ++ i ) { a[ i ] -= m; l += a[ i ] * a[ i ]; }
+		l = Math.sqrt( l ) || 1; for ( let i = 0; i < a.length; ++ i ) a[ i ] /= l;
+		return a;
+
+	};
+	const files = fs.readdirSync( dir ).filter( f => /\.(jpe?g|png|webp)$/i.test( f ) );
+	const cands = [];
+	for ( const f of files ) cands.push( { file: path.join( dir, f ), t: await thumb( path.join( dir, f ) ), meta: await sharp( path.join( dir, f ) ).metadata() } );
+	const out = new Map();
+	for ( const m of mats.keys() ) {
+
+		const tex = m.getBaseColorTexture();
+		if ( ! tex ) continue;
+		const t = await thumb( Buffer.from( tex.getImage() ) );
+		let best = null, bc = - 2;
+		for ( const c of cands ) { let d = 0; for ( let i = 0; i < t.length; ++ i ) d += t[ i ] * c.t[ i ]; if ( d > bc ) { bc = d; best = c; } }
+		if ( bc >= MATCH ) out.set( m, { file: best.file, w: best.meta.width, h: best.meta.height } );
+
+	}
+	return out;
+
+}
+
+/**
+ * The near islands of one material (`islands`: { u0, v0, u1, v1, dens }, dens in texels per UV
+ * unit) packed on shelves into an atlas cut from its original (`o`: file, w, h): sets each
+ * island's source rect (sx, sy, sw, sh: original pixels) and atlas rect (dx, dy, dw, dh); resolves
+ * to the atlas (raw RGB, the original's colours: each texel the mean of its footprint) and its size.
+ */
+async function packNear( o, islands ) {
+
+	for ( const s of islands ) {
+
+		const k = o.w / s.dens;		// original pixels per atlas texel (>= 1)
+		s.sx = Math.max( 0, Math.floor( s.u0 * o.w - NEAR_PAD * k ) ); s.sy = Math.max( 0, Math.floor( s.v0 * o.h - NEAR_PAD * k ) );
+		s.sw = Math.max( 1, Math.min( o.w, Math.ceil( s.u1 * o.w + NEAR_PAD * k ) ) - s.sx ); s.sh = Math.max( 1, Math.min( o.h, Math.ceil( s.v1 * o.h + NEAR_PAD * k ) ) - s.sy );
+		s.dw = Math.max( 2, Math.round( s.sw / k ) ); s.dh = Math.max( 2, Math.round( s.sh / k ) );
+
+	}
+	const area = islands.reduce( ( a, s ) => a + s.dw * s.dh, 0 );
+	const W = Math.ceil( Math.max( Math.sqrt( area * 1.12 ), ...islands.map( s => s.dw ) ) / 4 ) * 4;
+	let x = 0, y = 0, row = 0;
+	for ( const s of [ ...islands ].sort( ( a, b ) => b.dh - a.dh ) ) {
+
+		if ( x + s.dw > W ) { x = 0; y += row; row = 0; }
+		s.dx = x; s.dy = y; x += s.dw; row = Math.max( row, s.dh );
+
+	}
+	const H = Math.ceil( ( y + row ) / 4 ) * 4;
+	if ( W > 16383 || H > 16383 ) throw new Error( `near atlas ${ W }x${ H }: over WebP's 16383` );
+	const src = await sharp( o.file ).removeAlpha().raw().toBuffer( { resolveWithObject: true } ), S = src.data, sw0 = src.info.width, sh0 = src.info.height;
+	const out = Buffer.alloc( W * H * 3 );
+	for ( const s of islands ) {
+
+		const fx = s.sw / s.dw, fy = s.sh / s.dh;
+		for ( let j = 0; j < s.dh; ++ j ) {
+
+			const y0 = Math.floor( s.sy + j * fy ), y1 = Math.max( y0 + 1, Math.min( sh0, Math.ceil( s.sy + ( j + 1 ) * fy ) ) );
+			for ( let i = 0; i < s.dw; ++ i ) {
+
+				const x0 = Math.floor( s.sx + i * fx ), x1 = Math.max( x0 + 1, Math.min( sw0, Math.ceil( s.sx + ( i + 1 ) * fx ) ) );
+				let r = 0, g = 0, b = 0, c = 0;
+				for ( let yy = y0; yy < y1; ++ yy ) for ( let xx = x0; xx < x1; ++ xx ) { const q = 3 * ( yy * sw0 + xx ); r += S[ q ]; g += S[ q + 1 ]; b += S[ q + 2 ]; ++ c; }
+				const d = 3 * ( ( s.dy + j ) * W + s.dx + i );
+				out[ d ] = r / c; out[ d + 1 ] = g / c; out[ d + 2 ] = b / c;
+
+			}
+
+		}
+
+	}
+	return { data: out, w: W, h: H };
+
+}
+
+/** The albedo of source colours (raw sRGB, `n` texels), as derive() makes it (gain, gold leaf); needs DELIGHT 0. */
+function albedoOf( data, n, look, gain ) {
+
+	if ( DELIGHT !== 0 ) throw new Error( 'near atlases: made with DELIGHT 0 only (no baked light taken out of them)' );
+	const L = LOOKS[ look ], rgb = Buffer.alloc( 3 * n );
+	for ( let i = 0; i < n; ++ i ) {
+
+		let r = TO_LINEAR[ data[ 3 * i ] ] * gain, g = TO_LINEAR[ data[ 3 * i + 1 ] ] * gain, b = TO_LINEAR[ data[ 3 * i + 2 ] ] * gain;
+		const m = L.gold ? goldness( data[ 3 * i ], data[ 3 * i + 1 ], data[ 3 * i + 2 ] ) : 0;
+		if ( m > 0 ) { const up = 1 + m * ( Math.max( 1, 0.55 / Math.max( 1e-3, luma( r, g, b ) ) ) - 1 ); r *= up; g *= up; b *= up; }
+		rgb[ 3 * i ] = toSrgb( r ); rgb[ 3 * i + 1 ] = toSrgb( g ); rgb[ 3 * i + 2 ] = toSrgb( b );
+
+	}
+	return rgb;
+
+}
+
+/**
+ * A new primitive of some triangles of `prim` (compact accessors), with TEXCOORD_1 from
+ * `uv1( vertex, triangle )` if given; `split( triangle )`: a vertex is shared only among triangles
+ * of the same value (the near islands: a vertex on a tile's edge, once per island).
+ */
+function subPrimitive( doc, prim, triangles, uv1, split = () => 0 ) {
+
+	const I = prim.getIndices().getArray(), semantics = prim.listSemantics(), buffer = doc.getRoot().listBuffers()[ 0 ];
+	const remap = new Map(), src = [], idx = new Uint32Array( triangles.length * 3 ), owner = [];
+	triangles.forEach( ( t, j ) => { for ( let c = 0; c < 3; ++ c ) {
+
+		const v = I[ 3 * t + c ], key = v * 65536 + split( t );
+		if ( ! remap.has( key ) ) { remap.set( key, remap.size ); src.push( v ); owner.push( t ); }
+		idx[ 3 * j + c ] = remap.get( key );
+
+	} } );
+	const p = doc.createPrimitive().setMaterial( prim.getMaterial() ).setIndices( doc.createAccessor().setType( 'SCALAR' ).setArray( idx ).setBuffer( buffer ) );
+	for ( const sem of semantics ) {
+
+		const a = prim.getAttribute( sem ), from = a.getArray(), e = a.getElementSize(), out = new Float32Array( remap.size * e );
+		src.forEach( ( v, w ) => { for ( let c = 0; c < e; ++ c ) out[ e * w + c ] = from[ e * v + c ]; } );
+		p.setAttribute( sem, doc.createAccessor().setType( a.getType() ).setArray( out ).setBuffer( buffer ) );
+
+	}
+	if ( uv1 ) {
+
+		const out = new Float32Array( remap.size * 2 );
+		src.forEach( ( v, w ) => { const q = uv1( v, owner[ w ] ); out[ 2 * w ] = q[ 0 ]; out[ 2 * w + 1 ] = q[ 1 ]; } );
+		p.setAttribute( 'TEXCOORD_1', doc.createAccessor().setType( 'VEC2' ).setArray( out ).setBuffer( buffer ) );
+
+	}
+	return p;
+
+}
+
+/**
+ * Split the triangles of `prim` that `red( t, P, I )` picks 1:4 (edge midpoints; attributes
+ * interpolated), once; red-green: a neighbour with two split edges is split 1:4 too, one with
+ * one split edge 1:2, so no edge has a T-junction (a neighbour across a UV seam: its own
+ * midpoint, at the same place). Returns how many triangles were split 1:4.
+ */
+function refine( prim, red ) {
+
+	const I = prim.getIndices().getArray(), P = prim.getAttribute( 'POSITION' ).getArray(), n = I.length / 3;
+	const ek = ( a, b ) => a < b ? a * 4294967296 + b : b * 4294967296 + a;
+	const isRed = new Uint8Array( n ), marked = new Set();
+	for ( let t = 0; t < n; ++ t ) if ( red( t, P, I ) ) { isRed[ t ] = 1; for ( let c = 0; c < 3; ++ c ) marked.add( ek( I[ 3 * t + c ], I[ 3 * t + ( c + 1 ) % 3 ] ) ); }
+	for ( let changed = true; changed; ) {
+
+		changed = false;
+		for ( let t = 0; t < n; ++ t ) {
+
+			if ( isRed[ t ] ) continue;
+			let m = 0; for ( let c = 0; c < 3; ++ c ) m += marked.has( ek( I[ 3 * t + c ], I[ 3 * t + ( c + 1 ) % 3 ] ) );
+			if ( m >= 2 ) { isRed[ t ] = 1; changed = true; for ( let c = 0; c < 3; ++ c ) marked.add( ek( I[ 3 * t + c ], I[ 3 * t + ( c + 1 ) % 3 ] ) ); }
+
+		}
+
+	}
+	if ( ! marked.size ) return 0;
+	const sems = prim.listSemantics(), A = sems.map( s => prim.getAttribute( s ) ), es = A.map( a => a.getElementSize() );
+	const data = A.map( a => Array.from( a.getArray() ) );
+	let count = A[ 0 ].getCount();
+	const mids = new Map();
+	const mid = ( a, b ) => {
+
+		const key = ek( a, b );
+		if ( mids.has( key ) ) return mids.get( key );
+		A.forEach( ( _, j ) => { for ( let c = 0; c < es[ j ]; ++ c ) data[ j ].push( ( data[ j ][ es[ j ] * a + c ] + data[ j ][ es[ j ] * b + c ] ) / 2 ); } );
+		mids.set( key, count );
+		return count ++;
+
+	};
+	const out = [];
+	let reds = 0;
+	for ( let t = 0; t < n; ++ t ) {
+
+		const v = [ I[ 3 * t ], I[ 3 * t + 1 ], I[ 3 * t + 2 ] ];
+		if ( isRed[ t ] ) {
+
+			const [ a, b, c ] = v, ab = mid( a, b ), bc = mid( b, c ), ca = mid( c, a );
+			out.push( a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca ); ++ reds;
+			continue;
+
+		}
+		const e = [ 0, 1, 2 ].findIndex( c => marked.has( ek( v[ c ], v[ ( c + 1 ) % 3 ] ) ) );
+		if ( e < 0 ) { out.push( ...v ); continue; }
+		const a = v[ e ], b = v[ ( e + 1 ) % 3 ], c = v[ ( e + 2 ) % 3 ], m = mid( a, b );		// green: 1:2 from the opposite vertex
+		out.push( a, m, c, m, b, c );
+
+	}
+	A.forEach( ( a, j ) => a.setArray( new Float32Array( data[ j ] ) ) );
+	prim.getIndices().setArray( new Uint32Array( out ) );
+	return reds;
+
+}
+
 const encode = ( raw, w, h, size, quality, smooth = true ) => sharp( raw, { raw: { width: w, height: h, channels: 3 } } )
 	.resize( size, size, { kernel: smooth ? 'lanczos3' : 'cubic' } ).webp( { quality, effort: 5 } ).toBuffer();
 
@@ -406,10 +618,38 @@ for ( const node of nodes ) for ( const p of node.getMesh().listPrimitives() ) {
 
 }
 say( `triangles turned round: ${ flipped }` );
+for ( const node of nodes ) for ( const p of node.getMesh().listPrimitives() ) weldPrimitive( p, {} );		// (once: steps 2 and 4 index the same triangles)
+// (near atlases: the near triangles longer than NEAR_EDGE split until they are not, so a big
+// island can be cut in tiles; those primitives are not simplified afterwards: the simplifier
+// sees positions only, and on a flat floor it would join triangles of different UV mappings)
+const refined = new Set();
+if ( opt.originals ) {
 
-// 2. per material: its look, its triangles' UVs (for the islands), the texel density each pack
-// needs (screen pixels per texel at --texel, at each triangle's band's distance)
-const mats = new Map();		// source material -> { look, uv: [], need: { stage: [ [ texels, weight ] ], house: [] } }
+	let before = 0, after = 0;
+	const longNear = ( t, P, I ) => {
+
+		const v = [ I[ 3 * t ], I[ 3 * t + 1 ], I[ 3 * t + 2 ] ], lo = [ 0, 1, 2 ].map( k => Math.min( ...v.map( i => P[ 3 * i + k ] ) ) ), hi = [ 0, 1, 2 ].map( k => Math.max( ...v.map( i => P[ 3 * i + k ] ) ) );
+		if ( boxDistance( { min: lo, max: hi }, CAMERA_ZONE ) >= opt.near ) return false;
+		let l = 0; for ( let c = 0; c < 3; ++ c ) { const a = v[ c ], b = v[ ( c + 1 ) % 3 ]; l = Math.max( l, Math.hypot( P[ 3 * a ] - P[ 3 * b ], P[ 3 * a + 1 ] - P[ 3 * b + 1 ], P[ 3 * a + 2 ] - P[ 3 * b + 2 ] ) ); }
+		return l > NEAR_EDGE;
+
+	};
+	for ( const node of nodes ) for ( const p of node.getMesh().listPrimitives() ) {
+
+		const n0 = p.getIndices().getCount() / 3;
+		for ( let level = 0; level < 8 && refine( p, longNear ); ++ level ) refined.add( p );
+		if ( refined.has( p ) ) { before += n0; after += p.getIndices().getCount() / 3; }
+
+	}
+	say( `near triangles longer than ${ NEAR_EDGE } m: split in ${ refined.size } parts, ${ before } -> ${ after } triangles` );
+
+}
+
+// 2. per material: its look, its triangles' UVs (for the islands); per triangle the texel
+// density it needs (screen pixels per texel at --texel, at its distance), its pack, and whether
+// it is near the camera
+const mats = new Map();		// source material -> { look, uv: [], prims: [], islands: [] }
+const tri = new Map();		// primitive -> { texels, uvArea, pack (0 stage, 1 house), island (-1: none), dist }
 const unknown = new Set();
 for ( const node of nodes ) for ( const p of node.getMesh().listPrimitives() ) {
 
@@ -418,29 +658,52 @@ for ( const node of nodes ) for ( const p of node.getMesh().listPrimitives() ) {
 
 		let look = LOOK_OF[ m.getName() ];
 		if ( ! look ) { unknown.add( m.getName() ); look = 'ivory'; }
-		mats.set( m, { look, uv: [], need: { stage: [], house: [] } } );
+		mats.set( m, { look, uv: [], prims: [], islands: [] } );
 
 	}
 	const e = mats.get( m ), P = p.getAttribute( 'POSITION' ).getArray(), U = p.getAttribute( 'TEXCOORD_0' ).getArray(), I = p.getIndices().getArray();
-	for ( let t = 0; t < I.length; t += 3 ) {
+	const n = I.length / 3, T = { texels: new Float32Array( n ), uvArea: new Float32Array( n ), pack: new Uint8Array( n ), island: new Int32Array( n ).fill( - 1 ), dist: new Float32Array( n ) };
+	tri.set( p, T ); e.prims.push( p );
+	for ( let t = 0; t < n; ++ t ) {
 
-		const [ a, b, c ] = [ I[ t ], I[ t + 1 ], I[ t + 2 ] ];
+		const [ a, b, c ] = [ I[ 3 * t ], I[ 3 * t + 1 ], I[ 3 * t + 2 ] ];
 		e.uv.push( U[ 2 * a ], U[ 2 * a + 1 ], U[ 2 * b ], U[ 2 * b + 1 ], U[ 2 * c ], U[ 2 * c + 1 ] );
+		const zs = [ a, b, c ].map( k => P[ 3 * k + 2 ] ), lo = [ 0, 1, 2 ].map( k => Math.min( P[ 3 * a + k ], P[ 3 * b + k ], P[ 3 * c + k ] ) ), hi = [ 0, 1, 2 ].map( k => Math.max( P[ 3 * a + k ], P[ 3 * b + k ], P[ 3 * c + k ] ) );
+		// a triangle's pack: as its band's (the band's max z, below: about it)
+		T.pack[ t ] = Math.max( ...zs ) < STAGE_Z ? 0 : 1;
+		T.dist[ t ] = boxDistance( { min: lo, max: hi }, CAMERA_ZONE );
 		const u = [ 0, 1, 2 ].map( k => P[ 3 * b + k ] - P[ 3 * a + k ] ), v = [ 0, 1, 2 ].map( k => P[ 3 * c + k ] - P[ 3 * a + k ] );
 		const area = Math.hypot( u[ 1 ] * v[ 2 ] - u[ 2 ] * v[ 1 ], u[ 2 ] * v[ 0 ] - u[ 0 ] * v[ 2 ], u[ 0 ] * v[ 1 ] - u[ 1 ] * v[ 0 ] ) / 2;
 		const uvArea = Math.abs( ( U[ 2 * b ] - U[ 2 * a ] ) * ( U[ 2 * c + 1 ] - U[ 2 * a + 1 ] ) - ( U[ 2 * c ] - U[ 2 * a ] ) * ( U[ 2 * b + 1 ] - U[ 2 * a + 1 ] ) ) / 2;
 		if ( area < 1e-8 || uvArea < 1e-10 ) continue;
-		const zs = [ a, b, c ].map( k => P[ 3 * k + 2 ] ), lo = [ 0, 1, 2 ].map( k => Math.min( P[ 3 * a + k ], P[ 3 * b + k ], P[ 3 * c + k ] ) ), hi = [ 0, 1, 2 ].map( k => Math.max( P[ 3 * a + k ], P[ 3 * b + k ], P[ 3 * c + k ] ) );
-		const d = Math.max( 1.5, boxDistance( { min: lo, max: hi }, CAMERA_ZONE ) );
-		const texels = Math.sqrt( area / uvArea ) / ( PX_PER_M * d ) / opt.texel;		// texels a UV unit needs
-		// a triangle's pack: as its band's (the band's max z, below: about it)
-		const pack = Math.max( ...zs ) < STAGE_Z ? 'stage' : 'house';
-		e.need[ pack ].push( [ texels, uvArea ] );
+		T.texels[ t ] = Math.sqrt( area / uvArea ) / ( PX_PER_M * Math.max( 1.5, T.dist[ t ] ) );		// texels a UV unit needs, at 1 px a texel
+		T.uvArea[ t ] = uvArea;
 
 	}
 
 }
 if ( unknown.size ) say( `  no look for ${ [ ...unknown ].join( ', ' ) }: ivory` );
+/** [ texels at --texel, weight ] of a material's triangles in `pack`; `which`: 'all', 'far' (not in a near island). */
+const needOf = ( e, pack, which ) => {
+
+	const out = [];
+	for ( const p of e.prims ) {
+
+		const T = tri.get( p );
+		for ( let t = 0; t < T.pack.length; ++ t ) {
+
+			if ( ! T.uvArea[ t ] ) continue;
+			const near = T.island[ t ] >= 0;
+			if ( which === 'far' && near ) continue;
+			if ( ( near ? e.nearPack : T.pack[ t ] ) !== pack ) continue;		// near triangles: their near material's pack
+			out.push( [ T.texels[ t ] / opt.texel, T.uvArea[ t ] ] );
+
+		}
+
+	}
+	return out;
+
+};
 const sizeFor = ( need, full, cap ) => {		// the PERCENTILE by UV area, a power of two
 
 	if ( ! need.length ) return 0;
@@ -452,6 +715,88 @@ const sizeFor = ( need, full, cap ) => {		// the PERCENTILE by UV area, a power 
 	return Math.min( full, cap, Math.max( MIN_TEXTURE, p2 ) );
 
 };
+
+// 2b. near islands: per material with an original, the near triangles' UV islands (connected
+// through shared vertices; repeats of one island, as the chairs', counted once), each at the
+// density its nearest triangle needs (at most the original's), all scaled to --near-budget
+let nearTexels = 0;
+const originals = opt.originals ? await matchOriginals( opt.originals, mats ) : new Map();
+if ( opt.originals ) say( `originals: ${ originals.size } of ${ [ ...mats.keys() ].filter( m => m.getBaseColorTexture() ).length } textures matched in ${ path.basename( opt.originals ) }` );
+for ( const [ m, e ] of mats ) {
+
+	const o = originals.get( m );
+	if ( ! o ) continue;
+	e.original = o;
+	e.base = ( await sharp( Buffer.from( m.getBaseColorTexture().getImage() ) ).metadata() ).width;
+	const byKey = new Map();
+	for ( const p of e.prims ) {
+
+		const T = tri.get( p ), I = p.getIndices().getArray(), U = p.getAttribute( 'TEXCOORD_0' ).getArray();
+		const parent = new Int32Array( p.getAttribute( 'POSITION' ).getCount() ).map( ( _, i ) => i );
+		const find = x => { while ( parent[ x ] !== x ) x = parent[ x ] = parent[ parent[ x ] ]; return x; };
+		const near = [];
+		for ( let t = 0; t < T.pack.length; ++ t ) if ( T.dist[ t ] < opt.near && T.uvArea[ t ] ) {
+
+			near.push( t );
+			const a = find( I[ 3 * t ] ), b = find( I[ 3 * t + 1 ] ), c = find( I[ 3 * t + 2 ] );
+			parent[ b ] = a; parent[ find( c ) ] = a;
+
+		}
+		const groups = new Map();		// (root, UV tile of its centre) -> triangles: a big island (the stalls floor) in pieces
+		for ( const t of near ) {
+
+			const [ a, b, c ] = [ I[ 3 * t ], I[ 3 * t + 1 ], I[ 3 * t + 2 ] ];
+			const tu = Math.floor( ( U[ 2 * a ] + U[ 2 * b ] + U[ 2 * c ] ) / 3 / NEAR_TILE ), tv = Math.floor( ( U[ 2 * a + 1 ] + U[ 2 * b + 1 ] + U[ 2 * c + 1 ] ) / 3 / NEAR_TILE );
+			const k = `${ find( a ) }/${ tu },${ tv }`;
+			if ( ! groups.has( k ) ) groups.set( k, [] );
+			groups.get( k ).push( t );
+
+		}
+		for ( const ts of groups.values() ) {
+
+			let u0 = 1, v0 = 1, u1 = 0, v1 = 0, dens = 0;
+			for ( const t of ts ) {
+
+				for ( let c = 0; c < 3; ++ c ) { const v = I[ 3 * t + c ], uu = Math.min( 1, Math.max( 0, U[ 2 * v ] ) ), vv = Math.min( 1, Math.max( 0, U[ 2 * v + 1 ] ) ); u0 = Math.min( u0, uu ); v0 = Math.min( v0, vv ); u1 = Math.max( u1, uu ); v1 = Math.max( v1, vv ); }
+				dens = Math.max( dens, T.texels[ t ] );
+
+			}
+			const key = [ u0, v0, u1, v1 ].map( x => Math.round( x * 8192 ) ).join( ',' ) + '/' + ts.length;
+			let s = byKey.get( key );
+			if ( ! s ) { s = { u0, v0, u1, v1, ideal: dens, cap: o.w, tris: [] }; byKey.set( key, s ); e.islands.push( s ); }
+			s.ideal = Math.max( s.ideal, dens );
+			s.tris.push( [ p, ts ] );
+
+		}
+
+	}
+	// its near material's pack: where most of its near triangles are (the atlas, and ORM and
+	// normal maps it shares with the far triangles: not both packs')
+	let inStage = 0, all = 0;
+	for ( const s of e.islands ) for ( const [ p, ts ] of s.tris ) for ( const t of ts ) { ++ all; inStage += tri.get( p ).pack[ t ] === 0; }
+	e.nearPack = inStage * 2 >= all ? 0 : 1;
+
+}
+// the budget: one scale on what each island needs, each at most its original's density (so one
+// at its cap keeps it while the rest share the budget); an island gaining too little over the
+// texture it has now stays as it was, and the rest share the budget again
+const texelsAt = ( list, k ) => list.reduce( ( a, s ) => a + ( s.u1 - s.u0 ) * ( s.v1 - s.v0 ) * Math.min( s.ideal * k, s.cap ) ** 2, 0 );
+for ( let pass = 0; pass < 4; ++ pass ) {
+
+	const list = [ ...mats.values() ].flatMap( e => e.islands );
+	if ( ! list.length ) break;
+	let lo = 0, hi = 1;
+	if ( texelsAt( list, hi ) > opt.nearBudget * 1e6 ) for ( let i = 0; i < 40; ++ i ) { const k = ( lo + hi ) / 2; if ( texelsAt( list, k ) > opt.nearBudget * 1e6 ) hi = k; else lo = k; }
+	for ( const e of mats.values() ) {
+
+		if ( ! e.islands.length ) continue;
+		const ref = sizeFor( needOf( e, e.nearPack, 'all' ), e.base, e.nearPack ? opt.houseTexture : opt.maxTexture ) || e.base;		// (no near islands yet: all its triangles)
+		e.islands = e.islands.filter( s => { s.dens = Math.min( s.ideal * hi, s.cap ); return s.dens >= NEAR_GAIN * ref; } );
+
+	}
+
+}
+for ( const e of mats.values() ) e.islands.forEach( ( s, k ) => { for ( const [ p, ts ] of s.tris ) for ( const t of ts ) tri.get( p ).island[ t ] = k; } );
 
 // 3. materials: the PBR maps per source texture, encoded at each pack's size
 const sheenExt = doc.createExtension( KHRMaterialsSheen );
@@ -468,9 +813,13 @@ for ( const [ m, e ] of mats ) {
 	const sizes = {};
 	for ( const pack of [ 'stage', 'house' ] ) {
 
-		const s = sizeFor( e.need[ pack ], D.w, pack === 'stage' ? opt.maxTexture : opt.houseTexture );
+		// (the base colour for the far triangles only, where near ones have their atlas; the
+		// ORM and normal maps for all)
+		const pk = pack === 'stage' ? 0 : 1, cap = pack === 'stage' ? opt.maxTexture : opt.houseTexture;
+		const s = sizeFor( needOf( e, pk, 'all' ), D.w, cap );
 		if ( ! s ) continue;
-		sizes[ pack ] = s;
+		const sb = e.islands.length ? sizeFor( needOf( e, pk, 'far' ), D.w, cap ) : s;
+		sizes[ pack ] = sb === s ? `${ s }` : `${ sb || '-' }/${ s }`;
 		const half = Math.max( MIN_TEXTURE, s / 2 );
 		const img = async ( buf, size, q, name ) => {
 
@@ -479,7 +828,7 @@ for ( const [ m, e ] of mats ) {
 			return doc.createTexture( `${ m.getName() }-${ name }-${ pack }` ).setImage( b ).setMimeType( 'image/webp' );
 
 		};
-		const t = { base: await img( D.rgb, s, 85, 'base' ), orm: await img( D.orm, half, 90, 'orm' ), normal: await img( D.nor, half, 92, 'normal' ) };
+		const t = { base: sb ? await img( D.rgb, sb, 85, 'base' ) : null, orm: await img( D.orm, half, 90, 'orm' ), normal: await img( D.nor, half, 92, 'normal' ) };
 		if ( emissive ) {
 
 			const { data, info } = await sharp( emissive.getImage() ).removeAlpha().raw().toBuffer( { resolveWithObject: true } );
@@ -491,19 +840,35 @@ for ( const [ m, e ] of mats ) {
 		packTex[ pack ].set( m, t );
 
 	}
-	texLog.push( `${ m.getName() } (${ e.look }): stage ${ sizes.stage ?? '-' }, house ${ sizes.house ?? '-' }; gain ${ D.stats.gain.toFixed( 2 ) }, gold ${ ( 100 * D.stats.gold ).toFixed( 0 ) } %, islands ${ ( 100 * D.stats.coverage ).toFixed( 0 ) } %` );
+	// its near atlas (the stage pack's): the near islands from the original, the same albedo
+	let nearNote = '';
+	if ( e.islands.length ) {
+
+		const A = await packNear( e.original, e.islands );
+		const b = await sharp( albedoOf( A.data, A.w * A.h, e.look, D.stats.gain ), { raw: { width: A.w, height: A.h, channels: 3 } } ).webp( { quality: 85, effort: 5 } ).toBuffer();
+		const np = e.nearPack ? 'house' : 'stage';
+		texBytes[ np ] += b.length; gpu[ np ] += A.w * A.h * 4 * 4 / 3; nearTexels += A.w * A.h;
+		e.nearTexture = doc.createTexture( `${ m.getName() }-near` ).setImage( b ).setMimeType( 'image/webp' );
+		e.nearSize = [ A.w, A.h ];
+		const d = e.islands.map( s => s.dens ).sort( ( x, y ) => x - y );
+		nearNote = `; near (${ np }) ${ A.w }x${ A.h }: ${ e.islands.length } islands at ${ Math.round( d[ 0 ] ) }-${ Math.round( d[ d.length - 1 ] ) } texels/UV (original ${ e.original.w }), ${ ( b.length / 1e6 ).toFixed( 2 ) } MB`;
+
+	}
+	texLog.push( `${ m.getName() } (${ e.look }): stage ${ sizes.stage ?? '-' }, house ${ sizes.house ?? '-' }; gain ${ D.stats.gain.toFixed( 2 ) }, gold ${ ( 100 * D.stats.gold ).toFixed( 0 ) } %, islands ${ ( 100 * D.stats.coverage ).toFixed( 0 ) } %${ nearNote }` );
 	// the material's own settings (the textures are set per pack below)
 	m.setBaseColorFactor( [ 1, 1, 1, 1 ] ).setRoughnessFactor( 1 ).setMetallicFactor( 1 ).setDoubleSided( true ).setAlphaMode( 'OPAQUE' );
 	m.setExtras( { look: e.look, lamp: !! emissive } );
 	if ( L.sheen ) m.setExtension( 'KHR_materials_sheen', sheenExt.createSheen().setSheenColorFactor( linear( L.sheen ) ).setSheenRoughnessFactor( 0.5 ) );
 	m.setBaseColorTexture( null ).setEmissiveTexture( null ).setMetallicRoughnessTexture( null ).setOcclusionTexture( null ).setNormalTexture( null );
 	if ( ! emissive ) m.setEmissiveFactor( [ 0, 0, 0 ] );
+	if ( e.nearTexture ) e.nearMaterial = m.clone().setName( `${ m.getName() }-near` ).setExtras( { look: e.look, lamp: !! emissive, near: true } );
 	used.add( tex ); if ( emissive ) used.add( emissive );
 	console.log( '  ' + texLog[ texLog.length - 1 ] );
 
 }
 log.push( ...texLog.map( s => '  ' + s ) );
 for ( const t of used ) t.dispose();
+if ( opt.originals ) say( `near atlases (within ${ opt.near } m, ${ opt.nearBudget } Mtexel budget): ${ ( nearTexels / 1e6 ).toFixed( 2 ) } Mtexels, ${ [ ...mats.values() ].filter( e => e.nearTexture ).length } materials` );
 
 // 4. bands, simplified by distance (UVs kept: a seam is a border the simplifier keeps); grouped by pack
 const groups = {};
@@ -514,12 +879,32 @@ for ( const node of scene.listChildren().filter( n => n.getMesh() ) ) {
 	for ( const prim of node.getMesh().listPrimitives() ) {
 
 		before += prim.getIndices().getCount() / 3;
-		const look = mats.get( prim.getMaterial() ).look; perLook[ look ] ??= [ 0, 0 ]; perLook[ look ][ 0 ] += prim.getIndices().getCount() / 3;
-		weldPrimitive( prim, {} );
-		for ( const { band, primitive } of splitByZ( doc, prim ) ) {
+		const e = mats.get( prim.getMaterial() ), look = e.look; perLook[ look ] ??= [ 0, 0 ]; perLook[ look ][ 0 ] += prim.getIndices().getCount() / 3;
+		// the near triangles: their own primitive, the near material, TEXCOORD_1 into its atlas;
+		// in its pack, not simplified (they are close)
+		const T = tri.get( prim );
+		let far = prim;
+		if ( e.nearTexture && T.island.some( k => k >= 0 ) ) {
+
+			const nearTris = [], farTris = [];
+			for ( let t = 0; t < T.island.length; ++ t ) ( T.island[ t ] >= 0 ? nearTris : farTris ).push( t );
+			const U = prim.getAttribute( 'TEXCOORD_0' ).getArray(), [ W, H ] = e.nearSize, ow = e.original.w, oh = e.original.h;
+			const np = subPrimitive( doc, prim, nearTris, ( v, t ) => {
+
+				const s = e.islands[ T.island[ t ] ];
+				return [ ( s.dx + ( U[ 2 * v ] * ow - s.sx ) * s.dw / s.sw ) / W, ( s.dy + ( U[ 2 * v + 1 ] * oh - s.sy ) * s.dh / s.sh ) / H ];
+
+			}, t => T.island[ t ] ).setMaterial( e.nearMaterial );
+			after += nearTris.length; perLook[ look ][ 1 ] += nearTris.length;
+			group( e.nearPack ? 'house' : 'stage' ).addChild( doc.createNode( `${ node.getName() }#near` ).setMesh( doc.createMesh().addPrimitive( np ) ) );
+			far = farTris.length ? subPrimitive( doc, prim, farTris ) : null;
+
+		}
+		if ( ! far ) continue;
+		for ( const { band, primitive } of splitByZ( doc, far ) ) {
 
 			const P = primitive.getAttribute( 'POSITION' ), lo = P.getMin( [] ), hi = P.getMax( [] );
-			if ( opt.simplify ) {
+			if ( opt.simplify && ! refined.has( prim ) ) {
 
 				const d = Math.max( 0.3, boxDistance( { min: lo, max: hi }, CAMERA_ZONE ) );
 				const ext = Math.max( ...[ 0, 1, 2 ].map( k => hi[ k ] - lo[ k ] ), 1e-3 );
@@ -544,12 +929,19 @@ say( `bands of ${ BAND } m${ opt.simplify ? `, simplified to ${ opt.errorPx } px
 const meta = { frame: 'metres, y up, x across (audience right +), z from the stage front edge to the back of the hall (stage z < 0), y 0 at the stalls floor',
 	stageFloor: { front: 0.61, back: 1.68 }, cameraZone: CAMERA_ZONE,
 	source: `${ path.basename( SRC ) }: geometry and baked textures; PBR maps derived (tools/hall-asset.mjs)`,
-	options: { errorPx: opt.errorPx, texel: opt.texel, maxTexture: opt.maxTexture, houseTexture: opt.houseTexture, percentile: PERCENTILE, lockBorder: opt.lockBorder, simplify: opt.simplify, band: BAND } };
+	options: { errorPx: opt.errorPx, texel: opt.texel, maxTexture: opt.maxTexture, houseTexture: opt.houseTexture, percentile: PERCENTILE, near: opt.originals ? { within: opt.near, budget: opt.nearBudget, gain: NEAR_GAIN } : null, lockBorder: opt.lockBorder, simplify: opt.simplify, band: BAND } };
 for ( const pack of [ 'stage', 'house' ] ) {
 
 	for ( const [ m, t ] of packTex[ pack ] ) {		// this pack's textures on the (shared) materials, then cloned
 
 		m.setBaseColorTexture( t.base ).setMetallicRoughnessTexture( t.orm ).setOcclusionTexture( t.orm ).setNormalTexture( t.normal ).setEmissiveTexture( t.emissive ?? null );
+		const e = mats.get( m );
+		if ( e?.nearMaterial && pack === ( e.nearPack ? 'house' : 'stage' ) ) {		// its atlas on TEXCOORD_1, the rest its pack's
+
+			e.nearMaterial.setBaseColorTexture( e.nearTexture ).setMetallicRoughnessTexture( t.orm ).setOcclusionTexture( t.orm ).setNormalTexture( t.normal ).setEmissiveTexture( t.emissive ?? null );
+			e.nearMaterial.getBaseColorTextureInfo().setTexCoord( 1 );
+
+		}
 
 	}
 	const d = cloneDocument( doc ), s = d.getRoot().getDefaultScene() ?? d.getRoot().listScenes()[ 0 ];
