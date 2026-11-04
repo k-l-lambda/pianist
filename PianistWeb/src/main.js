@@ -37,10 +37,10 @@ await new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
 // scene parameters from the URL: the query (?gi&style=grand-black) and/or the hash, which wins:
 //   #?gi&grand-black&pathtrace&handheld&screen&script=path/to/scene.yaml
 // Bare words in the hash: a piano style id, `realtime` / `pathtrace`, or a flag (gi, handheld,
-// screen, loading, capture). key=value: style, mode, gi=0|1, exposure, shadow=vsm, preset, shake,
-// script (a name in public/scripts/, a path from the site root, or a URL), at (start the script
-// that far in: 95, 1:35, 1:35.5; the part before runs silently at once). Changing the hash
-// reloads the scene with the new parameters.
+// screen, loading, capture). key=value: style, mode, gi=0|1, exposure, tone=AgX|ACES|Neutral,
+// shadow=vsm, preset, shake, hall=procedural, script (a name in public/scripts/, a path from the
+// site root, or a URL), at (start the script that far in: 95, 1:35, 1:35.5; the part before runs
+// silently at once). Changing the hash reloads the scene with the new parameters.
 const params = new URLSearchParams( location.search );
 for ( const [ key, value ] of new URLSearchParams( location.hash.replace( /^#\??/, '' ) ) ) {
 
@@ -58,7 +58,7 @@ const settings = {
 	// global illumination / high quality: off favours frame rate (see applyQuality)
 	gi: params.has( 'gi' ) ? params.get( 'gi' ) !== '0' : RENDER,		// offline render (rendermode.js): on
 	exposure: Number( params.get( 'exposure' ) ?? 1.7 ),
-	toneMapping: 'AgX',
+	toneMapping: params.get( 'tone' ) ?? 'AgX',		// AgX | ACES | Neutral (else the venue preset's)
 	ao: true,
 	aoRadius: 0.25,
 	bloom: 0.12,
@@ -217,14 +217,18 @@ composer.addPass( gtaoPass );
 // the bloom's mips spread it into large black rectangles (offline render, 琴伤 ~72 s). Non-finite
 // values to 0, the rest capped at 4096: the glare keeps its halo (256 visibly shrank it), and the
 // bloom's sum of five mips stays under half float's 65504
+// (and the venue preset's saturation, in linear light before the tone mapping: ACES warms and
+// saturates the Berlin hall's gilt and ivory beyond its renders)
 const hdrClamp = new ShaderPass( {
-	uniforms: { tDiffuse: { value: null }, uMax: { value: 4096 } },
+	uniforms: { tDiffuse: { value: null }, uMax: { value: 4096 }, uSaturation: { value: 1 } },
 	vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }',
-	fragmentShader: `uniform sampler2D tDiffuse; uniform float uMax; varying vec2 vUv;
+	fragmentShader: `uniform sampler2D tDiffuse; uniform float uMax; uniform float uSaturation; varying vec2 vUv;
 		void main() {
 			vec4 c = texture2D( tDiffuse, vUv );
 			c = mix( c, vec4( 0.0 ), vec4( notEqual( c, c ) ) );		// NaN
-			gl_FragColor = vec4( clamp( c.rgb, 0.0, uMax ), clamp( c.a, 0.0, 1.0 ) );		// Inf, too bright
+			vec3 rgb = clamp( c.rgb, 0.0, uMax );		// Inf, too bright
+			rgb = max( mix( vec3( dot( rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) ), rgb, uSaturation ), 0.0 );
+			gl_FragColor = vec4( rgb, clamp( c.a, 0.0, 1.0 ) );
 		}`,
 } );
 composer.addPass( hdrClamp );
@@ -398,11 +402,13 @@ function applySpecularEnv() {
 
 }
 
+let toneChosen = params.has( 'tone' );		// tone mapping set by hand (?tone= or the GUI)
 function refreshLighting() {
 
 	venue.updateLights();
 	renderer.toneMappingExposure = settings.exposure * venue.light.exposure;
-	renderer.toneMapping = TONE[ settings.toneMapping ];
+	renderer.toneMapping = TONE[ toneChosen ? settings.toneMapping : venue.light.tone ?? settings.toneMapping ];		// (a venue's preset may ask for one)
+	hdrClamp.uniforms.uSaturation.value = venue.light.saturation ?? 1;
 	probe.bounces = settings.gi ? settings.giBounces : 1;
 	renderer.shadowMap.needsUpdate = true;
 	shadowsDirty = true;
@@ -737,7 +743,7 @@ function buildLightFolder() {
 	for ( const c of [ ...fLight.controllers ] ) c.destroy();
 	fLight.add( venue, 'preset', Object.keys( venue.presets ) ).name( 'Preset' ).onChange( name => {
 
-		Object.assign( venue.light, venue.presets[ name ] );
+		Object.assign( venue.light, { tone: undefined, saturation: undefined }, venue.presets[ name ] );
 		fLight.controllersRecursive().forEach( c => c.updateDisplay() );
 		refreshLighting();
 
@@ -821,6 +827,7 @@ const fRender = gui.addFolder( 'Rendering' ).close();
 fRender.add( settings, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' ).onChange( () => renderer.toneMappingExposure = settings.exposure * venue.light.exposure );
 fRender.add( settings, 'toneMapping', Object.keys( TONE ) ).name( 'Tone mapping' ).onChange( v => {
 
+	toneChosen = true;		// from now on the GUI's, over the venues' presets
 	renderer.toneMapping = TONE[ v ];
 	outputPass.needsUpdate = true;
 

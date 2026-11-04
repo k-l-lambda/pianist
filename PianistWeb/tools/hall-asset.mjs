@@ -9,11 +9,10 @@
 //     wings mirror each other in position but not in UVs (each its own part of the atlas): stored
 //     both, no instancing.
 // Materials: from each baked texture (in its UV islands only, so nothing bleeds across a seam)
-//   - albedo: the texture with its broad baked lighting divided out (the luminance blurred over
-//     LIGHT_SIGMA of the texture, relative to its islands' mean, to the power DELIGHT), then scaled
-//     to the look's luminance (LOOKS: after photographs of the Großer Saal);
-//   - ORM: occlusion from the same baked light where it is darker than the mean (half of it, to
-//     the power AO); roughness the look's, less on fine bright detail; metalness: gold-coloured
+//   - albedo: the texture with part of its broad baked lighting divided out (the luminance blurred
+//     over LIGHT_SIGMA of the texture, relative to its islands' mean, to the power DELIGHT), then
+//     nudged towards the look's luminance (LOOKS: after photographs of the Großer Saal);
+//   - ORM: occlusion: the part of the baked darkening taken out of the albedo (AO); roughness the look's, less on fine bright detail; metalness: gold-coloured
 //     texels of the gilt looks (hue 28-58°, saturation over ~0.5, bright) are gold leaf (metallic 1, rougher
 //     in its dark creases), the rest the look's;
 //   - normal: the fine detail of the texture (a high-pass of its luminance) as a height, at the
@@ -74,8 +73,8 @@ const MIN_TEXTURE = 128;
 const PERCENTILE = 0.75;		// of a texture's triangles (by UV area) that get their density
 // materials from the baked textures
 const LIGHT_SIGMA = 1 / 48;		// of the texture's width: the scale of the baked lighting taken out
-const DELIGHT = 0.75;				// how much of it (1: all)
-const AO = 0.5;					// the part of the darkening kept as occlusion
+const DELIGHT = 0;				// how much of it (1: all; the rest stays: the hall's light and shade, as in its renders)
+const AO = 1;					// the part of the darkening taken out kept as occlusion
 const DETAIL_SIGMA = 1 / 400;		// of the width: the fine detail (normals, roughness)
 
 // ---- the source's frame -> ours. Source world: cm, z up; the hall's axis at x = -35.5 cm, the
@@ -266,7 +265,8 @@ async function derive( image, uv, look ) {
 		if ( mask[ i ] ) aSum += luma( alb[ 3 * i ], alb[ 3 * i + 1 ], alb[ 3 * i + 2 ] );
 
 	}
-	const target = luma( ...linear( L.color ) ), gain = Math.min( 3, Math.max( 0.5, target / Math.max( 1e-4, aSum / Math.max( 1, cnt ) ) ) );
+	// (part of the way only: the source's own tones are the hall's, the looks a nudge)
+	const target = luma( ...linear( L.color ) ), gain = Math.min( 1.6, Math.max( 0.7, ( target / Math.max( 1e-4, aSum / Math.max( 1, cnt ) ) ) ** 0.35 ) );
 	// metalness (gold leaf), roughness, from the source's colours and the fine detail
 	const metal = new Float32Array( n );
 	let gold = 0;

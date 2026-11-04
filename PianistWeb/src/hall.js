@@ -63,10 +63,12 @@ export const HALL_PRESETS = {
 // the Konzerthaus Berlin (src/berlinhall.js): the same presets, its house lights its 14
 // chandeliers (and the wall sconces' glow), its lamps the candelabras round the stalls
 export const BERLIN_PRESETS = {
+	// (ACES: the gilt and the shadows under the galleries keep their contrast, as in the hall's
+	// renders; less saturated, as ACES warms the ivory towards yellow)
 	'Spotlight': { key: 0, keyColor: '#fff1de', top: 1000, topColor: '#fff0dc', topAngle: 15, wash: 0.04, washColor: '#ffd9ad', house: 0.06, houseColor: '#ffc98a', lamps: 0.15, env: 0.12, exposure: 1.25 },
-	'Recital': { key: 900, keyColor: '#fff1de', top: 420, topColor: '#ffe4c0', topAngle: 24, wash: 3, washColor: '#ffd9ad', house: 0.3, houseColor: '#ffcf94', lamps: 0.5, env: 0.3, exposure: 0.95 },
-	'House lights up': { key: 600, keyColor: '#fff1de', top: 260, topColor: '#ffe4c0', topAngle: 24, wash: 2, washColor: '#ffd9ad', house: 0.8, houseColor: '#ffd29c', lamps: 1, env: 0.5, exposure: 0.8 },
-	'Rehearsal': { key: 500, keyColor: '#ffffff', top: 250, topColor: '#fff8ee', topAngle: 26, wash: 6, washColor: '#f6f1e8', house: 0.6, houseColor: '#ffe2bd', lamps: 0.3, env: 0.45, exposure: 0.85 },
+	'Recital': { key: 900, keyColor: '#fff4e6', top: 420, topColor: '#ffeedd', topAngle: 24, wash: 2, washColor: '#ffe9d2', house: 0.3, houseColor: '#ffe6c6', lamps: 0.5, env: 0.1, exposure: 0.75, tone: 'ACES', saturation: 0.75 },
+	'House lights up': { key: 600, keyColor: '#fff4e6', top: 260, topColor: '#ffeedd', topAngle: 24, wash: 1.5, washColor: '#ffe9d2', house: 1, houseColor: '#ffeedd', lamps: 1, env: 0.15, exposure: 0.56, tone: 'ACES', saturation: 0.75 },
+	'Rehearsal': { key: 500, keyColor: '#ffffff', top: 250, topColor: '#fff8ee', topAngle: 26, wash: 5, washColor: '#f6f1e8', house: 0.6, houseColor: '#fff4e8', lamps: 0.3, env: 0.2, exposure: 0.62, tone: 'ACES', saturation: 0.7 },
 };
 const CHANDELIER_CD = 45;		// each chandelier's intensity (cd) at house = 1
 // and its glow: an additive halo round its lit candle ring (without bloom a lit chandelier reads
@@ -242,7 +244,7 @@ export class ConcertHall {
 	_shellChanged( was ) {
 
 		this._showModel();
-		if ( this.berlinShown !== was ) Object.assign( this.light, this.presets[ this.preset ] );		// the preset, in this shell
+		if ( this.berlinShown !== was ) Object.assign( this.light, { tone: undefined, saturation: undefined }, this.presets[ this.preset ] );		// the preset, in this shell
 		this.updateLights();
 		this.onModel?.();
 
