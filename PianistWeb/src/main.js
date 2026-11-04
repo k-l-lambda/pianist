@@ -361,7 +361,7 @@ function applyQuality( relight = true ) {
 	composer.setPixelRatio( renderer.getPixelRatio() );
 	resize();
 	applyAO();
-	bloomPass.enabled = hq && settings.bloom > 0;
+	applyBloom();
 	// full resolution: the strings and pins behind the glass must stay sharp
 	renderer.transmissionResolutionScale = 1.0;
 	room.setQuality( hq );
@@ -403,12 +403,24 @@ function applySpecularEnv() {
 }
 
 let toneChosen = params.has( 'tone' );		// tone mapping set by hand (?tone= or the GUI)
+let bloomChosen = false;		// bloom strength set by hand (the GUI)
+/** Bloom: in full quality at the GUI's strength, or wherever the venue's preset asks for it (the
+ * Berlin hall's lit chandeliers: also in real time), at its strength and threshold. */
+function applyBloom() {
+
+	const own = ! bloomChosen && venue?.light.bloom !== undefined;
+	bloomPass.strength = own ? venue.light.bloom : settings.bloom;
+	bloomPass.threshold = venue?.light.bloomThreshold ?? 0.92;
+	bloomPass.enabled = ( settings.gi || own ) && bloomPass.strength > 0;
+
+}
 function refreshLighting() {
 
 	venue.updateLights();
 	renderer.toneMappingExposure = settings.exposure * venue.light.exposure;
 	renderer.toneMapping = TONE[ toneChosen ? settings.toneMapping : venue.light.tone ?? settings.toneMapping ];		// (a venue's preset may ask for one)
 	hdrClamp.uniforms.uSaturation.value = venue.light.saturation ?? 1;
+	applyBloom();
 	probe.bounces = settings.gi ? settings.giBounces : 1;
 	renderer.shadowMap.needsUpdate = true;
 	shadowsDirty = true;
@@ -743,7 +755,7 @@ function buildLightFolder() {
 	for ( const c of [ ...fLight.controllers ] ) c.destroy();
 	fLight.add( venue, 'preset', Object.keys( venue.presets ) ).name( 'Preset' ).onChange( name => {
 
-		Object.assign( venue.light, { tone: undefined, saturation: undefined }, venue.presets[ name ] );
+		Object.assign( venue.light, { tone: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined }, venue.presets[ name ] );
 		fLight.controllersRecursive().forEach( c => c.updateDisplay() );
 		refreshLighting();
 
@@ -837,8 +849,8 @@ fRender.add( settings, 'ao' ).name( 'GTAO' ).onChange( applyAO );
 fRender.add( settings, 'aoRadius', 0.02, 1, 0.01 ).name( 'AO radius' ).onChange( applyAO );
 fRender.add( settings, 'bloom', 0, 1, 0.01 ).name( 'Bloom' ).onChange( v => {
 
-	bloomPass.strength = v;
-	bloomPass.enabled = settings.gi && v > 0;
+	bloomChosen = true;
+	applyBloom();
 
 } );
 fRender.add( settings, 'ptBounces', 2, 16, 1 ).name( 'PT bounces' ).onChange( v => {

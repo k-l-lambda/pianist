@@ -64,30 +64,15 @@ export const HALL_PRESETS = {
 // chandeliers (and the wall sconces' glow), its lamps the candelabras round the stalls
 export const BERLIN_PRESETS = {
 	// (ACES: the gilt and the shadows under the galleries keep their contrast, as in the hall's
-	// renders; less saturated, as ACES warms the ivory towards yellow)
+	// renders; less saturated, as ACES warms the ivory towards yellow); bloom (also in real time)
+	// over the lit bulbs only: the walls stay under ~1.6 in the HDR buffer, the organ's highlights
+	// ~3, the bulbs reach 7-10
 	'Spotlight': { key: 0, keyColor: '#fff1de', top: 1000, topColor: '#fff0dc', topAngle: 15, wash: 0.04, washColor: '#ffd9ad', house: 0.06, houseColor: '#ffc98a', lamps: 0.15, env: 0.12, exposure: 1.25 },
-	'Recital': { key: 900, keyColor: '#fff4e6', top: 420, topColor: '#ffeedd', topAngle: 24, wash: 2, washColor: '#ffe9d2', house: 0.3, houseColor: '#ffe6c6', lamps: 0.5, env: 0.1, exposure: 0.75, tone: 'ACES', saturation: 0.75 },
-	'House lights up': { key: 600, keyColor: '#fff4e6', top: 260, topColor: '#ffeedd', topAngle: 24, wash: 1.5, washColor: '#ffe9d2', house: 1, houseColor: '#ffeedd', lamps: 1, env: 0.15, exposure: 0.56, tone: 'ACES', saturation: 0.75 },
-	'Rehearsal': { key: 500, keyColor: '#ffffff', top: 250, topColor: '#fff8ee', topAngle: 26, wash: 5, washColor: '#f6f1e8', house: 0.6, houseColor: '#fff4e8', lamps: 0.3, env: 0.2, exposure: 0.62, tone: 'ACES', saturation: 0.7 },
+	'Recital': { key: 900, keyColor: '#fff4e6', top: 420, topColor: '#ffeedd', topAngle: 24, wash: 2, washColor: '#ffe9d2', house: 0.3, houseColor: '#ffe6c6', lamps: 0.5, env: 0.1, exposure: 0.75, tone: 'ACES', saturation: 0.75, bloom: 0.3, bloomThreshold: 4 },
+	'House lights up': { key: 600, keyColor: '#fff4e6', top: 260, topColor: '#ffeedd', topAngle: 24, wash: 1.5, washColor: '#ffe9d2', house: 1, houseColor: '#ffeedd', lamps: 1, env: 0.15, exposure: 0.56, tone: 'ACES', saturation: 0.75, bloom: 0.3, bloomThreshold: 4 },
+	'Rehearsal': { key: 500, keyColor: '#ffffff', top: 250, topColor: '#fff8ee', topAngle: 26, wash: 5, washColor: '#f6f1e8', house: 0.6, houseColor: '#fff4e8', lamps: 0.3, env: 0.2, exposure: 0.62, tone: 'ACES', saturation: 0.7, bloom: 0.25, bloomThreshold: 4 },
 };
 const CHANDELIER_CD = 45;		// each chandelier's intensity (cd) at house = 1
-// and its glow: an additive halo round its lit candle ring (without bloom a lit chandelier reads
-// as white crystal only); its size (m) and brightness at house = 1
-const GLOW_SIZE = 4.2, GLOW = 3.5;
-const GLOW_FRONT = 1.5;		// m: each halo drawn this far towards the eye (not hidden in its chandelier's crystal)
-
-/** A soft round glow (radial falloff), white: tinted by the sprite's colour. */
-function glowTexture() {
-
-	const c = document.createElement( 'canvas' ); c.width = c.height = 128;
-	const g = c.getContext( '2d' ), r = g.createRadialGradient( 64, 64, 0, 64, 64, 64 );
-	r.addColorStop( 0, 'rgba(255,255,255,1)' ); r.addColorStop( 0.08, 'rgba(255,255,255,0.8)' ); r.addColorStop( 0.2, 'rgba(255,255,255,0.3)' );
-	r.addColorStop( 0.45, 'rgba(255,255,255,0.07)' ); r.addColorStop( 1, 'rgba(255,255,255,0)' );
-	g.fillStyle = r; g.fillRect( 0, 0, 128, 128 );
-	const t = new THREE.CanvasTexture( c ); t.colorSpace = THREE.SRGBColorSpace;
-	return t;
-
-}
 
 const PIANO_Z = - HALL.pianoAt;
 const H_WASH = HALL.shellWall + HALL.coveRise - 0.35;		// the stage wash, under the shell's ceiling
@@ -244,7 +229,7 @@ export class ConcertHall {
 	_shellChanged( was ) {
 
 		this._showModel();
-		if ( this.berlinShown !== was ) Object.assign( this.light, { tone: undefined, saturation: undefined }, this.presets[ this.preset ] );		// the preset, in this shell
+		if ( this.berlinShown !== was ) Object.assign( this.light, { tone: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined }, this.presets[ this.preset ] );		// the preset, in this shell
 		this.updateLights();
 		this.onModel?.();
 
@@ -1207,28 +1192,14 @@ export class ConcertHall {
 		house.rotation.set( - Math.PI / 2, 0, 0 );
 		this.lights.add( house );
 		this.house = house;
-		// the Berlin hall's chandeliers (no shadows: they hang high, over the stalls and the stage),
-		// each with its glow
-		const glowMap = glowTexture();
+		// the Berlin hall's chandeliers (no shadows: they hang high, over the stalls and the stage;
+		// their glow: the bloom, see BERLIN_PRESETS)
 		this.chandeliers = BERLIN_CHANDELIERS.map( p => {
 
 			const l = new THREE.PointLight( '#ffcf94', 0, 0, 2 );
 			l.position.copy( this.fromBerlin( ...p ) );
 			l.visible = false;
-			const glow = new THREE.Sprite( new THREE.SpriteMaterial( { map: glowMap, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false, toneMapped: true } ) );
-			glow.position.copy( this.fromBerlin( p[ 0 ], p[ 1 ] + 0.25, p[ 2 ] ) );
-			glow.scale.setScalar( GLOW_SIZE );
-			glow.visible = false;
-			const at = glow.position.clone(), eye = new THREE.Vector3();
-			glow.onBeforeRender = ( r, s, camera ) => {		// (before three.js computes its model-view)
-
-				eye.setFromMatrixPosition( camera.matrixWorld ).sub( at );
-				const d = eye.length();
-				glow.matrixWorld.setPosition( eye.multiplyScalar( Math.min( GLOW_FRONT, 0.5 * d ) / Math.max( d, 1e-3 ) ).add( at ) );
-
-			};
-			l.userData.glow = glow;
-			this.lights.add( l, glow );
+			this.lights.add( l );
 			return l;
 
 		} );
@@ -1292,9 +1263,6 @@ export class ConcertHall {
 			c.intensity = CHANDELIER_CD * L.house;
 			c.color.set( L.houseColor );
 			c.visible = berlin && L.house > 0;
-			const g = c.userData.glow;
-			g.material.color.set( L.houseColor ).multiplyScalar( GLOW * L.house );
-			g.visible = c.visible;
 
 		}
 		this.materials.lamp.emissiveIntensity = 5 * L.lamps;
