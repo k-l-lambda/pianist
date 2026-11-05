@@ -15,6 +15,7 @@ import { buildUpright } from './upright.js';
 import { buildGrand } from './grand.js';
 import { Room } from './room.js';
 import { ConcertHall } from './hall.js';
+import { berlinProgress, berlinStatus, berlinStatusText, prefetchBerlinHall } from './berlinhall.js';
 import { GIProbe } from './gi.js';
 import { PathTracer } from './pathtracer.js';
 import { KeyShadow } from './keyshadow.js';
@@ -67,6 +68,9 @@ const settings = {
 	lidAngle: 34,
 	volume: 0.5,
 };
+
+// a grand stands in the Berlin hall (by default): fetch its packs now, while the scene builds
+if ( STYLES.find( s => s.id === settings.style )?.type === 'grand' && params.get( 'hall' ) !== 'procedural' && ! RENDER ) prefetchBerlinHall();
 
 // ---------------------------------------------------------------------------
 // renderer
@@ -796,6 +800,17 @@ const hallView = { view: 'At the piano' };
 // the shell: procedural, or the Konzerthaus Berlin's Großer Saal (local packs: src/berlinhall.js)
 // (the Berlin hall by default: loaded when the hall is first entered; ?hall=procedural for the other)
 const setHallModel = name => hall.setModel( name );
+// the Berlin hall's shaders compiled before it shows (with the lights it brings, into the composer's
+// target: its programs are keyed on the target's colour space and tone mapping)
+hall.precompile = async object => {
+
+	const was = renderer.getRenderTarget();
+	renderer.setRenderTarget( composerTarget );
+	const ready = renderer.compileAsync( object, camera, scene );
+	renderer.setRenderTarget( was );
+	await ready;
+
+};
 hall.onModel = () => {		// the shell shown changed (or Berlin finished loading): its presets and lights
 
 	if ( venue === hall ) buildLightFolder();
@@ -1275,6 +1290,26 @@ function resize() {
 
 window.addEventListener( 'resize', resize );
 
+// the hall's loading bar (its packs: download, build, textures, shaders), over the loading screen
+// or the scene; its own frames, so it moves while the loading screen hides the render loop's
+const hallBar = document.getElementById( 'hallbar' ), hallBarFill = hallBar.querySelector( 'i' ), hallBarText = hallBar.querySelector( 'span' );
+( function updateHallBar() {
+
+	const on = [ 'download', 'build', 'upload', 'compile' ].includes( berlinStatus.phase ) || berlinStatus.phase === 'failed' && hall.model === 'berlin' && venue === hall;
+	hallBar.classList.toggle( 'show', on );
+	if ( on ) {
+
+		const f = berlinProgress();
+		hallBarFill.style.transform = `scaleX(${ f.toFixed( 4 ) })`;
+		hallBar.setAttribute( 'aria-valuenow', String( Math.round( 100 * f ) ) );
+		hallBarText.textContent = berlinStatusText();
+
+	}
+	if ( berlinStatus.phase !== 'ready' ) requestAnimationFrame( updateHallBar );
+	else hallBar.classList.remove( 'show' );
+
+} )();
+
 function frame() {
 
 	updateMidiUI();
@@ -1347,7 +1382,7 @@ function frameBody( dt, scripted = false ) {
 	} else {
 
 		composer.render();
-		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ venue === hall && hall.berlinLoading ? 'hall loading… · ' : '' }${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
+		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
 
 	}
 
@@ -1359,6 +1394,7 @@ function frameBody( dt, scripted = false ) {
 applyQuality( false );
 setStyle( settings.style );
 setMode( settings.mode );
+// (the piano shows at once; the Berlin hall, still loading, after it: its bar over the scene meanwhile)
 if ( ! params.has( 'loading' ) ) document.getElementById( 'loading' ).classList.add( 'hidden' );		// ?loading keeps it (design preview)
 // URL flags applied once the scene exists (a script may change them again)
 const flag = k => params.has( k ) && params.get( k ) !== '0';
@@ -1378,7 +1414,7 @@ function startRender() {
 
 	const o = RENDER_OPTS, dt = 1 / o.fps;
 	document.head.appendChild( Object.assign( document.createElement( 'style' ), {
-		textContent: '.lil-gui, #hud, #power, #start, #drop, #loading { display: none !important; }',
+		textContent: '.lil-gui, #hud, #power, #start, #drop, #loading, #hallbar { display: none !important; }',
 	} ) );
 	let frameNo = 0;		// frames drawn so far (time of the next: frameNo / fps)
 	let out = null;		// 2D canvas for frame()

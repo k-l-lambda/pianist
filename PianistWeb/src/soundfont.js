@@ -43,7 +43,8 @@ async function openCache() {
 
 async function download() {
 
-	const res = await fetch( SOUNDFONT_URL, { cache: 'no-cache' } );
+	// (low: after the hall's packs when both load, the scene first; the synth stands in meanwhile)
+	const res = await fetch( SOUNDFONT_URL, { cache: 'no-cache', priority: 'low' } );
 	if ( ! res.ok ) throw new Error( `${ SOUNDFONT_URL }: HTTP ${ res.status }` );
 	soundfontStatus.total = Number( res.headers.get( 'content-length' ) ) || 0;
 	if ( ! res.body ) return res.arrayBuffer();

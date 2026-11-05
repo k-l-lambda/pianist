@@ -41,6 +41,18 @@
 		@keyframes ld-flow { 0%, 39% { transform: translateX( 12.5% ); opacity: 0 } 45%, 75% { opacity: 1 } 81%, 100% { transform: translateX( 212% ); opacity: 0 } }
 		@keyframes ld-breathe { 0%, 100% { opacity: .82 } 50% { opacity: 1 } }
 		@media ( prefers-reduced-motion: reduce ) { #loading .lane i, #loading .base, #loading .played b { animation: none; } }
+		/* the concert hall's loading bar (src/main.js): over the loading screen or the scene; the sheen a
+		   compositor animation, so it moves while the main thread is busy */
+		#hallbar { position: fixed; left: 50%; bottom: 9vh; z-index: 2001; width: min( 70vw, 320px ); transform: translateX( -50% ); display: grid; gap: 9px; justify-items: center; opacity: 0; visibility: hidden; transition: opacity .4s ease, visibility 0s .4s; pointer-events: none; }
+		/* over the loading screen: just under its label (the artwork's height is .7 of its width, the gap 28px, the label 11px) */
+		#loading:not(.hidden) ~ #hallbar { bottom: auto; top: calc( 50% + min( 78vw, 460px ) * .35 + 52px ); }
+		#hallbar.show { opacity: 1; visibility: visible; transition: opacity .4s ease; }
+		#hallbar .track { position: relative; width: 100%; height: 3px; border-radius: 2px; overflow: hidden; background: #ffffff1f; }
+		#hallbar .track i { position: absolute; inset: 0; background: #d9b26f; transform-origin: left; transform: scaleX( 0 ); transition: transform .25s linear; }
+		#hallbar .track b { position: absolute; top: 0; bottom: 0; width: 30%; background: linear-gradient( 90deg, #ffffff00, #ffffff59, #ffffff00 ); will-change: transform; animation: hb-sheen 1.6s ease-in-out infinite; }
+		#hallbar span { font: 500 10px/1 system-ui, sans-serif; letter-spacing: .2em; text-transform: uppercase; color: #e9e4da99; font-variant-numeric: tabular-nums; }
+		@keyframes hb-sheen { from { transform: translateX( -100% ) } to { transform: translateX( 340% ) } }
+		@media ( prefers-reduced-motion: reduce ) { #hallbar .track b { animation: none; display: none; } #hallbar .track i { transition: none; } }
 		#drop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(10,12,14,.72); border: 3px dashed rgba(255,255,255,.55); box-sizing: border-box; font-size: 20px; letter-spacing: .04em; pointer-events: none; z-index: 10; }
 		#drop.show { display: grid; }
 		/* a script opened from the URL waits here for a click: browsers start audio only after one */
@@ -121,6 +133,7 @@
 		</div>
 		<div class="label">Building scene</div>
 	</div>
+	<div id="hallbar" role="progressbar" aria-label="Loading the concert hall" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="track"><i></i><b></b></div><span></span></div>
 	<div id="hud"></div>
 	<button id="power" type="button" title="Screen power (`)" aria-label="Screen power" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M6.6 7.1a7.5 7.5 0 1 0 10.8 0"/></svg></button>
 	<div id="drop">Drop a MIDI file to play it</div>

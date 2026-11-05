@@ -127,22 +127,134 @@ export function setBerlinLamps( group, { house, lamps } ) {
 
 }
 
+// ---- loading: the packs' bytes fetched as early as the page knows it needs them (prefetchBerlinHall),
+// then parsed, built, their textures uploaded and their shaders compiled a frame at a time, so the
+// page keeps drawing (and the progress bar moving) in between ----
+
+const PACKS = [ 'stage', 'house' ];
+
+/** Loading state of the packs, for the UI. phase: idle | download | build | upload | compile | ready | failed */
+export const berlinStatus = { phase: 'idle', received: 0, total: 0 };
+
+/** 0..1 through the loading (the download most of it: what takes long on a real connection). */
+export function berlinProgress() {
+
+	const s = berlinStatus;
+	switch ( s.phase ) {
+
+		case 'download': return s.total ? 0.85 * Math.min( 1, s.received / s.total ) : 0;
+		case 'build': return 0.87;
+		case 'upload': return 0.87 + 0.08 * ( s.uploaded ?? 0 );
+		case 'compile': return 0.96;
+		case 'ready': return 1;
+		default: return 0;
+
+	}
+
+}
+
+/** A short line for the progress bar. */
+export function berlinStatusText() {
+
+	const s = berlinStatus, mb = b => ( b / 1048576 ).toFixed( 1 );
+	switch ( s.phase ) {
+
+		case 'download': return s.total ? `Loading the hall · ${ mb( s.received ) } / ${ mb( s.total ) } MB` : `Loading the hall · ${ mb( s.received ) } MB`;
+		case 'build': return 'Building the hall';
+		case 'upload': return 'Preparing textures';
+		case 'compile': return 'Preparing materials';
+		case 'failed': return 'The hall failed to load';
+		default: return '';
+
+	}
+
+}
+
+let prefetch = null;
+
+/** Start fetching the packs (safe to call repeatedly); resolves to their bytes, in PACKS' order. */
+export function prefetchBerlinHall() {
+
+	if ( prefetch ) return prefetch;
+	const base = new URL( 'berlinhall/', new URL( import.meta.env.BASE_URL, location.href ) );
+	berlinStatus.phase = 'download';
+	const got = PACKS.map( () => 0 ), size = PACKS.map( () => 0 );
+	const sum = a => a.reduce( ( x, y ) => x + y, 0 );
+	prefetch = Promise.all( PACKS.map( async ( name, i ) => {
+
+		const res = await fetch( new URL( `${ name }.glb`, base ), { priority: 'high' } );
+		if ( ! res.ok ) throw new Error( `${ name }.glb: HTTP ${ res.status }` );
+		// (a compressed response's length is not the body's: then no total, only the bytes so far)
+		size[ i ] = res.headers.get( 'content-encoding' ) ? 0 : Number( res.headers.get( 'content-length' ) ) || 0;
+		if ( size.every( v => v ) ) berlinStatus.total = sum( size );
+		if ( ! res.body ) return res.arrayBuffer();
+		const reader = res.body.getReader(), chunks = [];
+		for ( ;; ) {
+
+			const { done, value } = await reader.read();
+			if ( done ) break;
+			chunks.push( value );
+			got[ i ] += value.length;
+			berlinStatus.received = sum( got );
+
+		}
+		const out = new Uint8Array( got[ i ] );
+		let o = 0;
+		for ( const c of chunks ) { out.set( c, o ); o += c.length; }
+		return out.buffer;
+
+	} ) );
+	prefetch.catch( () => { berlinStatus.phase = 'failed'; } );
+	return prefetch;
+
+}
+
+/** Let a frame be drawn (or, in a hidden tab, where frames wait, go on after a moment). */
+const nextFrame = () => new Promise( r => { const t = setTimeout( r, 100 ); requestAnimationFrame( () => { clearTimeout( t ); setTimeout( r, 0 ); } ); } );
+
+/** Upload the group's textures to the GPU a few at a time (`renderer.initTexture`), drawing frames between. */
+async function uploadTextures( group, renderer ) {
+
+	const tex = new Set();
+	group.traverse( o => {
+
+		const m = o.material;
+		if ( ! m ) return;
+		for ( const k of [ 'map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap' ] ) if ( m[ k ] ) tex.add( m[ k ] );
+		if ( m.userData.grain ) tex.add( m.userData.grain );
+
+	} );
+	let done = 0, t = performance.now();
+	for ( const x of tex ) {
+
+		renderer.initTexture( x );
+		berlinStatus.uploaded = ++ done / tex.size;
+		if ( performance.now() - t > 30 ) { await nextFrame(); t = performance.now(); }
+
+	}
+
+}
+
 /**
  * Load the packs into one group of merged meshes in world space (`toWorld`: hall frame -> world;
- * `pianoZ`: the piano's spot, hall frame; `anisotropy`: the textures'). Resolves to the group, or
- * null when the packs are not there.
+ * `pianoZ`: the piano's spot, hall frame; `anisotropy`: the textures'; `renderer`: if given, the
+ * textures are uploaded before it resolves). Resolves to the group, or null when the packs are not
+ * there. Its shaders: compile them before showing it (ConcertHall.setModel).
  */
-export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
+export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8, renderer = null } ) {
 
-	const base = new URL( 'berlinhall/', new URL( import.meta.env.BASE_URL, location.href ) );
 	const loader = new GLTFLoader().setMeshoptDecoder( MeshoptDecoder );
-	let gltfs;
+	const base = new URL( 'berlinhall/', new URL( import.meta.env.BASE_URL, location.href ) ).href;
+	const gltfs = [];
 	try {
 
-		gltfs = await Promise.all( [ 'stage', 'house' ].map( n => loader.loadAsync( new URL( `${ n }.glb`, base ).href ) ) );
+		const bufs = await prefetchBerlinHall();
+		berlinStatus.phase = 'build';
+		for ( const b of bufs ) { await nextFrame(); gltfs.push( await loader.parseAsync( b, base ) ); }
 
 	} catch ( e ) {
 
+		berlinStatus.phase = 'failed';
 		console.warn( `Berlin hall: ${ e.message ?? e } (the packs: tools/hall-asset.mjs)` );
 		return null;
 
@@ -152,31 +264,29 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
 	const parts = new Map();		// our material -> geometries (world)
 	const busts = [];			// the composers' busts: each its own mesh, its node's transform kept
 	const ours = new Map();		// the pack's material -> ours
-	for ( const g of gltfs ) {
+	const meshes = [];
+	for ( const g of gltfs ) { g.scene.updateMatrixWorld( true ); g.scene.traverse( o => { if ( o.isMesh ) meshes.push( o ); } ); }
+	let t = performance.now();
+	for ( const o of meshes ) {
 
-		g.scene.updateMatrixWorld( true );
-		g.scene.traverse( o => {
+		if ( performance.now() - t > 30 ) { await nextFrame(); t = performance.now(); }
+		if ( ! ours.has( o.material ) ) ours.set( o.material, hallMaterial( o.material, anisotropy ) );
+		const mat = ours.get( o.material );
+		const geo = new THREE.BufferGeometry();
+		// (uv1: a near material's albedo atlas, tools/hall-asset.mjs --originals)
+		for ( const k of [ 'position', 'normal', 'uv', 'uv1' ] ) if ( o.geometry.attributes[ k ] ) geo.setAttribute( k, toFloat( o.geometry.attributes[ k ] ) );
+		geo.setIndex( o.geometry.index.clone() );
+		const W = new THREE.Matrix4().multiplyMatrices( M, o.matrixWorld );
+		if ( mat.userData.bust ) { busts.push( { geo, mat, W } ); continue; }		// (its normal map is in its own frame: not merged)
+		geo.applyMatrix4( W );
+		if ( W.determinant() < 0 ) {		// a mirrored part: wind its triangles the other way round
 
-			if ( ! o.isMesh ) return;
-			if ( ! ours.has( o.material ) ) ours.set( o.material, hallMaterial( o.material, anisotropy ) );
-			const mat = ours.get( o.material );
-			const geo = new THREE.BufferGeometry();
-			// (uv1: a near material's albedo atlas, tools/hall-asset.mjs --originals)
-			for ( const k of [ 'position', 'normal', 'uv', 'uv1' ] ) if ( o.geometry.attributes[ k ] ) geo.setAttribute( k, toFloat( o.geometry.attributes[ k ] ) );
-			geo.setIndex( o.geometry.index.clone() );
-			const W = new THREE.Matrix4().multiplyMatrices( M, o.matrixWorld );
-			if ( mat.userData.bust ) { busts.push( { geo, mat, W } ); return; }		// (its normal map is in its own frame: not merged)
-			geo.applyMatrix4( W );
-			if ( W.determinant() < 0 ) {		// a mirrored part: wind its triangles the other way round
+			const I = geo.index.array;
+			for ( let t = 0; t < I.length; t += 3 ) { const x = I[ t + 1 ]; I[ t + 1 ] = I[ t + 2 ]; I[ t + 2 ] = x; }
 
-				const I = geo.index.array;
-				for ( let t = 0; t < I.length; t += 3 ) { const x = I[ t + 1 ]; I[ t + 1 ] = I[ t + 2 ]; I[ t + 2 ] = x; }
-
-			}
-			if ( ! parts.has( mat ) ) parts.set( mat, [] );
-			parts.get( mat ).push( geo );
-
-		} );
+		}
+		if ( ! parts.has( mat ) ) parts.set( mat, [] );
+		parts.get( mat ).push( geo );
 
 	}
 
@@ -207,6 +317,7 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
 
 	}
 	for ( const g of gltfs ) g.scene.traverse( o => o.geometry?.dispose() );		// (the materials' textures: now ours)
+	if ( renderer ) { berlinStatus.phase = 'upload'; await nextFrame(); await uploadTextures( group, renderer ); }
 	return group;
 
 }

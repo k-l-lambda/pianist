@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { boxProjectUV } from './geometry.js';
-import { BERLIN, BERLIN_CHANDELIERS, berlinToHall, loadBerlinHall, setBerlinLamps } from './berlinhall.js';
+import { BERLIN, BERLIN_CHANDELIERS, berlinStatus, berlinToHall, loadBerlinHall, setBerlinLamps } from './berlinhall.js';
 
 // dimensions (m), hall frame; about 0.65 of the real hall
 export const HALL = {
@@ -174,6 +174,7 @@ export class ConcertHall {
 		this.berlin = null;			// its group once loaded (null: not loaded, or not there)
 		this.loading = Promise.resolve();
 		this.onModel = null;		// called when the shell shown changes (main.js: lights, GUI)
+		this.precompile = null;		// async ( object ): compile its shaders as the frame will draw it (main.js)
 
 	}
 
@@ -207,12 +208,19 @@ export class ConcertHall {
 			this._berlinTried = true;
 			this.berlinLoading = true;		// (meanwhile neither shell shows: not the procedural one first)
 			this._showModel();
-			this.loading = loadBerlinHall( { toWorld: TO_WORLD, pianoZ: PIANO_Z } ).then( g => {
+			this.loading = loadBerlinHall( { toWorld: TO_WORLD, pianoZ: PIANO_Z, renderer: this.baker.renderer } ).then( async g => {
 
 				this.berlin = g;
-				this.berlinLoading = false;
-				if ( g && this.active ) this.scene.add( g );
+				if ( ! g ) { this.berlinLoading = false; this._shellChanged( false ); return; }
+				// its presets and lights first (still hidden: berlinLoading), then its shaders compiled
+				// for those lights (one long freeze at its first frame otherwise), then shown
+				if ( this.active ) this.scene.add( g );
 				this._shellChanged( false );
+				berlinStatus.phase = 'compile';
+				await this.precompile?.( g );
+				berlinStatus.phase = 'ready';
+				this.berlinLoading = false;
+				this._shellChanged( true );
 
 			} );
 
@@ -238,7 +246,7 @@ export class ConcertHall {
 	_showModel() {
 
 		this.group.visible = ! this.berlinShown && ! ( this.model === 'berlin' && this.berlinLoading );
-		if ( this.berlin ) this.berlin.visible = this.berlinShown;
+		if ( this.berlin ) this.berlin.visible = this.berlinShown && ! this.berlinLoading;		// (hidden while its shaders compile)
 
 	}
 
