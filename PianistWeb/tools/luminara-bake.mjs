@@ -81,6 +81,7 @@ for ( const name of presets ) {
 		return { data: btoa( s ), scale: b.scale, stats: b.stats, seconds: ( performance.now() - t ) / 1000 };
 
 	}, [ name, opt.size ] );
+	if ( ! Number.isFinite( r.scale ) ) throw new Error( `${ name }: the bake failed (scale ${ r.scale })` );
 	const file = path.join( out, `${ name.replace( /\s+/g, '-' ).toLowerCase() }.png` );
 	await sharp( Buffer.from( r.data, 'base64' ), { raw: { width: opt.size, height: opt.size, channels: 3 } } ).png( { compressionLevel: 9 } ).toFile( file );
 	meta.presets[ name ] = { file: path.basename( file ), scale: r.scale, stats: r.stats };

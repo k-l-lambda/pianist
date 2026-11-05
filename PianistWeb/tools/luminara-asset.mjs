@@ -276,6 +276,7 @@ if ( fs.existsSync( path.join( G, 'marble-raw.jpg' ) ) ) {
 		let bytes = 0;
 		for ( const [ name, p ] of Object.entries( meta.presets ) ) {
 
+			if ( ! Number.isFinite( p.scale ) ) { say( `  ${ name }: its bake failed (scale ${ p.scale }): left out` ); continue; }
 			const slug = path.basename( p.file, '.png' ), b = await sharp( fs.readFileSync( path.join( B, p.file ) ) ).webp( { quality: 94, smartSubsample: true, effort: 6 } ).toBuffer();
 			swatch( `bake-${ slug }`, doc.createMaterial( `bake-${ slug }` ).setBaseColorTexture( doc.createTexture( `bake-${ slug }` ).setImage( b ).setMimeType( 'image/webp' ) ).setExtras( { look: 'bake' } ) );
 			presets[ name ] = { slug, scale: p.scale };

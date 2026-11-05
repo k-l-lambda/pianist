@@ -19,12 +19,13 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLYPHS } from './luminaraglyphs.js';
+import { PlaneMirror, chainCompile } from './mirror.js';
 
 export const LUMINARA = {
-	radius: 6.5,		// the wall
-	wall: 3.4,			// its height, to the cornice
+	radius: 7.0,		// the wall
+	wall: 3.75,			// its height, to the cornice
 	bays: 12,
-	pilaster: 0.36,		// wide
+	pilaster: 0.3,		// wide
 	floorTile: 1.8,		// the marble's repeat (m)
 };
 const R = LUMINARA.radius, BAY = 2 * Math.PI / LUMINARA.bays;
@@ -34,8 +35,8 @@ const R = LUMINARA.radius, BAY = 2 * Math.PI / LUMINARA.bays;
 // half width a, y0 to y1, corners rounded rc; `none`: the plain wall), how deep (to the back: a
 // flat panel; a window goes through)
 const OPENINGS = {
-	window: { shape: 'circle', a: 1.38, yc: 1.82, depth: 0.36 },		// (almost from the floor to the cornice)
-	shelves: { shape: 'rect', a: 1.22, y0: 0.32, y1: 3.12, rc: 0.16, depth: 0.42 },		// (built-in, four shelves)
+	window: { shape: 'circle', a: 1.5, yc: 1.95, depth: 0.6 },		// (from just above the skirting almost to the cornice; deep: the wall's thickness)
+	shelves: { shape: 'rect', a: 1.36, y0: 0.32, y1: 3.42, rc: 0.16, depth: 0.42 },		// (built-in, four shelves)
 	pipes: { shape: 'arch', a: 0.62, y0: 0.5, yS: 2.3, depth: 0.32 },		// (a row of lit pipes, as an organ's)
 	clef: { shape: 'none' },		// (the clef and its staff: a light on the wall)
 	door: { shape: 'arch', a: 0.9, y0: 0, yS: 2.3, depth: 0.18 },
@@ -44,17 +45,17 @@ const BAYS = [ 'door', 'window', 'shelves', 'window', 'pipes', 'window', 'clef',
 
 // the ceiling: soffits stepping in and up to the dome; each step's edge a line of light (LED), the
 // riser behind it washed from its foot: [ r of the lip, y of the soffit ]
-const STEPS = [ [ 5.45, 3.8 ], [ 4.2, 4.35 ], [ 2.95, 4.9 ] ];
-const DOME = { y: 5.45, rise: 1.0 };		// from the last riser's top, to its crown
+const STEPS = [ [ 5.95, 4.15 ], [ 4.6, 4.7 ], [ 3.2, 5.25 ] ];
+const DOME = { y: 5.8, rise: 1.05 };		// from the last riser's top, to its crown
 const LIP = 0.06, GAP = 0.07;
 const DOME_SPOTS = [ 35, - 35, 145, - 145 ];		// φ (deg) of the dome's spots: the first the keys' shadow
 
 // the furniture: [ the pack's node, φ (deg), r (null: its back on the wall), turn (deg, about its own up) ]
 const FURNITURE = [
-	[ 'sofa-low', 90, 5.55, 0 ], [ 'sofa-low', - 90, 5.55, 0 ],
-	[ 'tub-chair', 45, 5.3, 0 ], [ 'tub-chair', 135, 5.3, 0 ], [ 'tub-chair', - 45, 5.3, 0 ], [ 'tub-chair', - 135, 5.3, 0 ],
-	[ 'side-table', 63, 5.85, 0 ], [ 'side-table', 117, 5.85, 0 ], [ 'side-table', - 63, 5.85, 0 ], [ 'side-table', - 117, 5.85, 0 ],
-	[ 'plant', 159, 5.75, 0 ], [ 'plant', - 159, 5.75, 40 ], [ 'plant', 22, 5.75, 80 ], [ 'plant', - 22, 5.75, 120 ],
+	[ 'sofa-low', 90, 6.05, 0 ], [ 'sofa-low', - 90, 6.05, 0 ],
+	[ 'tub-chair', 45, 5.8, 0 ], [ 'tub-chair', 135, 5.8, 0 ], [ 'tub-chair', - 45, 5.8, 0 ], [ 'tub-chair', - 135, 5.8, 0 ],
+	[ 'side-table', 63, 6.35, 0 ], [ 'side-table', 117, 6.35, 0 ], [ 'side-table', - 63, 6.35, 0 ], [ 'side-table', - 117, 6.35, 0 ],
+	[ 'plant', 159, 6.25, 0 ], [ 'plant', - 159, 6.25, 40 ], [ 'plant', 22, 6.25, 80 ], [ 'plant', - 22, 6.25, 120 ],
 	[ 'sideboard', 180, null, 0 ],
 ];
 // on the sideboard: [ node, x along it (fraction of its half length), turn (deg) ]
@@ -66,23 +67,23 @@ const SHELVING = [
 	[ [ [ 'gold-disc', 0, 15 ] ], [ [ 'books', 0, 0 ] ], [ [ 'gold-ribbon', - 0.35, - 20 ], [ 'crystal', 0.35, 0 ] ] ],
 	[ [ [ 'clef-statue', 0, 0 ] ], [ [ 'crystal', - 0.4, 0 ], [ 'gold-ribbon', 0.35, 30 ] ], [ [ 'roses', 0, 0 ] ] ],
 ];
-const COFFEE = [ [ 90, 4.3 ], [ - 90, 4.3 ] ];		// drum coffee tables before the sofas (built here)
+const COFFEE = [ [ 90, 4.8 ], [ - 90, 4.8 ] ];		// drum coffee tables before the sofas (built here)
 
 // Lit as such a room would be, by its own fixtures (no stage spots but in Recital): the coves and the
-// dome (emissive: their light reaches the room through the probe, `env`), a downlight in the first
-// soffit over each bay washing its wall (`washer`, cd), four spots in the dome's rim on the piano
+// dome (emissive: their light reaches the room through the probe, `env`), four spots in the dome's rim on the piano
 // (`dome`, cd; the first, from the player's right, casts the keys' shadows), a sconce on each pilaster
 // (a frosted tube: `sconce`, its glow on the walls round it too), the niches' own lights, the lines
 // of light in three tiers (led: the ceiling's, the main ones and the only ones blooming; ledWall: the
 // walls' ornament; ledFloor), the windows' outside one of four hours (`outside`; the probe sees it).
 // Warm: 2700-3000 K. Bloom faint (a bright room: more reads overexposed). ACES keeps the contrast.
+// The windows lead: their sky bright, the room's own light in the bake scaled by `bakeInterior` (the day's most).
 export const LUMINARA_PRESETS = {
-	'Afternoon': { baked: true, shelf: 1.0, outside: 'day', sky: 1.25, cove: 1.6, coveColor: '#ffc98c', washer: 70, dome: 130, downColor: '#ffd3a0', sconce: 5, sconceColor: '#ffdcb0', niche: 1.0, nicheColor: '#ffc684', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.5, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Golden hour': { baked: true, shelf: 1.1, outside: 'sunset', sky: 1.1, cove: 1.8, coveColor: '#ffc283', washer: 70, dome: 120, downColor: '#ffcd95', sconce: 5.5, sconceColor: '#ffd6a4', niche: 1.1, nicheColor: '#ffc07a', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.52, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Blue hour': { baked: true, shelf: 1.2, outside: 'dusk', sky: 0.9, cove: 2.0, coveColor: '#ffc98c', washer: 80, dome: 130, downColor: '#ffd3a0', sconce: 6, sconceColor: '#ffdcb0', niche: 1.2, nicheColor: '#ffc684', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.55, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
-	'Night': { baked: true, shelf: 1.3, outside: 'night', sky: 0.75, cove: 2.2, coveColor: '#ffc283', washer: 85, dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Afternoon': { baked: true, bakeInterior: 0.55, shelf: 1.0, outside: 'day', sky: 1.8, cove: 1.6, coveColor: '#ffc98c', dome: 130, downColor: '#ffd3a0', sconce: 5, sconceColor: '#ffdcb0', niche: 1.0, nicheColor: '#ffc684', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.56, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Golden hour': { baked: true, bakeInterior: 0.6, shelf: 1.1, outside: 'sunset', sky: 1.6, cove: 1.8, coveColor: '#ffc283', dome: 120, downColor: '#ffcd95', sconce: 5.5, sconceColor: '#ffd6a4', niche: 1.1, nicheColor: '#ffc07a', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Blue hour': { baked: true, bakeInterior: 0.75, shelf: 1.2, outside: 'dusk', sky: 1.2, cove: 2.0, coveColor: '#ffc98c', dome: 130, downColor: '#ffd3a0', sconce: 6, sconceColor: '#ffdcb0', niche: 1.2, nicheColor: '#ffc684', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.6, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Night': { baked: true, bakeInterior: 0.85, shelf: 1.3, outside: 'night', sky: 0.85, cove: 2.2, coveColor: '#ffc283', dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.62, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
 	// the house down, the piano under a single spot from the dome's crown
-	'Recital': { baked: true, shelf: 0.45, outside: 'night', sky: 0.5, cove: 0.5, coveColor: '#ffc283', washer: 0, dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.6, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
+	'Recital': { baked: true, bakeInterior: 0.9, shelf: 0.45, outside: 'night', sky: 0.5, cove: 0.5, coveColor: '#ffc283', dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
 };
 export const LUMINARA_OUTSIDE = [ 'day', 'sunset', 'dusk', 'night' ];
 
@@ -122,16 +123,6 @@ function staffTexture() {
 }
 
 const NOBAKE = /(^|[#&?])nobake(&|$)/.test( location.hash + '&' ) || /(^|[?&])nobake(&|=|$)/.test( location.search );		// (tools/luminara-bake.mjs: the procedural shell)
-
-/** Another onBeforeCompile on `material`, after its others (each its part of the program's key). */
-function chainCompile( material, fn, key ) {
-
-	const prev = material.onBeforeCompile;
-	material.onBeforeCompile = ( shader, renderer ) => { prev.call( material, shader, renderer ); fn( shader ); };
-	material.userData.programKeys = [ ...( material.userData.programKeys ?? [] ), key ];
-	material.customProgramCacheKey = () => material.userData.programKeys.join( '+' );
-
-}
 
 /**
  * The baked light (tools/luminara-bake.mjs: one lightmap per preset, its UVs `uvBake`) as `material`'s
@@ -295,109 +286,6 @@ function fibreNormalMap() {
 
 }
 
-/**
- * The floor's reflection: the scene drawn once a frame from the camera mirrored in the floor (y 0;
- * an oblique near plane on it: nothing below), into a half-float target with mipmaps; the floor's
- * materials read it where it has the reflected ray (its blurred levels for their roughness) in place
- * of the probe's (which, from one point, puts the windows' reflections in the wrong places). As
- * three's Reflector, but for physical materials.
- */
-class FloorMirror {
-
-	constructor() {
-
-		this.target = new THREE.WebGLRenderTarget( 4, 4, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter } );
-		this.camera = new THREE.PerspectiveCamera();
-		this.uniforms = { uMirror: { value: this.target.texture }, uMirrorMatrix: { value: new THREE.Matrix4() }, uMirrorOn: { value: 0 }, uMirrorLods: { value: 1 } };
-		this.enabled = true;
-		this._busy = false;
-
-	}
-
-	/** `material` reads the reflection. */
-	addTo( material ) {
-
-		const U = this.uniforms;
-		chainCompile( material, shader => {
-
-			Object.assign( shader.uniforms, U );
-			shader.vertexShader = shader.vertexShader
-				.replace( '#include <common>', '#include <common>\nvarying vec3 vMirrorWorld;' )
-				.replace( '#include <worldpos_vertex>', '#include <worldpos_vertex>\nvMirrorWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;' );
-			shader.fragmentShader = shader.fragmentShader
-				.replace( '#include <common>', '#include <common>\nuniform sampler2D uMirror;\nuniform mat4 uMirrorMatrix;\nuniform float uMirrorOn, uMirrorLods;\nvarying vec3 vMirrorWorld;' )
-				.replace( '#include <lights_fragment_maps>', `#include <lights_fragment_maps>
-				if ( uMirrorOn > 0.5 ) {
-
-					vec4 mp = uMirrorMatrix * vec4( vMirrorWorld, 1.0 );
-					vec2 muv = mp.xy / mp.w;
-					// (the normal map's tilt shifts it a little)
-					muv += ( normal.xy - geometryNormal.xy ) * 0.03;
-					if ( mp.w > 0.0 && all( greaterThan( muv, vec2( 0.0 ) ) ) && all( lessThan( muv, vec2( 1.0 ) ) ) ) {
-
-						radiance = textureLod( uMirror, muv, sqrt( material.roughness ) * uMirrorLods * 0.75 ).rgb;
-						#ifdef USE_CLEARCOAT
-							clearcoatRadiance = textureLod( uMirror, muv, sqrt( material.clearcoatRoughness ) * uMirrorLods * 0.75 ).rgb;
-						#endif
-
-					}
-
-				}` );
-
-		}, 'luminaraMirror' );
-
-	}
-
-	/** Draw the reflection for `camera` (once a frame; `hide`: the floor itself; `scale`: of the drawing buffer). */
-	update( renderer, scene, camera, hide, scale ) {
-
-		const U = this.uniforms;
-		U.uMirrorOn.value = 0;
-		if ( ! this.enabled || this._busy ) return;
-		const size = renderer.getDrawingBufferSize( new THREE.Vector2() ), w = Math.max( 4, Math.round( size.x * scale ) ), h = Math.max( 4, Math.round( size.y * scale ) );
-		if ( this.target.width !== w || this.target.height !== h ) this.target.setSize( w, h );
-		U.uMirrorLods.value = Math.log2( Math.max( w, h ) );
-		// the camera mirrored in y = 0 (as Reflector: the eye and the look-at point reflected, up likewise)
-		camera.updateMatrixWorld();
-		const eye = new THREE.Vector3().setFromMatrixPosition( camera.matrixWorld );
-		if ( eye.y <= 0.001 ) return;
-		const flip = v => v.set( v.x, - v.y, v.z );
-		const look = new THREE.Vector3( 0, 0, - 1 ).applyMatrix4( new THREE.Matrix4().extractRotation( camera.matrixWorld ) ).add( eye );
-		const up = new THREE.Vector3( 0, 1, 0 ).applyMatrix4( new THREE.Matrix4().extractRotation( camera.matrixWorld ) );
-		const vc = this.camera;
-		vc.position.copy( flip( eye.clone() ) );
-		vc.up.copy( flip( up ) );
-		vc.lookAt( flip( look ) );
-		vc.near = camera.near; vc.far = camera.far; vc.fov = camera.fov; vc.aspect = camera.aspect; vc.zoom = camera.zoom ?? 1;
-		vc.updateMatrixWorld();
-		vc.updateProjectionMatrix();
-		vc.projectionMatrix.copy( camera.projectionMatrix );
-		// the texture matrix: world -> its uv
-		U.uMirrorMatrix.value.set( 0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1 ).multiply( vc.projectionMatrix ).multiply( vc.matrixWorldInverse );
-		// an oblique near plane on the floor (Lengyel)
-		const plane = new THREE.Plane( new THREE.Vector3( 0, 1, 0 ), 0 ).applyMatrix4( vc.matrixWorldInverse );
-		const cp = new THREE.Vector4( plane.normal.x, plane.normal.y, plane.normal.z, plane.constant ), P = vc.projectionMatrix.elements;
-		const q = new THREE.Vector4( ( Math.sign( cp.x ) + P[ 8 ] ) / P[ 0 ], ( Math.sign( cp.y ) + P[ 9 ] ) / P[ 5 ], - 1, ( 1 + P[ 10 ] ) / P[ 14 ] );
-		cp.multiplyScalar( 2 / cp.dot( q ) );
-		P[ 2 ] = cp.x; P[ 6 ] = cp.y; P[ 10 ] = cp.z + 1; P[ 14 ] = cp.w;
-		vc.projectionMatrixInverse.copy( vc.projectionMatrix ).invert();
-		this._busy = true;
-		const was = { target: renderer.getRenderTarget(), xr: renderer.xr.enabled, shadow: renderer.shadowMap.autoUpdate, vis: hide.map( o => o.visible ) };
-		hide.forEach( o => o.visible = false );
-		renderer.xr.enabled = false; renderer.shadowMap.autoUpdate = false;
-		renderer.setRenderTarget( this.target );
-		renderer.clear();
-		renderer.render( scene, vc );
-		renderer.setRenderTarget( was.target );
-		renderer.xr.enabled = was.xr; renderer.shadowMap.autoUpdate = was.shadow;
-		hide.forEach( ( o, i ) => o.visible = was.vis[ i ] );
-		this._busy = false;
-		U.uMirrorOn.value = 1;
-
-	}
-
-}
-
 /** Outward (f) and the viewer's right (x) at φ, from the centre. */
 const outward = phi => new THREE.Vector3( Math.sin( phi ), 0, Math.cos( phi ) );
 const rightOf = phi => new THREE.Vector3( - Math.cos( phi ), 0, Math.sin( phi ) );
@@ -474,6 +362,164 @@ function ringsGeometry( rings, flat = false ) {
 
 }
 
+/**
+ * A glyph's glow and relief, as maps over its em box (the extrusion's cap UVs: its outline's x, y):
+ * the outline filled, its distance inside (a two-pass chamfer transform) the stroke's depth; the glow
+ * brightest along each stroke's middle and dimmer to its edges (lit acrylic: its light gathers in the
+ * thick of it), a little brighter to the top; the relief a dome over the stroke (its normal map).
+ */
+function glyphMaps( G ) {
+
+	let x0 = Infinity, y0 = Infinity, x1 = - Infinity, y1 = - Infinity;
+	for ( const c of G.contours ) for ( const [ x, y ] of c ) { x0 = Math.min( x0, x ); y0 = Math.min( y0, y ); x1 = Math.max( x1, x ); y1 = Math.max( y1, y ); }
+	const pad = 0.02; x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+	const S = 768, sc = S / Math.max( x1 - x0, y1 - y0 ), W = Math.ceil( ( x1 - x0 ) * sc ), H = Math.ceil( ( y1 - y0 ) * sc );
+	const cv = document.createElement( 'canvas' ); cv.width = W; cv.height = H;
+	const g = cv.getContext( '2d' );
+	g.beginPath();
+	for ( const c of G.contours ) { c.forEach( ( [ x, y ], i ) => g[ i ? 'lineTo' : 'moveTo' ]( ( x - x0 ) * sc, ( y1 - y ) * sc ) ); g.closePath(); }
+	g.fill( 'nonzero' );
+	const img = g.getImageData( 0, 0, W, H ).data, D = new Float32Array( W * H );
+	for ( let i = 0; i < W * H; ++ i ) D[ i ] = img[ 4 * i + 3 ] > 127 ? 1e6 : 0;
+	const at = ( x, y ) => ( x < 0 || y < 0 || x >= W || y >= H ) ? 0 : D[ y * W + x ];
+	for ( let y = 0; y < H; ++ y ) for ( let x = 0; x < W; ++ x ) if ( D[ y * W + x ] ) D[ y * W + x ] = Math.min( D[ y * W + x ], at( x - 1, y ) + 1, at( x, y - 1 ) + 1, at( x - 1, y - 1 ) + 1.414, at( x + 1, y - 1 ) + 1.414 );
+	for ( let y = H - 1; y >= 0; -- y ) for ( let x = W - 1; x >= 0; -- x ) if ( D[ y * W + x ] ) D[ y * W + x ] = Math.min( D[ y * W + x ], at( x + 1, y ) + 1, at( x, y + 1 ) + 1, at( x + 1, y + 1 ) + 1.414, at( x - 1, y + 1 ) + 1.414 );
+	// each stroke's own half width: the distance's local maximum (a sliding max, rows then columns, over
+	// the widest stroke's span); t = its distance over that, 1 along every stroke's middle line
+	const span = Math.ceil( 0.07 * sc ), Mx = new Float32Array( W * H ), My = new Float32Array( W * H );
+	for ( let y = 0; y < H; ++ y ) for ( let x = 0; x < W; ++ x ) { let m = 0; for ( let k = Math.max( 0, x - span ); k <= Math.min( W - 1, x + span ); ++ k ) m = Math.max( m, D[ y * W + k ] ); Mx[ y * W + x ] = m; }
+	for ( let x = 0; x < W; ++ x ) for ( let y = 0; y < H; ++ y ) { let m = 0; for ( let k = Math.max( 0, y - span ); k <= Math.min( H - 1, y + span ); ++ k ) m = Math.max( m, Mx[ k * W + x ] ); My[ y * W + x ] = m; }
+	const ht = new Float32Array( W * H ), tt = new Float32Array( W * H );
+	for ( let i = 0; i < W * H; ++ i ) {
+
+		const t = D[ i ] ? Math.min( 1, D[ i ] / Math.max( 1, My[ i ] ) ) : 0;
+		tt[ i ] = t;
+		ht[ i ] = Math.sqrt( Math.max( 0, 1 - ( 1 - t ) ** 2 ) ) * Math.min( 1, My[ i ] / ( 0.03 * sc ) );		// (a dome over the stroke; a hairline's lower)
+
+	}
+	const glow = new Uint8Array( 4 * W * H ), nor = new Uint8Array( 4 * W * H ), h = ( x, y ) => ht[ Math.min( H - 1, Math.max( 0, y ) ) * W + Math.min( W - 1, Math.max( 0, x ) ) ];
+	const gain = 0.6 * 0.03 * sc;		// (the relief's slope: its height in px over a stroke's half width)
+	for ( let y = 0; y < H; ++ y ) for ( let x = 0; x < W; ++ x ) {
+
+		const i = y * W + x, t = tt[ i ], up = 1 - y / H;
+		const e = D[ i ] ? 0.22 + 0.78 * t ** 1.4 + 0.1 * up : 0.3;		// (its middle bright, its edges dim; outside: the sides' and bevels' texels)
+		glow[ 4 * i ] = glow[ 4 * i + 1 ] = glow[ 4 * i + 2 ] = Math.min( 255, Math.round( 255 * e / 1.1 ) ); glow[ 4 * i + 3 ] = 255;
+		const dx = ( h( x + 1, y ) - h( x - 1, y ) ) * gain / 2, dy = ( h( x, y - 1 ) - h( x, y + 1 ) ) * gain / 2, l = Math.hypot( dx, dy, 1 );		// (y up: the image's rows down)
+		nor[ 4 * i ] = Math.round( 255 * ( 0.5 - 0.5 * dx / l ) ); nor[ 4 * i + 1 ] = Math.round( 255 * ( 0.5 - 0.5 * dy / l ) ); nor[ 4 * i + 2 ] = Math.round( 255 * ( 0.5 + 0.5 / l ) ); nor[ 4 * i + 3 ] = 255;
+
+	}
+	const tex = ( data, srgb ) => {
+
+		const t = new THREE.DataTexture( data, W, H );
+		t.flipY = true;		// (the image's rows from the top; the cap's v up)
+		t.repeat.set( 1 / ( x1 - x0 ), 1 / ( y1 - y0 ) ); t.offset.set( - x0 / ( x1 - x0 ), - y0 / ( y1 - y0 ) );
+		t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+		if ( srgb ) t.colorSpace = THREE.SRGBColorSpace;
+		t.needsUpdate = true;
+		return t;
+
+	};
+	return { glow: tex( glow, false ), normal: tex( nor, false ) };
+
+}
+
+/**
+ * A leather's fine grain on `material`, without UVs (TRELLIS's meshes have none): its normal (and its
+ * coat's) tilted by a little value noise in the object's own space, a few mm across, so the coat's
+ * highlight breaks up as on hide.
+ */
+function leather( material ) {
+
+	chainCompile( material, shader => {
+
+		shader.vertexShader = shader.vertexShader
+			.replace( '#include <common>', '#include <common>\nvarying vec3 vGrainPos;' )
+			.replace( '#include <begin_vertex>', '#include <begin_vertex>\nvGrainPos = position;' );
+		shader.fragmentShader = shader.fragmentShader
+			.replace( '#include <common>', `#include <common>
+			varying vec3 vGrainPos;
+			float gHash( vec3 p ) { p = fract( p * 0.3183099 + 0.1 ); p *= 17.0; return fract( p.x * p.y * p.z * ( p.x + p.y + p.z ) ); }
+			float gNoise( vec3 x ) { vec3 i = floor( x ), f = fract( x ); f = f * f * ( 3.0 - 2.0 * f );
+				return mix( mix( mix( gHash( i ), gHash( i + vec3( 1, 0, 0 ) ), f.x ), mix( gHash( i + vec3( 0, 1, 0 ) ), gHash( i + vec3( 1, 1, 0 ) ), f.x ), f.y ),
+					mix( mix( gHash( i + vec3( 0, 0, 1 ) ), gHash( i + vec3( 1, 0, 1 ) ), f.x ), mix( gHash( i + vec3( 0, 1, 1 ) ), gHash( i + vec3( 1, 1, 1 ) ), f.x ), f.y ), f.z ); }
+			vec3 gGrad( vec3 p ) { const float e = 0.15; return vec3( gNoise( p + vec3( e, 0, 0 ) ) - gNoise( p - vec3( e, 0, 0 ) ), gNoise( p + vec3( 0, e, 0 ) ) - gNoise( p - vec3( 0, e, 0 ) ), gNoise( p + vec3( 0, 0, e ) ) - gNoise( p - vec3( 0, 0, e ) ) ) / ( 2.0 * e ); }` )
+			.replace( '#include <clearcoat_normal_fragment_maps>', `#include <clearcoat_normal_fragment_maps>
+			{		// (after both normals are set: the coat's declared in clearcoat_normal_fragment_begin)
+				vec3 gp = vGrainPos * 260.0, gv = ( viewMatrix * vec4( gGrad( gp ) + 0.5 * gGrad( gp * 2.3 ), 0.0 ) ).xyz;
+				normal = normalize( normal - 0.05 * ( gv - dot( gv, normal ) * normal ) );
+				#ifdef USE_CLEARCOAT
+					clearcoatNormal = normalize( clearcoatNormal - 0.035 * ( gv - dot( gv, clearcoatNormal ) * clearcoatNormal ) );
+				#endif
+			}` );
+
+	}, 'leatherGrain' );
+	return material;
+
+}
+
+/** A gradient along u (64 x 1, linear): a staff line's glow along it. */
+function gradientU( f ) {
+
+	const N = 64, d = new Uint8Array( 4 * N );
+	for ( let i = 0; i < N; ++ i ) { const v = Math.round( 255 * Math.min( 1, Math.max( 0, f( i / ( N - 1 ) ) ) ) ); d.set( [ v, v, v, 255 ], 4 * i ); }
+	const t = new THREE.DataTexture( d, N, 1 );
+	t.magFilter = t.minFilter = THREE.LinearFilter;
+	t.needsUpdate = true;
+	return t;
+
+}
+
+/**
+ * A gold record on a brass stand (in place of TRELLIS's: its grooves need their own UVs): the disc's
+ * faces with u round it and v out (anisotropy along u: the grooves' direction, so its highlight
+ * spreads round it, the fan-shaped flare of a record), in bands (stronger on the tracks, weaker in the
+ * gaps between them), a matt label, the hole; leaning back a little in a slotted base with a prop
+ * behind. Its base on y 0, its face +z (as the pack's nodes); 0.36 m high.
+ */
+function goldRecord( segU ) {
+
+	const Rr = 0.15, r0 = 0.05, th = 0.003, NA = 128, NR = 36, P = [], UV = [], I = [];
+	for ( const side of [ 1, - 1 ] ) {
+
+		const base = P.length / 3;
+		for ( let j = 0; j <= NR; ++ j ) for ( let i = 0; i <= NA; ++ i ) {
+
+			const a = 2 * Math.PI * i / NA, r = r0 + ( Rr - r0 ) * j / NR;
+			P.push( r * Math.cos( a ), r * Math.sin( a ), side * th / 2 ); UV.push( i / NA * 16, j / NR );		// (u: 16 rounds of the map)
+
+		}
+		for ( let j = 0; j < NR; ++ j ) for ( let i = 0; i < NA; ++ i ) {
+
+			const a = base + j * ( NA + 1 ) + i, b = a + 1, c = a + NA + 1, d = c + 1;
+			if ( side > 0 ) I.push( a, b, d, a, d, c ); else I.push( a, d, b, a, c, d );
+
+		}
+
+	}
+	const disc = new THREE.BufferGeometry();
+	disc.setAttribute( 'position', new THREE.Float32BufferAttribute( P, 3 ) ); disc.setAttribute( 'uv', new THREE.Float32BufferAttribute( UV, 2 ) ); disc.setIndex( I ); disc.computeVertexNormals();
+	// the anisotropy map: direction along u (rg 1, 0.5), strength (b) by the tracks
+	const AN = 256, ad = new Uint8Array( 4 * AN );
+	for ( let j = 0; j < AN; ++ j ) { const v = j / ( AN - 1 ), band = Math.abs( Math.sin( v * Math.PI * 6 ) ); ad.set( [ 255, 128, Math.round( 255 * ( 0.35 + 0.65 * Math.min( 1, band * 1.6 ) ) ), 255 ], 4 * j ); }
+	const am = new THREE.DataTexture( ad, 1, AN ); am.wrapS = THREE.RepeatWrapping; am.magFilter = am.minFilter = THREE.LinearFilter; am.needsUpdate = true;
+	const gold = new THREE.MeshPhysicalMaterial( { color: '#e3b864', metalness: 1, roughness: 0.22, anisotropy: 1, anisotropyRotation: 0, anisotropyMap: am, side: THREE.DoubleSide } );
+	const label = new THREE.MeshPhysicalMaterial( { color: '#c9a25a', metalness: 0.85, roughness: 0.55 } );
+	const brass = new THREE.MeshPhysicalMaterial( { color: '#d6a95c', metalness: 1, roughness: 0.3 } );
+	for ( const m of [ gold, label, brass ] ) addSegmentGlow( m, segU );
+	const rec = new THREE.Group(), mesh = ( g, m ) => { const o = new THREE.Mesh( g, m ); o.castShadow = o.receiveShadow = true; rec.add( o ); return o; };
+	mesh( disc, gold );
+	mesh( new THREE.CylinderGeometry( Rr, Rr, th, NA, 1, true ).rotateX( Math.PI / 2 ), gold );
+	for ( const side of [ 1, - 1 ] ) mesh( new THREE.RingGeometry( 0.006, r0, 64 ).translate( 0, 0, side * ( th / 2 + 0.0002 ) ).rotateY( side > 0 ? 0 : Math.PI ), label );
+	const tilt = 0.1, group = new THREE.Group(), base = 0.022;
+	rec.rotation.x = - tilt; rec.position.set( 0, base + Rr * Math.cos( tilt ) - 0.004, - Rr * Math.sin( tilt ) );
+	group.add( rec );
+	const stand = ( g, x = 0, y = 0, z = 0 ) => { const o = new THREE.Mesh( g.translate( x, y, z ), brass ); o.castShadow = o.receiveShadow = true; group.add( o ); };
+	stand( new RoundedBoxGeometry( 0.16, base, 0.07, 2, 0.006 ), 0, base / 2, - 0.01 );
+	stand( new THREE.CylinderGeometry( 0.004, 0.004, 0.2, 8 ).rotateX( 0.45 ), 0, base + 0.08, - 0.075 );
+	return group;
+
+}
+
 /** A vertical gradient (1 x 64, linear): the coves' and the dome's glow along their profiles. */
 function gradient( f ) {
 
@@ -501,7 +547,7 @@ export class Luminara {
 		this.lights = new THREE.Group();
 		this.lights.name = 'luminaraLights';
 		this.active = false;
-		this.view = { maxDistance: 5.5, maxPolarAngle: Math.PI * 0.6 };
+		this.view = { maxDistance: 6, maxPolarAngle: Math.PI * 0.6 };
 		this.background = new THREE.Color( '#0b1426' );
 		this.pack = null;			// the furniture etc. once loaded (a group)
 		this.loading = Promise.resolve();
@@ -517,10 +563,8 @@ export class Luminara {
 		this.segUPack = { ...this.segU, uSconceOff: { value: 0 } };
 		this.bakes = null;		// preset -> { map, scale } (the pack's, while its shell is ours)
 
-		const plaster = baker.plaster();
-		const tinted = ( hex, base ) => { const c = new THREE.Color( hex ), b = new THREE.Color( base ); return new THREE.Color( c.r / b.r, c.g / b.g, c.b / b.b ); };
 		this.materials = {
-			wall: phys( { map: plaster.map, normalMap: plaster.normalMap, normalScale: new THREE.Vector2( 0.5, 0.5 ), roughness: 0.85, color: tinted( '#f1e3cf', '#9aa39a' ), side: THREE.DoubleSide } ),		// (warm cream, as the reference's)
+			wall: phys( { color: '#f1e3cf', roughness: 0.85, side: THREE.DoubleSide } ),		// (warm cream, plain, as the reference's: its light and shade the bake's)
 			ceiling: phys( { color: '#f3e8d8', roughness: 0.9, side: THREE.DoubleSide } ),
 			// the pilasters, the frames, the shelves, the doors: white lacquer
 			lacquer: phys( { color: '#f3ebdf', roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.12, side: THREE.DoubleSide } ),
@@ -557,8 +601,9 @@ export class Luminara {
 		this.materials.ledWall = this.materials.led.clone();
 		this.materials.ledFloor = this.materials.led.clone();
 		this.materials.shelfLed = this.materials.led.clone();		// (the shelves' strips: seen dim; their light: the segments')
+		this.materials.stepLed = this.materials.led.clone();		// (the skirting's step lights)
 		for ( const m of [ this.materials.wall, this.materials.lacquer ] ) addSegmentGlow( m, this.segU );
-		this.mirror = new FloorMirror();
+		this.mirror = new PlaneMirror( new THREE.Plane( new THREE.Vector3( 0, 1, 0 ), 0 ) );		// (the floor's: src/mirror.js)
 		for ( const m of [ this.materials.floor, this.materials.border ] ) this.mirror.addTo( m );
 		for ( const m of [ this.materials.wall, this.materials.ceiling, this.materials.lacquer, this.materials.floor, this.materials.border, this.materials.rug ] ) addBake( m, this.bakeU );
 		this._buildLights();
@@ -602,7 +647,7 @@ export class Luminara {
 	probePoint() { return new THREE.Vector3( 0, 1.3, 2.6 ); }
 
 	/** The open floor (world), inside the furniture. */
-	bounds() { return { minX: - 3.8, maxX: 3.8, minZ: - 3.8, maxZ: 3.8 }; }
+	bounds() { return { minX: - 4.2, maxX: 4.2, minZ: - 4.2, maxZ: 4.2 }; }
 
 	/** The offline sound's shoebox (tools/spatialise.py): a square of the room's floor area, its
 	 * mean height; hard walls and floor (`living`'s surfaces). */
@@ -619,7 +664,7 @@ export class Luminara {
 		return {
 			'From the sofa': { position: at( 90, 4.6, 1.15 ), target: new THREE.Vector3( 0, 1.0, 0 ) },
 			'The doors': { position: at( 0, 5.6, 1.65 ), target: new THREE.Vector3( 0, 1.4, 0 ) },
-			'The clef': { position: at( 25, 2.4, 1.5 ), target: at( 180, R, 1.7 ) },
+			'The clef': { position: at( 25, 2.6, 1.6 ), target: at( 180, R, 1.9 ) },
 			'The coves': { position: at( 200, 3.6, 1.4 ), target: new THREE.Vector3( 0, 5.2, 0 ) },
 		};
 
@@ -630,7 +675,7 @@ export class Luminara {
 		return [
 			[ 'baked', 'bool', 'Baked light (its preset\'s lightmap)' ], [ 'outside', LUMINARA_OUTSIDE, 'Outside' ], [ 'sky', 0, 4, 0.01, 'Sky (windows)' ],
 			[ 'cove', 0, 8, 0.01, 'Coves' ], [ 'coveColor', 'color', 'Cove color' ],
-			[ 'washer', 0, 300, 1, 'Wall washers (cd)' ], [ 'dome', 0, 400, 1, 'Dome spots (cd)' ], [ 'downColor', 'color', 'Downlight color' ],
+			[ 'dome', 0, 400, 1, 'Dome spots (cd)' ], [ 'downColor', 'color', 'Downlight color' ],
 			[ 'sconce', 0, 15, 0.1, 'Sconces' ], [ 'sconceColor', 'color', 'Sconce color' ], [ 'shelf', 0, 6, 0.01, 'Shelf strips' ],
 			[ 'niche', 0, 6, 0.01, 'Niches' ], [ 'nicheColor', 'color', 'Niche color' ],
 			[ 'led', 0, 40, 0.1, 'Ceiling lines' ], [ 'ledWall', 0, 20, 0.1, 'Wall lines' ], [ 'ledFloor', 0, 10, 0.1, 'Floor lines' ], [ 'ledColor', 'color', 'Line color' ],
@@ -648,7 +693,6 @@ export class Luminara {
 		const add = ( geo, mat ) => { if ( ! parts.has( mat ) ) parts.set( mat, [] ); parts.get( mat ).push( geo.index ? geo.toNonIndexed() : geo ); };
 		this.nichePoints = [];
 		this.segments = [];		// { a, b, n (the strip's facing; null: a tube), clip (a plane, Vector4; null), kind }
-		this.washers = [];		// [ position, target ] of the first soffit's downlights
 
 		// the bays: a panel of wall round each opening, the opening's reveal and back
 		for ( let k = 0; k < LUMINARA.bays; ++ k ) this._bay( add, k * BAY, OPENINGS[ BAYS[ k ] ], BAYS[ k ] );
@@ -670,6 +714,16 @@ export class Luminara {
 
 		// skirting (broken at the doors), a brass line above it; the cornice
 		const doorHalf = ( OPENINGS.door.a + 0.03 ) / R;
+		// small step lights in the skirting, two in each bay but the doors': a slot facing down and in, a pool on the floor
+		for ( let k = 1; k < LUMINARA.bays; ++ k ) for ( const sx of [ - 1.35, 1.35 ] ) {
+
+			const phi = k * BAY - sx / R, F = frameAt( phi, R - 0.036, 0.075 ), half = 0.07;
+			add( new THREE.BoxGeometry( 2 * half + 0.03, 0.03, 0.006 ).translate( 0, 0, 0.003 ).applyMatrix4( F ), M.brass );
+			add( new THREE.BoxGeometry( 2 * half, 0.012, 0.004 ).translate( 0, 0, 0.007 ).applyMatrix4( F ), M.stepLed );
+			const a = new THREE.Vector3( - half, 0, 0.012 ).applyMatrix4( F ), b = new THREE.Vector3( half, 0, 0.012 ).applyMatrix4( F );
+			this.segments.push( { a, b, n: new THREE.Vector3( 0, - 0.55, 0.83 ).normalize().transformDirection( F ), clip: null, kind: 'step' } );
+
+		}
 		const lathe = ( pts, mat, a0 = 0, len = 2 * Math.PI, n = 192 ) => add( new THREE.LatheGeometry( pts.map( ( [ r, y ] ) => new THREE.Vector2( r, y ) ), n, a0, len ), mat );
 		lathe( [ [ R, 0 ], [ R - 0.035, 0 ], [ R - 0.035, 0.15 ], [ R - 0.02, 0.17 ], [ R, 0.17 ] ], M.lacquer, doorHalf, 2 * Math.PI - 2 * doorHalf );
 		lathe( [ [ R, 0.17 ], [ R - 0.012, 0.17 ], [ R - 0.012, 0.185 ], [ R, 0.185 ] ], M.brass, doorHalf, 2 * Math.PI - 2 * doorHalf );
@@ -678,19 +732,10 @@ export class Luminara {
 		lathe( [ [ R - 0.062, LUMINARA.wall + 0.1 ], [ R - 0.062, LUMINARA.wall + 0.125 ] ], M.led );		// (a line of light in the cornice)
 
 		// the ceiling: each soffit in to its lip (brass), the gap, the lit riser up to the next soffit
-		// the downlights: one in the first soffit over each bay (washing its wall), a brass trim round a
-		// lit lens; four spots in the dome's rim on the piano (brass cans, aimed)
-		for ( let k = 0; k < LUMINARA.bays; ++ k ) {
-
-			const phi = k * BAY, p = outward( phi ).multiplyScalar( 5.9 ).setY( STEPS[ 0 ][ 1 ] - 0.004 );
-			add( new THREE.TorusGeometry( 0.052, 0.007, 8, 40 ).rotateX( Math.PI / 2 ).translate( p.x, p.y, p.z ), M.brass );
-			add( new THREE.CircleGeometry( 0.046, 32 ).rotateX( Math.PI / 2 ).translate( p.x, p.y - 0.001, p.z ), M.led );
-			this.washers.push( [ p.clone().setY( p.y - 0.02 ), outward( phi ).multiplyScalar( R + 0.2 ).setY( 0.6 ) ] );
-
-		}
+		// four spots in the dome's rim on the piano (brass cans, aimed)
 		this.domeAt = DOME_SPOTS.map( deg => {
 
-			const phi = deg * Math.PI / 180, t = Math.acos( 2.55 / ( STEPS[ 2 ][ 0 ] - GAP ) ), p = outward( phi ).multiplyScalar( 2.55 ).setY( DOME.y + DOME.rise * Math.sin( t ) - 0.06 );
+			const rd = 0.85 * ( STEPS[ 2 ][ 0 ] - GAP ), phi = deg * Math.PI / 180, t = Math.acos( rd / ( STEPS[ 2 ][ 0 ] - GAP ) ), p = outward( phi ).multiplyScalar( rd ).setY( DOME.y + DOME.rise * Math.sin( t ) - 0.06 );
 			const aim = new THREE.Vector3( 0, 0.8, 0 ), dir = aim.clone().sub( p ).normalize(), q = new THREE.Quaternion().setFromUnitVectors( new THREE.Vector3( 0, - 1, 0 ), dir );
 			const can = new THREE.CylinderGeometry( 0.045, 0.05, 0.11, 32, 1, true ).applyQuaternion( q ).translate( p.x, p.y, p.z );
 			add( can, M.brass );
@@ -740,10 +785,10 @@ export class Luminara {
 			return g;
 
 		};
-		const floor = new THREE.Mesh( disc( 0, 5.92, 0, null ), M.floor ), border = new THREE.Mesh( disc( 5.92, R + 0.05, 0, null ), M.border );
+		const floor = new THREE.Mesh( disc( 0, R - 0.58, 0, null ), M.floor ), border = new THREE.Mesh( disc( R - 0.58, R + 0.05, 0, null ), M.border );
 		for ( const m of [ floor, border ] ) { m.receiveShadow = true; m.name = 'luminara:floor'; this.group.add( m ); }
 		this.floorMeshes = [ floor, border ];		// (hidden while their reflection is drawn)
-		for ( const [ a, b ] of [ [ 2.68, 2.695 ], [ 5.88, 5.92 ] ] ) add( disc( a, b, 0.0005 ), M.inlay );
+		for ( const [ a, b ] of [ [ 2.68, 2.695 ], [ R - 0.62, R - 0.58 ] ] ) add( disc( a, b, 0.0005 ), M.inlay );
 		// a ring of light round the rug: a bead (a flat strip this thin breaks up at grazing angles)
 		add( new THREE.TorusGeometry( 2.56, 0.009, 6, 256 ).rotateX( Math.PI / 2 ).scale( 1, 0.6, 1 ), M.ledFloor );
 		{
@@ -776,7 +821,7 @@ export class Luminara {
 
 			const mesh = new THREE.Mesh( mergeGeometries( geos, false ), mat );
 			geos.forEach( g => g.dispose() );
-			mesh.castShadow = ! [ M.cove, M.dome, M.ceiling, M.led, M.ledWall, M.ledFloor, M.shelfLed, M.sconce, M.neon ].includes( mat );
+			mesh.castShadow = ! [ M.cove, M.dome, M.ceiling, M.led, M.ledWall, M.ledFloor, M.shelfLed, M.stepLed, M.sconce, M.neon ].includes( mat );
 			mesh.receiveShadow = true;
 			mesh.name = `luminara:${ Object.keys( M ).find( k => M[ k ] === mat ) }`;
 			this.group.add( mesh );
@@ -802,11 +847,12 @@ export class Luminara {
 		if ( this.pack ) this.group.add( this.pack );
 		{		// the line lights' uniforms (their count fixed from the first build: the shaders')
 
-			const U = this.segU;
-			U.uSegA.value = this.segments.map( g => g.a ); U.uSegB.value = this.segments.map( g => g.b );
-			U.uSegN.value = this.segments.map( g => g.n ? new THREE.Vector4( g.n.x, g.n.y, g.n.z, 1 ) : new THREE.Vector4( 0, 0, 0, 0 ) );
-			U.uSegClip.value = this.segments.map( g => g.clip ?? new THREE.Vector4( 0, 0, 0, 1 ) );
-			U.uSegCol.value = this.segments.map( () => new THREE.Color() );
+			const U = this.segU, live = this.segments.filter( g => g.kind !== 'step' );		// (the step lights: on the floor, which takes no glow; baked)
+			for ( const g of this.segments ) g.col = new THREE.Color();
+			U.uSegA.value = live.map( g => g.a ); U.uSegB.value = live.map( g => g.b );
+			U.uSegN.value = live.map( g => g.n ? new THREE.Vector4( g.n.x, g.n.y, g.n.z, 1 ) : new THREE.Vector4( 0, 0, 0, 0 ) );
+			U.uSegClip.value = live.map( g => g.clip ?? new THREE.Vector4( 0, 0, 0, 1 ) );
+			U.uSegCol.value = live.map( g => g.col );
 
 		}
 		this._hash = this._computeHash();
@@ -856,8 +902,9 @@ export class Luminara {
 
 			// a round window: a white frame and a brass ring inside it, on the wall
 			const W = frameAt( phiC, R - 0.012, o.yc );
-			add( new THREE.TorusGeometry( o.a + 0.04, 0.07, 16, 160 ).applyMatrix4( W ), M.lacquer );
-			add( new THREE.TorusGeometry( o.a + 0.004, 0.016, 10, 160 ).translate( 0, 0, 0.03 ).applyMatrix4( W ), M.brass );
+			add( new THREE.TorusGeometry( o.a + 0.05, 0.1, 18, 192 ).applyMatrix4( W ), M.lacquer );		// (a thick rolled frame)
+			add( new THREE.TorusGeometry( o.a + 0.004, 0.018, 10, 192 ).translate( 0, 0, 0.045 ).applyMatrix4( W ), M.brass );
+			add( new THREE.TorusGeometry( o.a - 0.004, 0.014, 8, 192 ).applyMatrix4( frameAt( phiC, R + o.depth - 0.03, o.yc ) ), M.brass );		// (at the reveal's far end: the glass's)
 			return;
 
 		}
@@ -966,23 +1013,33 @@ export class Luminara {
 	_clefLight( add, phiC ) {
 
 		const M = this.materials, off = 0.035;
+		this.neons ??= {};		// per glyph: its own glow and relief maps (glyphMaps); the staff's
 		const glyph = ( name, s, y, h ) => {
 
 			const G = GLYPHS[ name ], path = new THREE.ShapePath();
 			for ( const c of G.contours ) { path.moveTo( c[ 0 ][ 0 ], c[ 0 ][ 1 ] ); for ( let i = 1; i < c.length; ++ i ) path.lineTo( c[ i ][ 0 ], c[ i ][ 1 ] ); }
 			const shapes = path.toShapes( false );
-			const g = new THREE.ExtrudeGeometry( shapes, { depth: 0.12, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.008, bevelSegments: 3, curveSegments: 4 } );
+			const g = new THREE.ExtrudeGeometry( shapes, { depth: 0.12, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.009, bevelSegments: 5, curveSegments: 4 } );
 			g.computeBoundingBox();
-			const b = g.boundingBox, k = h / ( b.max.y - b.min.y ), kz = 0.03 / 0.18;		// (3 cm thick, whatever its height)
-			g.translate( - ( b.min.x + b.max.x ) / 2, - b.min.y, 0.03 ).scale( k, k, kz );
-			add( g.applyMatrix4( frameAt( phiC - s / R, R - off, y ) ), M.neon );
+			const b = g.boundingBox, k = h / ( b.max.y - b.min.y ), kz = 0.05 / 0.22;		// (5 cm deep, whatever its height: it stands out of the wall)
+			g.translate( - ( b.min.x + b.max.x ) / 2, - b.min.y, 0.05 ).scale( k, k, kz );
+			if ( ! this.neons[ name ] ) {
+
+				const maps = glyphMaps( G ), m = M.neon.clone();
+				m.color.set( '#8c8378' );		// (acrylic lit from within: its own light leads, the room's on it less)
+				m.emissiveMap = maps.glow; m.normalMap = maps.normal; m.normalScale = new THREE.Vector2( 1.4, 1.4 ); m.clearcoatNormalMap = maps.normal;
+				this.neons[ name ] = m;
+
+			}
+			add( g.applyMatrix4( frameAt( phiC - s / R, R - off, y ) ), this.neons[ name ] );
 
 		};
-		glyph( 'clef', - 0.95, 1.14, 1.85 );
-		// the staff: five lines from behind the clef across to the right, rising and waving
+		glyph( 'clef', - 1.05, 1.22, 2.05 );
+		// the staff: five lines from behind the clef across to the right, rising and waving, brighter in the middle
+		this.neons.staff ??= Object.assign( M.neon.clone(), { emissiveMap: gradientU( u => 0.55 + 0.45 * Math.sin( Math.PI * u ) ** 0.7 ) } );
 		const line = ( k, t ) => {
 
-			const sx = - 1.25 + 2.75 * t, y = 1.74 + 0.11 * k * ( 1 + 0.35 * t ) + 0.32 * t + 0.13 * Math.sin( Math.PI * ( 1.6 * t + 0.15 ) );
+			const sx = - 1.4 + 3.0 * t, y = 1.88 + 0.12 * k * ( 1 + 0.35 * t ) + 0.36 * t + 0.14 * Math.sin( Math.PI * ( 1.6 * t + 0.15 ) );
 			return [ sx, y ];
 
 		};
@@ -991,11 +1048,11 @@ export class Luminara {
 			const pts = [];
 			for ( let i = 0; i <= 60; ++ i ) pts.push( line( k, i / 60 ) );
 			const curve = new THREE.CatmullRomCurve3( pts.map( ( [ sx, y ] ) => onWall( phiC, sx, y, R - off ) ) );
-			add( new THREE.TubeGeometry( curve, 180, 0.011, 8, false ), M.neon );
+			add( new THREE.TubeGeometry( curve, 180, 0.012, 10, false ), this.neons.staff );
 
 		}
 		// notes on it
-		for ( const [ name, t, k, h ] of [ [ 'quaver', 0.34, 2.6, 0.36 ], [ 'quavers', 0.55, 1.4, 0.4 ], [ 'crotchet', 0.72, 3.2, 0.32 ], [ 'quaver', 0.88, 1.9, 0.36 ] ] ) {
+		for ( const [ name, t, k, h ] of [ [ 'quaver', 0.34, 2.6, 0.4 ], [ 'quavers', 0.55, 1.4, 0.44 ], [ 'crotchet', 0.72, 3.2, 0.36 ], [ 'quaver', 0.88, 1.9, 0.4 ] ] ) {
 
 			const [ sx, y ] = line( k, t );
 			glyph( name, sx, y - 0.06, h );
@@ -1048,7 +1105,7 @@ export class Luminara {
 	/** A pilaster's parts in its own frame (x across, y up, z towards the centre; its back in the wall). */
 	_pilaster() {
 
-		const w = LUMINARA.pilaster, d = 0.12, H = LUMINARA.wall, flutes = 5, fr = 0.024, s = new THREE.Shape();
+		const w = LUMINARA.pilaster, d = 0.12, H = LUMINARA.wall, flutes = 5, fr = 0.02, s = new THREE.Shape();
 		s.moveTo( - w / 2, - 0.06 ); s.lineTo( - w / 2, d );
 		const span = w - 0.08, step = span / flutes;
 		for ( let i = 0; i < flutes; ++ i ) {
@@ -1075,7 +1132,7 @@ export class Luminara {
 	 */
 	_sconce( d ) {
 
-		const y = 1.78, h = 0.42, r = 0.028, z = d + 0.078, brass = [];
+		const y = 1.95, h = 0.42, r = 0.028, z = d + 0.078, brass = [];
 		brass.push( new RoundedBoxGeometry( 0.072, h + 0.16, 0.014, 2, 0.006 ).translate( 0, y, d + 0.007 ) );
 		brass.push( new RoundedBoxGeometry( 0.05, h + 0.1, 0.008, 2, 0.003 ).translate( 0, y, d + 0.016 ) );		// (a raised panel on it)
 		for ( const e of [ - 1, 1 ] ) {
@@ -1113,7 +1170,7 @@ export class Luminara {
 		// the Recital's spot, straight down from the dome's crown
 		this.topSpot = spot( THREE.MathUtils.degToRad( 15 ), 0.5, 2048 );
 		this.topSpot.radius = 0.3;
-		this.topSpot.position.set( 0, 6.2, 0.2 );
+		this.topSpot.position.set( 0, DOME.y + DOME.rise - 0.25, 0.2 );
 		this.topSpot.target.position.set( 0, 0, 0 );
 		// the dome's four spots on the piano (placed in rebuild): the first casts the keys' shadow (the
 		// key light, 4096), the third the piano's from behind; the others none
@@ -1122,14 +1179,6 @@ export class Luminara {
 			const s = spot( THREE.MathUtils.degToRad( 24 ), 0.7, i === 0 ? 4096 : 2048 );
 			s.castShadow = i === 0 || i === 2;
 			s.radius = 0.08;
-			return s;
-
-		} );
-		// the first soffit's downlights, one over each bay (no shadows: twelve)
-		this.washerLights = Array.from( { length: LUMINARA.bays }, () => {
-
-			const s = new THREE.SpotLight( '#ffffff', 0, 9, THREE.MathUtils.degToRad( 34 ), 0.85, 2 );
-			this.lights.add( s, s.target );
 			return s;
 
 		} );
@@ -1150,28 +1199,23 @@ export class Luminara {
 			s.intensity = L.dome; s.color.set( L.downColor ); s.visible = L.dome > 0;
 
 		}
-		for ( const [ i, s ] of this.washerLights.entries() ) {
-
-			const [ p, t ] = this.washers[ i ];
-			s.position.copy( p ); s.target.position.copy( t );
-			s.intensity = L.washer; s.color.set( L.downColor ); s.visible = L.washer > 0;
-
-		}
 		this.lights.updateMatrixWorld( true );
 		M.sconce.emissive.set( L.sconceColor ); M.sconce.emissiveIntensity = L.sconce;
-		M.neon.emissive.set( L.ledColor ).lerp( new THREE.Color( '#ffffff' ), 0.35 ); M.neon.emissiveIntensity = 2.1 * L.ledWall;
+		for ( const m of [ M.neon, ...Object.values( this.neons ?? {} ) ] ) { m.emissive.set( L.ledColor ).lerp( new THREE.Color( '#ffffff' ), 0.35 ); m.emissiveIntensity = 0.9 * L.ledWall; }		// (its middle about 2.5, its edges under 1: below saturation, its gradient reads)
 		if ( this.lampLight ) { this.lampLight.color.set( L.sconceColor ); this.lampLight.intensity = 0.35 * L.sconce; this.lampLight.visible = L.sconce > 0; }
 		for ( const m of this.shades ?? [] ) { m.emissive.set( L.sconceColor ); m.emissiveIntensity = 0.5 * L.sconce; }
 		// the line lights' intensity per metre: a tube, its radiance × its diameter (0.9: its gradient's mean); a strip, `shelf`
-		for ( const [ i, g ] of this.segments.entries() ) {
+		for ( const g of this.segments ) {
 
-			const c = this.segU.uSegCol.value[ i ];
+			const c = g.col;
 			if ( ! c ) continue;
 			if ( g.kind === 'sconce' ) c.set( L.sconceColor ).multiplyScalar( 0.9 * L.sconce * 0.056 );
+			else if ( g.kind === 'step' ) c.set( L.ledColor ).multiplyScalar( 2.6 * L.ledFloor );
 			else c.set( L.ledColor ).multiplyScalar( L.shelf ?? 1 );
 
 		}
 		M.shelfLed.emissive.set( L.ledColor ); M.shelfLed.emissiveIntensity = L.ledWall;
+		M.stepLed.emissive.set( L.ledColor ); M.stepLed.emissiveIntensity = 3 * L.ledFloor;
 		for ( const m of [ M.cove, M.dome ] ) { m.emissive.set( L.coveColor ); m.emissiveIntensity = L.cove * ( m === M.dome ? 0.7 : 1 ); }
 		M.niche.emissive.set( L.nicheColor ); M.niche.emissiveIntensity = L.niche;
 		for ( const [ m, v ] of [ [ M.led, L.led ], [ M.ledWall, L.ledWall ], [ M.ledFloor, L.ledFloor ] ] ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = v; }
@@ -1272,7 +1316,7 @@ export class Luminara {
 		for ( const [ name, p ] of Object.entries( meta.presets ?? {} ) ) {
 
 			const t = mapOf( `bake-${ p.slug }` );
-			if ( ! t ) continue;
+			if ( ! t || ! Number.isFinite( p.scale ) ) continue;		// (a failed bake: the probe's light)
 			t.colorSpace = THREE.SRGBColorSpace; t.minFilter = t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
 			this.bakes[ name ] = { map: t, scale: p.scale };
 
@@ -1346,7 +1390,7 @@ export class Luminara {
 			const p = {
 				brass: () => phys( { color: '#d6a95c', metalness: 1, roughness: 0.28 } ),
 				lacquer: () => phys( { color: '#f3f1ed', roughness: 0.35, clearcoat: 0.45, clearcoatRoughness: 0.15 } ),		// (more: the shell mirrors the room and reads as glass)
-				boucle: () => phys( { color: '#ebe6dc', roughness: 0.95, sheen: 0.7, sheenColor: new THREE.Color( '#ffffff' ), sheenRoughness: 0.7 } ),
+				boucle: () => leather( phys( { color: '#e8dfd0', roughness: 0.55, sheen: 0.25, sheenColor: new THREE.Color( '#fff4e6' ), sheenRoughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.28 } ) ),		// (cream leather: its coat's highlight, a fine grain)
 				marble: () => phys( { color: '#f1efec', map: marble, roughness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.05 } ),
 				ceramic: () => phys( { color: '#efede8', roughness: 0.5 } ),
 				foliage: () => phys( { color: new THREE.Color( 1.5, 2.1, 1.25 ), vertexColors: true,		// (the decoder's olive: dark and grey)
@@ -1378,13 +1422,15 @@ export class Luminara {
 		// a palm built here (palmGeometry)
 		const palm = { geo: palmGeometry(), mat: phys( { vertexColors: true, roughness: 0.55, side: THREE.DoubleSide } ) };
 		const soil = phys( { color: '#2c241e', roughness: 1 } );
+		let record = null;
 		const place = ( name, F, mirror = false ) => {
 
-			if ( ! nodes[ name ] ) return;
+			if ( ! nodes[ name ] && name !== 'gold-disc' ) return;
 			const holder = new THREE.Group();
 			holder.matrixAutoUpdate = false;
 			holder.matrix.copy( F );
 			if ( mirror ) holder.matrix.multiply( new THREE.Matrix4().makeScale( - 1, 1, 1 ) );
+			if ( name === 'gold-disc' ) { holder.add( ( record ??= goldRecord( this.segUPack ) ).clone() ); pack.add( holder ); return; }		// (ours: goldRecord)
 			const o = nodes[ name ].clone();
 			o.traverse( c => { if ( c.isMesh ) { c.material = finish( c.material ); c.castShadow = c.receiveShadow = true; } } );
 			if ( name === 'plant' ) {

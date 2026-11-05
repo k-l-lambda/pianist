@@ -5,7 +5,7 @@
 //   texel G-buffer   the shell drawn in its lightmap UVs (uvBake, tools/luminara-unwrap.py's): each
 //                    texel's world position and normal; the side it is seen from found by rays (the
 //                    room's surfaces are not wound one way)
-//   direct           spots (the washers, the dome's, the Recital's: as three lights them) and the line
+//   direct           spots (the dome's, the Recital's: as three lights them) and the line
 //                    lights (the sconces' frosted tubes, the shelves' strips: src/luminara.js's
 //                    segments), each sample with a shadow ray. The spots stay real-time (their direct
 //                    light not stored, only their bounce); the line lights' is stored (soft shadows)
@@ -23,8 +23,9 @@ import * as THREE from 'three';
 import { MeshBVH, MeshBVHUniformStruct, FloatVertexAttributeTexture, BVHShaderGLSL } from 'three-mesh-bvh';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
-const SAMPLES = { orient: 48, direct: 24, gather: [ 768, 384, 256, 192 ] };		// per texel
+const SAMPLES = { orient: 48, direct: 32, gather: [ 1024, 512, 320, 256 ] };		// per texel
 const ALBEDO_SCALE = 0.95;		// (a map's mean below its material's colour)
+const TILE = 512;		// texels a side drawn at once (a whole 2048 map's heavier passes in one draw: the GPU reset, the context lost)
 
 const b64 = a => { const u = new Uint8Array( a.buffer, a.byteOffset, a.byteLength ); let s = ''; for ( let i = 0; i < u.length; i += 0x8000 ) s += String.fromCharCode.apply( null, u.subarray( i, i + 0x8000 ) ); return btoa( s ); };
 const unb64 = ( s, T ) => { const b = atob( s ), u = new Uint8Array( b.length ); for ( let i = 0; i < b.length; ++ i ) u[ i ] = b.charCodeAt( i ); return new T( u.buffer ); };
@@ -122,7 +123,6 @@ export class LuminaraBaker {
 			const c = mat.color ? mat.color.clone() : new THREE.Color( 0.5, 0.5, 0.5 );
 			if ( mat.metalness > 0.5 ) c.multiplyScalar( 0.25 );		// (a metal's diffuse: none; its reflection a little)
 			if ( mat.map ) c.multiplyScalar( ALBEDO_SCALE );
-			if ( mat === M.wall ) c.copy( new THREE.Color( '#f1e3cf' ) );		// (its tint over the plaster map: about this)
 			if ( mat === M.floor ) c.copy( new THREE.Color( '#e3e0da' ) );
 			if ( mat === M.rug ) c.copy( new THREE.Color( '#e6dccb' ) );
 			return c;
@@ -148,7 +148,7 @@ export class LuminaraBaker {
 			}
 			const cnt = g.attributes.position.count, alb = new Float32Array( cnt * 4 ), emi = new Float32Array( cnt * 4 ), bk = new Float32Array( cnt * 4 );
 			const a = albedoOf( mat ), vc = mat.vertexColors && g.attributes.color, uv = g.attributes.uv;
-			const emissive = !! mat.emissive && mat !== M.sconce && mat !== M.shelfLed;		// (each a source, its colour per preset: emit(); the line lights: sampled directly)
+			const emissive = !! mat.emissive && mat !== M.sconce && mat !== M.shelfLed && mat !== M.stepLed;		// (each a source, its colour per preset: emit(); the line lights: sampled directly)
 			const src = emissive ? sourceOf( mat ) : 0, grad = mat.emissiveMap?.image?.data, gh = mat.emissiveMap?.image?.height;
 			const baked = targets.has( o ), ub = g.attributes.uvBake;
 			for ( let i = 0; i < cnt; ++ i ) {
@@ -205,6 +205,32 @@ export class LuminaraBaker {
 
 	}
 
+	/** Draw `mat` into `out` (cleared first if `clear`) in tiles, syncing now and then (the GPU done, the page alive). */
+	async _draw( mat, out, clear ) {
+
+		const r = this.renderer, n = this.size, gl = r.getContext();
+		out.scissorTest = false; out.viewport.set( 0, 0, n, n );
+		r.setRenderTarget( out ); r.setClearColor( 0x000000, 0 ); if ( clear ) r.clear();
+		this.quad.material = mat;
+		out.scissorTest = true;
+		let k = 0;
+		for ( let y = 0; y < n; y += TILE ) for ( let x = 0; x < n; x += TILE ) {
+
+			out.scissor.set( x, y, Math.min( TILE, n - x ), Math.min( TILE, n - y ) );
+			r.setRenderTarget( out );
+			this.quad.render( r );
+			if ( ++ k % 2 === 0 ) { r.readRenderTargetPixels( out, x, y, 1, 1, new Float32Array( 4 ) ); await new Promise( q => setTimeout( q, 0 ) ); }
+
+		}
+		out.scissorTest = false;
+		r.setRenderTarget( null );
+		if ( gl.isContextLost() ) throw new Error( 'the WebGL context was lost (a draw ran too long?)' );
+
+	}
+
+	/** A float target from the pool (reused: at 2048 each is 64 MB), by name. */
+	_scratch( name ) { return ( this._pool ??= {} )[ name ] ??= target( this.size ); }
+
 	_pass( fragment, uniforms, out, { blend = false } = {} ) {
 
 		const mat = new THREE.ShaderMaterial( {
@@ -217,17 +243,12 @@ export class LuminaraBaker {
 			mat,
 			run: async ( passes = 1, clear = true ) => {
 
-				const r = this.renderer;
-				r.setRenderTarget( out ); r.setClearColor( 0x000000, 0 ); if ( clear ) r.clear();
-				this.quad.material = mat;
 				for ( let i = 0; i < passes; ++ i ) {
 
 					mat.uniforms.seed.value = ( this._seed = ( this._seed ?? 1 ) + 1 );
-					this.quad.render( r );
-					if ( i % 8 === 7 ) { r.readRenderTargetPixels( out, 0, 0, 1, 1, new Float32Array( 4 ) ); await new Promise( q => setTimeout( q, 0 ) ); }		// (the GPU done, the page alive)
+					await this._draw( mat, out, clear && i === 0 );
 
 				}
-				r.setRenderTarget( null );
 
 			},
 		};
@@ -269,7 +290,8 @@ export class LuminaraBaker {
 	/** Each source's emission (linear, ×intensity) for the preset now set on the venue: the emission texture's rgb. */
 	_emit() {
 
-		const E = this.vEmitBase.slice(), cols = this.sources.map( m => m.emissive.clone().multiplyScalar( m.emissiveIntensity ) );
+		const gain = this.lum.light.bakeInterior ?? 1;		// (the room's own light in the bake: lower, the windows' stands out)
+		const E = this.vEmitBase.slice(), cols = this.sources.map( m => m.emissive.clone().multiplyScalar( m.emissiveIntensity * gain ) );
 		for ( let i = 0; i < E.length; i += 4 ) {
 
 			const s = E[ i + 3 ];
@@ -300,19 +322,21 @@ export class LuminaraBaker {
 		this._emit();
 		const n = this.size, L = this.lum, MAXS = 24;
 		// the direct light's sources: spots (as three's: decay 2, range windowed, the cone's smoothstep) and sconces
-		const spots = [ ...L.domeSpots, ...L.washerLights, L.topSpot ].filter( s => s.visible && s.intensity > 0 );
+		const spots = [ ...L.domeSpots, L.topSpot ].filter( s => s.visible && s.intensity > 0 );
 		const sp = { pos: [], dir: [], col: [], cone: [], range: [] };
 		for ( const s of spots.slice( 0, MAXS ) ) {
 
 			s.updateMatrixWorld(); s.target.updateMatrixWorld();
 			const p = new THREE.Vector3().setFromMatrixPosition( s.matrixWorld ), t = new THREE.Vector3().setFromMatrixPosition( s.target.matrixWorld );
-			sp.pos.push( p ); sp.dir.push( t.sub( p ).normalize() ); sp.col.push( s.color.clone().multiplyScalar( s.intensity ) );
+			sp.pos.push( p ); sp.dir.push( t.sub( p ).normalize() ); sp.col.push( s.color.clone().multiplyScalar( s.intensity * ( L.light.bakeInterior ?? 1 ) ) );
 			sp.cone.push( new THREE.Vector2( Math.cos( s.angle ), Math.cos( s.angle * ( 1 - s.penumbra ) ) ) ); sp.range.push( s.distance );
 
 		}
 		while ( sp.pos.length < MAXS ) { sp.pos.push( new THREE.Vector3() ); sp.dir.push( new THREE.Vector3( 0, - 1, 0 ) ); sp.col.push( new THREE.Color( 0 ) ); sp.cone.push( new THREE.Vector2( 1, 1 ) ); sp.range.push( 0 ); }
 		// the line lights (the sconces' tubes, the shelves' strips: src/luminara.js's segments, their intensity per metre as drawn)
-		const U = L.segU, NS = U.uSegA.value.length;
+		const G = L.segments, gain = L.light.bakeInterior ?? 1, NS = G.length;		// (all of them: the step lights too)
+		const U = { uSegA: { value: G.map( g => g.a ) }, uSegB: { value: G.map( g => g.b ) }, uSegCol: { value: G.map( g => g.col.clone().multiplyScalar( gain ) ) },
+			uSegN: { value: G.map( g => g.n ? new THREE.Vector4( g.n.x, g.n.y, g.n.z, 1 ) : new THREE.Vector4( 0, 0, 0, 0 ) ) } };
 		const direct = target( n, 2 );		// [ 0 ]: all direct (the bounce's source), [ 1 ]: the line lights' (stored)
 		const dp = this._pass( /* glsl */`
 			uniform vec3 spPos[ ${ MAXS } ], spDir[ ${ MAXS } ], spCol[ ${ MAXS } ]; uniform vec2 spCone[ ${ MAXS } ]; uniform float spRange[ ${ MAXS } ];
@@ -382,45 +406,42 @@ export class LuminaraBaker {
 		// bounces: E1 from the emitters, the sky and the direct light on what the rays hit; E2.. from the one before
 		const mean = async tex => {
 
-			const rt = target( n ), buf = new Float32Array( n * n * 4 ), probe = this._pass( `uniform sampler2D src; out vec4 o; void main() { o = texture( src, vUv ); }`, { src: { value: tex } }, rt );
-			await probe.run(); this.renderer.readRenderTargetPixels( rt, 0, 0, n, n, buf ); rt.dispose();
+			const rt = this._scratch( 'mean' ), buf = new Float32Array( n * n * 4 ), probe = this._pass( `uniform sampler2D src; out vec4 o; void main() { o = texture( src, vUv ); }`, { src: { value: tex } }, rt );
+			await probe.run(); probe.mat.dispose(); this.renderer.readRenderTargetPixels( rt, 0, 0, n, n, buf );
 			let r = 0, g = 0, b = 0, c = 0;
 			const valid = this._valid ??= ( () => { const v = new Float32Array( n * n * 4 ); this.renderer.readRenderTargetPixels( this._nRT, 0, 0, n, n, v ); return v; } )();
 			for ( let i = 0; i < n * n; ++ i ) if ( valid[ 4 * i + 3 ] > 0.5 ) { r += buf[ 4 * i ]; g += buf[ 4 * i + 1 ]; b += buf[ 4 * i + 2 ]; ++ c; }
 			return new THREE.Vector3( r / c, g / c, b / c );
 
 		};
-		let prev = await this._dilate( direct.textures[ 0 ] ), total = target( n ), sum = [];
+		let prev = await this._dilate( direct.textures[ 0 ], 4, 'prev' ), total = this._scratch( 'total' ), sum = [];
 		await this._copy( direct.textures[ 1 ], total );		// (the stored: the sconces' direct)
 		for ( const [ k, spp ] of SAMPLES.gather.entries() ) {
 
-			const out = target( n ), g = gather( k === 0 ), m = await mean( prev );
+			const out = this._scratch( 'gather' ), g = gather( k === 0 ), m = await mean( prev );
 			Object.assign( g.mat.uniforms, { prev: { value: prev }, mean: { value: m.multiplyScalar( 0.85 ) } } );
 			g.mat.uniforms.spp.value = spp / 8;
-			this.renderer.setRenderTarget( out ); this.renderer.clear();
-			this.quad.material = g.mat;
-			for ( let i = 0; i < spp / 8; ++ i ) { g.mat.uniforms.seed.value = ( this._seed = ( this._seed ?? 1 ) + 1 ); this.quad.render( this.renderer ); if ( i % 8 === 7 ) { this.renderer.readRenderTargetPixels( out, 0, 0, 1, 1, new Float32Array( 4 ) ); await new Promise( q => setTimeout( q, 0 ) ); } }
-			this.renderer.setRenderTarget( null );
+			for ( let i = 0; i < spp / 8; ++ i ) { g.mat.uniforms.seed.value = ( this._seed = ( this._seed ?? 1 ) + 1 ); await this._draw( g.mat, out, i === 0 ); }
 			g.mat.dispose();
-			const clean = await this._denoise( out.texture, k === 0 ? 4 : 3 );
-			prev = await this._dilate( clean );
+			const clean = await this._denoise( out.texture, k === 0 ? 5 : 4 );
+			prev = await this._dilate( clean, 4, k % 2 ? 'prev' : 'prev2' );		// (two: the next gather reads this one while its mean is taken from it)
 			await this._add( prev, total );
 			sum.push( await mean( prev ) );
-			out.dispose();
 
 		}
 		// the bounces beyond: a geometric tail from the last two
 		const ratio = Math.min( 0.9, sum[ 3 ].length() / Math.max( 1e-6, sum[ 2 ].length() ) );
 		await this._add( prev, total, ratio / ( 1 - ratio ) );
-		const final = await this._dilate( await this._denoise( total.texture, 2 ), 12 );
+		const final = await this._dilate( await this._denoise( total.texture, 2 ), 12, 'final' );
 		// read back, encode
-		const rtF = target( n ), buf = new Float32Array( n * n * 4 );
+		const rtF = this._scratch( 'read' ), buf = new Float32Array( n * n * 4 );
 		await this._copy( final, rtF );
-		this.renderer.readRenderTargetPixels( rtF, 0, 0, n, n, buf ); rtF.dispose();
+		this.renderer.readRenderTargetPixels( rtF, 0, 0, n, n, buf );
 		const lum = [];
 		for ( let i = 0; i < n * n; i += 7 ) if ( buf[ 4 * i + 3 ] > 0.5 ) lum.push( Math.max( buf[ 4 * i ], buf[ 4 * i + 1 ], buf[ 4 * i + 2 ] ) );
 		lum.sort( ( a, b ) => a - b );
 		const scale = Math.max( 1e-3, lum[ Math.floor( lum.length * 0.998 ) ] * 1.1 ), data = new Uint8Array( n * n * 3 );
+		if ( ! lum.length || ! Number.isFinite( scale ) || sum.some( v => ! Number.isFinite( v.x ) ) ) throw new Error( `the bake came out empty or not finite (valid texels ${ lum.length }, scale ${ scale })` );
 		const enc = v => { v = Math.min( 1, Math.max( 0, v / scale ) ); return v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow( v, 1 / 2.4 ) - 0.055; };
 		for ( let y = 0; y < n; ++ y ) for ( let x = 0; x < n; ++ x ) {
 
@@ -429,7 +450,7 @@ export class LuminaraBaker {
 
 		}
 		const stats = { triangles: this.triangles, spots: spots.length, sconces: NS, sources: this.sources.length, mean: sum.map( v => +v.length().toFixed( 4 ) ), scale: +scale.toFixed( 4 ) };
-		direct.dispose(); total.dispose();
+		direct.dispose();
 		for ( const rt of this._keep ?? [] ) rt.dispose();
 		this._keep = [];
 		return { data, scale, stats };
@@ -479,10 +500,10 @@ export class LuminaraBaker {
 	async _denoise( src, levels ) {
 
 		const n = this.size;
-		let a = src, rts = [];
+		let a = src;
 		for ( let l = 0; l < levels; ++ l ) {
 
-			const rt = target( n );
+			const rt = this._scratch( l % 2 ? 'dn1' : 'dn0' );
 			const p = this._pass( /* glsl */`
 				uniform sampler2D src; uniform float step; out vec4 o;
 				void main() {
@@ -499,22 +520,21 @@ export class LuminaraBaker {
 					o = vec4( s / max( w, 1e-6 ), c0.a );
 				}`, { src: { value: a }, step: { value: 1 << l } }, rt );
 			await p.run(); p.mat.dispose();
-			rts.push( rt ); a = rt.texture;
+			a = rt.texture;
 
 		}
-		this._keep = ( this._keep ?? [] ).concat( rts );
 		return a;
 
 	}
 
 	/** The charts' borders run on into the unused texels (`iterations` texels), so filtering never meets black. */
-	async _dilate( src, iterations = 4 ) {
+	async _dilate( src, iterations = 4, into = 'dil' ) {		// (`into`: the pool's name for its result; the steps between: its two scratch targets)
 
 		const n = this.size;
-		let a = src, valid = null;
+		let a = src;
 		for ( let it = 0; it < iterations; ++ it ) {
 
-			const rt = target( n );
+			const rt = this._scratch( it === iterations - 1 ? into : it % 2 ? 'dl1' : 'dl0' );
 			const p = this._pass( /* glsl */`
 				uniform sampler2D src; uniform float first; out vec4 o;
 				void main() {
@@ -528,7 +548,7 @@ export class LuminaraBaker {
 					o = w > 0.0 ? vec4( s / w, 1.0 ) : vec4( 0 );
 				}`, { src: { value: a }, first: { value: it === 0 ? 1 : 0 } }, rt );
 			await p.run(); p.mat.dispose();
-			this._keep = ( this._keep ?? [] ).concat( rt ); a = rt.texture;
+			a = rt.texture;
 
 		}
 		return a;

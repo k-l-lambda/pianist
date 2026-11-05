@@ -18,6 +18,7 @@ import { ConcertHall } from './hall.js';
 import { Luminara, prefetchLuminara } from './luminara.js';
 import { berlinProgress, berlinStatus, berlinStatusText, prefetchBerlinHall } from './berlinhall.js';
 import { GIProbe } from './gi.js';
+import { PlaneMirror, chainCompile } from './mirror.js';
 import { PathTracer } from './pathtracer.js';
 import { KeyShadow } from './keyshadow.js';
 import { HandheldMode } from './handheldmode.js';
@@ -132,18 +133,49 @@ function blurMirror( mat ) {
 
 	if ( mat.userData.mirrorBlur ) return;
 	mat.userData.mirrorBlur = true;
-	mat.onBeforeCompile = shader => {
+	chainCompile( mat, shader => {
 
 		const chunk = THREE.ShaderChunk.lights_fragment_maps
 			.replace( 'getIBLRadiance( geometryViewDir, geometryNormal, material.roughness )', `getIBLRadiance( geometryViewDir, geometryNormal, max( material.roughness, ${ MIRROR_BLUR.toFixed( 3 ) } ) )` )
 			.replace( 'material.clearcoatRoughness )', `max( material.clearcoatRoughness, ${ MIRROR_BLUR.toFixed( 3 ) } ) )` );
 		shader.fragmentShader = shader.fragmentShader.replace( '#include <lights_fragment_maps>', chunk );
 
-	};
-	mat.customProgramCacheKey = () => 'mirrorBlur';
+	}, 'mirrorBlur' );
 	mat.needsUpdate = true;
 
 }
+// the piano's screen: a planar reflection (src/mirror.js) of the room in its glass, sharp (the probe's
+// cube, 256 a face from the room's middle, put a soft, misplaced room in it). Off while the handheld
+// camera's own mirror capture (its person in the glass) is in use, in the path tracer, and when the
+// screen is out of view
+const screenMirror = new PlaneMirror( new THREE.Plane(), { blur: 0.5 } );
+let screenMirrorOf = null, screenHide = [], screenBox = new THREE.Box3(), handheldMirror = false;
+const _frustum = new THREE.Frustum(), _pm = new THREE.Matrix4();
+function updateScreenMirror() {
+
+	const panel = piano?.roll?.screen && piano.materials?.panel;
+	if ( ! panel || handheldMirror || settings.mode === 'pathtrace' ) { screenMirror.uniforms.uMirrorOn.value = 0; return; }
+	if ( screenMirrorOf !== piano ) {		// (a new piano: its panel's material reads it; what lies on the glass hidden from it)
+
+		screenMirrorOf = piano;
+		screenMirror.addTo( panel );
+		screenHide = [];
+		screenBox.makeEmpty();
+		piano.group.traverse( o => { if ( o.isMesh && o.material === panel ) { screenHide.push( o ); screenBox.expandByObject( o ); } if ( o.name === 'pianoRoll' ) screenHide.push( o ); } );
+
+	}
+	const R = piano.roll;
+	piano.group.updateMatrixWorld();
+	screenMirror.plane.setFromNormalAndCoplanarPoint( _n.crossVectors( _x, R.up ).normalize(), R.origin ).applyMatrix4( piano.group.matrixWorld );
+	screenMirror.update( renderer, scene, camera, screenHide, settings.gi ? 0.5 : 0.35, cam => {
+
+		_frustum.setFromProjectionMatrix( _pm.multiplyMatrices( cam.projectionMatrix, cam.matrixWorldInverse ) );
+		return _frustum.intersectsBox( screenBox );
+
+	} );
+
+}
+
 // the piano's centre (what the phone focuses on), measured once per piano
 const _subject = new THREE.Vector3(), _subjectBox = new THREE.Box3();
 let _subjectOf = null;
@@ -172,6 +204,7 @@ const handheld = new HandheldMode( {
 		const opts = { lights: venue.specularOff, objects: venue.probeHidden };
 		const panel = piano?.roll?.screen && piano.materials?.panel;
 		venue.capturing = true;
+		handheldMirror = !! panel;		// (its own mirror capture in the screen: the planar one off)
 		if ( panel ) {
 
 			// a flat screen: exact planar reflection of the person, on the screen only. Lit by the
@@ -193,6 +226,7 @@ const handheld = new HandheldMode( {
 	specularRestore: () => {
 
 		if ( piano?.materials?.panel ) piano.materials.panel.envMapIntensity = 1;
+		handheldMirror = false;
 		applySpecularEnv();
 
 	},
@@ -445,7 +479,9 @@ function refreshLighting() {
 	renderer.shadowMap.needsUpdate = true;
 	shadowsDirty = true;
 	venue.capturing = true;		// (Luminara: its floor's reflection is the main view's, not the probe's)
+	const sm = screenMirror.uniforms.uMirrorOn.value; screenMirror.uniforms.uMirrorOn.value = 0;		// (the screen's likewise)
 	probeEnv = probe.update( piano ? [ piano.group ] : [], { lights: venue.specularOff, objects: venue.probeHidden } );
+	screenMirror.uniforms.uMirrorOn.value = sm;
 	venue.capturing = false;
 	// the venue's ambient level (the hall's Spotlight: the dark round the light stays dark)
 	probe.intensity = venue.light.env ?? 1;
@@ -1404,6 +1440,7 @@ function frameBody( dt, scripted = false ) {
 			// keys can't be refit into the BVH cheaply; show the raster view while they move
 			if ( venue.mode !== 'raster' ) setLightingMode( 'raster' );
 			venue.beforeRender?.( renderer, camera );		// (Luminara: its floor's reflection)
+			updateScreenMirror();
 			composer.render();
 			ptDirty = true;
 
@@ -1426,6 +1463,7 @@ function frameBody( dt, scripted = false ) {
 	} else {
 
 		venue.beforeRender?.( renderer, camera );		// (Luminara: its floor's reflection)
+		updateScreenMirror();
 		composer.render();
 		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
 
