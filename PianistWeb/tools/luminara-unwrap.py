@@ -44,7 +44,7 @@ def main():
 	while True:
 		atlas = xatlas.Atlas()
 		for _, p, tri, *_ in welded: atlas.add_mesh(p, tri)
-		co = xatlas.ChartOptions(); co.max_iterations = 2
+		co = xatlas.ChartOptions(); co.max_iterations = 2; co.max_cost = 4.0; co.roundness_weight = 0.005; co.straightness_weight = 3.0		# (bigger charts: fewer seams across the ceiling's smooth rings)
 		# (no fixed resolution: one atlas, sized to fit the charts at this density; too big: lower it)
 		po = xatlas.PackOptions(); po.padding = 2; po.texels_per_unit = texels; po.bilinear = True; po.blockAlign = False
 		atlas.generate(co, po)

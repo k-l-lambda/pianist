@@ -65,7 +65,7 @@ export const ASSETS = {
 	'sky-dusk': { kind: 'texture', size: '3840x1280', ref: 'sky-day', prompt: 'The very same panoramic view of the same futuristic city of white spires over the clouds as in the reference image, unchanged in its layout, ' +
 		'at the blue hour just after sunset: a deep calm blue sky fading to a pale warm glow at the horizon, the first stars, warm city lights beginning to glow in the towers\' windows, photorealistic, no text' },
 	'sky-night': { kind: 'texture', size: '3840x1280', ref: 'sky-day', prompt: 'The very same panoramic view of the same futuristic city of white spires over the clouds as in the reference image, unchanged in its layout, ' +
-		'at night: a dark navy starry sky with a bright moon, the towers lit from within with warm and cool lights, glowing windows and lines of light, the clouds below faintly moonlit, photorealistic, no text' },
+		'at night: a dark moonless night sky, deep navy to black, with faint stars only, NO moon anywhere, the towers lit from within with warm and cool lights, glowing windows and lines of light, the clouds below dark and faintly lit by the city, photorealistic, no text' },		// (no moon: the photo repeats round the room, one moon would show as several)
 	'marble': { kind: 'texture', prompt: 'Seamless tileable texture of polished white Carrara marble seen straight from above, flat and evenly lit, ' +
 		'soft light grey veins flowing diagonally, subtle warm undertone, no tiles, no seams, no reflections, no shadows, high detail, photographic' },
 };

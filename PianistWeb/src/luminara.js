@@ -36,7 +36,7 @@ const R = LUMINARA.radius, BAY = 2 * Math.PI / LUMINARA.bays;
 // flat panel; a window goes through)
 const OPENINGS = {
 	window: { shape: 'circle', a: 1.5, yc: 1.95, depth: 0.6 },		// (from just above the skirting almost to the cornice; deep: the wall's thickness)
-	shelves: { shape: 'rect', a: 1.36, y0: 0.32, y1: 3.42, rc: 0.16, depth: 0.42 },		// (built-in, four shelves)
+	shelves: { shape: 'rect', a: 1.36, y0: 0.32, y1: 3.42, rc: 0.4, rcBottom: 0.06, depth: 0.6 },		// (built-in: a cabinet below, shelves above in two columns; its top corners round, its foot's barely)
 	pipes: { shape: 'arch', a: 0.62, y0: 0.5, yS: 2.3, depth: 0.32 },		// (a row of lit pipes, as an organ's)
 	clef: { shape: 'none' },		// (the clef and its staff: a light on the wall)
 	door: { shape: 'arch', a: 0.9, y0: 0, yS: 2.3, depth: 0.18 },
@@ -60,12 +60,15 @@ const FURNITURE = [
 ];
 // on the sideboard: [ node, x along it (fraction of its half length), turn (deg) ]
 const ON_SIDEBOARD = [ [ 'table-lamp', 0.74, 0 ], [ 'roses', - 0.66, 0 ], [ 'gold-disc', 0.18, - 12 ], [ 'books', - 0.18, 0 ] ];		// (the lamp clear of the clef, on the left)
-// in the shelving: per shelf (bottom up), per compartment (left to right): ornaments [ node, x in it (-1..1), turn ]
+// in the shelving: per surface (src: _shelving's: the cabinet's top in the narrow column, in the wide one,
+// the narrow column's shelves, the wide one's, bottom up): ornaments [ node, x in it (-1..1), turn ]
 const SHELVING = [
-	[ [ [ 'books', 0, 0 ] ], [ [ 'roses', 0, 0 ] ], [ [ 'books', 0, 0 ] ] ],
-	[ [ [ 'crystal', - 0.3, 0 ], [ 'gold-ribbon', 0.4, 20 ] ], [ [ 'clef-statue', 0, 0 ] ], [ [ 'gold-disc', 0, - 15 ] ] ],
-	[ [ [ 'gold-disc', 0, 15 ] ], [ [ 'books', 0, 0 ] ], [ [ 'gold-ribbon', - 0.35, - 20 ], [ 'crystal', 0.35, 0 ] ] ],
-	[ [ [ 'clef-statue', 0, 0 ] ], [ [ 'crystal', - 0.4, 0 ], [ 'gold-ribbon', 0.35, 30 ] ], [ [ 'roses', 0, 0 ] ] ],
+	[ [ 'roses', - 0.3, 0 ], [ 'books', 0.45, 0 ] ],
+	[ [ 'clef-statue', - 0.55, 0 ], [ 'gold-disc', 0.05, - 12 ], [ 'crystal', 0.6, 0 ] ],
+	[ [ 'gold-ribbon', - 0.3, 20 ], [ 'crystal', 0.4, 0 ] ],
+	[ [ 'books', 0, 0 ] ],
+	[ [ 'books', - 0.45, 0 ], [ 'gold-ribbon', 0.45, - 25 ] ],
+	[ [ 'roses', - 0.45, 0 ], [ 'clef-statue', 0.45, 0 ] ],
 ];
 const COFFEE = [ [ 90, 4.8 ], [ - 90, 4.8 ] ];		// drum coffee tables before the sofas (built here)
 
@@ -75,15 +78,15 @@ const COFFEE = [ [ 90, 4.8 ], [ - 90, 4.8 ] ];		// drum coffee tables before the
 // (a frosted tube: `sconce`, its glow on the walls round it too), the niches' own lights, the lines
 // of light in three tiers (led: the ceiling's, the main ones and the only ones blooming; ledWall: the
 // walls' ornament; ledFloor), the windows' outside one of four hours (`outside`; the probe sees it).
-// Warm: 2700-3000 K. Bloom faint (a bright room: more reads overexposed). ACES keeps the contrast.
+// Neutral white (about 4000 K) by day and at the blue hour, warm (2700-3000 K) at night. Bloom faint (a bright room: more reads overexposed). ACES keeps the contrast.
 // The windows lead: their sky bright, the room's own light in the bake scaled by `bakeInterior` (the day's most).
 export const LUMINARA_PRESETS = {
-	'Afternoon': { baked: true, bakeInterior: 0.55, shelf: 1.0, outside: 'day', sky: 1.8, cove: 1.6, coveColor: '#ffc98c', dome: 130, downColor: '#ffd3a0', sconce: 5, sconceColor: '#ffdcb0', niche: 1.0, nicheColor: '#ffc684', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.56, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Golden hour': { baked: true, bakeInterior: 0.6, shelf: 1.1, outside: 'sunset', sky: 1.6, cove: 1.8, coveColor: '#ffc283', dome: 120, downColor: '#ffcd95', sconce: 5.5, sconceColor: '#ffd6a4', niche: 1.1, nicheColor: '#ffc07a', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Blue hour': { baked: true, bakeInterior: 0.75, shelf: 1.2, outside: 'dusk', sky: 1.2, cove: 2.0, coveColor: '#ffc98c', dome: 130, downColor: '#ffd3a0', sconce: 6, sconceColor: '#ffdcb0', niche: 1.2, nicheColor: '#ffc684', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.6, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
-	'Night': { baked: true, bakeInterior: 0.85, shelf: 1.3, outside: 'night', sky: 0.85, cove: 2.2, coveColor: '#ffc283', dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.62, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Afternoon': { baked: true, bakeInterior: 0.55, shelf: 1.0, outside: 'day', sky: 1.8, cove: 1.6, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 5, sconceColor: '#fff0dc', niche: 1.0, nicheColor: '#ffe4c2', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.56, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Golden hour': { baked: true, bakeInterior: 0.6, shelf: 1.1, outside: 'sunset', sky: 1.6, cove: 1.8, coveColor: '#ffdcb0', dome: 120, downColor: '#ffe2c2', sconce: 5.5, sconceColor: '#ffe4c4', niche: 1.1, nicheColor: '#ffd6a8', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffdcb2', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Blue hour': { baked: true, bakeInterior: 0.75, shelf: 1.2, outside: 'dusk', sky: 1.2, cove: 2.0, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 6, sconceColor: '#fff0dc', niche: 1.2, nicheColor: '#ffe4c2', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.6, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Night': { baked: true, bakeInterior: 0.85, shelf: 1.3, outside: 'night', sky: 0.5, cove: 2.2, coveColor: '#ffc283', dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.62, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
 	// the house down, the piano under a single spot from the dome's crown
-	'Recital': { baked: true, bakeInterior: 0.9, shelf: 0.45, outside: 'night', sky: 0.5, cove: 0.5, coveColor: '#ffc283', dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
+	'Recital': { baked: true, bakeInterior: 0.9, shelf: 0.45, outside: 'night', sky: 0.32, cove: 0.5, coveColor: '#ffc283', dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
 };
 export const LUMINARA_OUTSIDE = [ 'day', 'sunset', 'dusk', 'night' ];
 
@@ -307,11 +310,12 @@ function outlineT( o, c, dx, dy ) {
 
 		const hh = ( o.y1 - o.y0 ) / 2;
 		let t = Math.min( Math.abs( dx ) > 1e-9 ? o.a / Math.abs( dx ) : Infinity, Math.abs( dy ) > 1e-9 ? hh / Math.abs( dy ) : Infinity );
-		const px = Math.abs( t * dx ), py = Math.abs( t * dy ), cx = o.a - o.rc, cy = hh - o.rc;
+		const rc = dy >= 0 ? o.rc : o.rcBottom ?? o.rc;		// (its top corners and its foot's)
+		const px = Math.abs( t * dx ), py = Math.abs( t * dy ), cx = o.a - rc, cy = hh - rc;
 		if ( px > cx && py > cy ) {		// a rounded corner: the ray against its circle
 
 			const ax = Math.abs( dx ), ay = Math.abs( dy ), b = ax * cx + ay * cy;
-			t = b + Math.sqrt( b * b - ( cx * cx + cy * cy - o.rc * o.rc ) );
+			t = b + Math.sqrt( b * b - ( cx * cx + cy * cy - rc * rc ) );
 
 		}
 		return t;
@@ -692,6 +696,7 @@ export class Luminara {
 		const M = this.materials, parts = new Map();		// material -> geometries (merged at the end)
 		const add = ( geo, mat ) => { if ( ! parts.has( mat ) ) parts.set( mat, [] ); parts.get( mat ).push( geo.index ? geo.toNonIndexed() : geo ); };
 		this.nichePoints = [];
+		this._shelvingCount = 0;
 		this.segments = [];		// { a, b, n (the strip's facing; null: a tube), clip (a plane, Vector4; null), kind }
 
 		// the bays: a panel of wall round each opening, the opening's reveal and back
@@ -714,16 +719,6 @@ export class Luminara {
 
 		// skirting (broken at the doors), a brass line above it; the cornice
 		const doorHalf = ( OPENINGS.door.a + 0.03 ) / R;
-		// small step lights in the skirting, two in each bay but the doors': a slot facing down and in, a pool on the floor
-		for ( let k = 1; k < LUMINARA.bays; ++ k ) for ( const sx of [ - 1.35, 1.35 ] ) {
-
-			const phi = k * BAY - sx / R, F = frameAt( phi, R - 0.036, 0.075 ), half = 0.07;
-			add( new THREE.BoxGeometry( 2 * half + 0.03, 0.03, 0.006 ).translate( 0, 0, 0.003 ).applyMatrix4( F ), M.brass );
-			add( new THREE.BoxGeometry( 2 * half, 0.012, 0.004 ).translate( 0, 0, 0.007 ).applyMatrix4( F ), M.stepLed );
-			const a = new THREE.Vector3( - half, 0, 0.012 ).applyMatrix4( F ), b = new THREE.Vector3( half, 0, 0.012 ).applyMatrix4( F );
-			this.segments.push( { a, b, n: new THREE.Vector3( 0, - 0.55, 0.83 ).normalize().transformDirection( F ), clip: null, kind: 'step' } );
-
-		}
 		const lathe = ( pts, mat, a0 = 0, len = 2 * Math.PI, n = 192 ) => add( new THREE.LatheGeometry( pts.map( ( [ r, y ] ) => new THREE.Vector2( r, y ) ), n, a0, len ), mat );
 		lathe( [ [ R, 0 ], [ R - 0.035, 0 ], [ R - 0.035, 0.15 ], [ R - 0.02, 0.17 ], [ R, 0.17 ] ], M.lacquer, doorHalf, 2 * Math.PI - 2 * doorHalf );
 		lathe( [ [ R, 0.17 ], [ R - 0.012, 0.17 ], [ R - 0.012, 0.185 ], [ R, 0.185 ] ], M.brass, doorHalf, 2 * Math.PI - 2 * doorHalf );
@@ -747,13 +742,13 @@ export class Luminara {
 		for ( let i = 0; i < STEPS.length; ++ i ) {
 
 			const [ r, y ] = STEPS[ i ], yNext = i + 1 < STEPS.length ? STEPS[ i + 1 ][ 1 ] : DOME.y;
-			lathe( [ [ r0, y ], [ r, y ] ], M.ceiling, 0, 2 * Math.PI, 160 );
-			lathe( [ [ r, y ], [ r, y - LIP ], [ r - 0.025, y - LIP ], [ r - 0.025, y ] ], M.ceiling, 0, 2 * Math.PI, 160 );
-			lathe( [ [ r - 0.026, y - LIP + 0.008 ], [ r - 0.026, y - 0.008 ] ], M.led, 0, 2 * Math.PI, 160 );		// (the step's edge: a line of light)
-			lathe( [ [ r - 0.025, y ], [ r - GAP, y ] ], M.ceiling, 0, 2 * Math.PI, 160 );		// (the gap's floor: the strip's)
+			lathe( [ [ r0 + 0.02, y ], [ r, y ] ], M.ceiling );		// (its outer edge tucked behind the riser or cornice above it)
+			lathe( [ [ r, y ], [ r, y - LIP ], [ r - 0.025, y - LIP ], [ r - 0.025, y ] ], M.ceiling );
+			lathe( [ [ r - 0.026, y - LIP + 0.008 ], [ r - 0.026, y - 0.008 ] ], M.led );		// (the step's edge: a line of light)
+			lathe( [ [ r - 0.02, y ], [ r - GAP - 0.01, y ] ], M.ceiling );		// (the gap's floor: the strip's; under the lip and the riser's foot)
 			const rr = r - GAP, rise = [];
 			for ( let j = 0; j <= 12; ++ j ) rise.push( [ rr, y + ( yNext - y ) * j / 12 ] );
-			lathe( rise, M.cove, 0, 2 * Math.PI, 160 );
+			lathe( rise, M.cove );
 			if ( i === 0 ) {		// the staff and its notes along the first riser
 
 				const band = new THREE.LatheGeometry( [ new THREE.Vector2( rr - 0.004, y + 0.12 ), new THREE.Vector2( rr - 0.004, y + 0.47 ) ], 192 );
@@ -770,8 +765,8 @@ export class Luminara {
 
 			const dome = [];
 			for ( let j = 0; j <= 32; ++ j ) { const t = j / 32 * Math.PI / 2; dome.push( [ Math.max( 1e-4, r0 * Math.cos( t ) ), DOME.y + DOME.rise * Math.sin( t ) ] ); }
-			lathe( dome, M.dome, 0, 2 * Math.PI, 160 );
-			lathe( [ [ r0 - 0.002, DOME.y - 0.035 ], [ r0 - 0.002, DOME.y - 0.01 ] ], M.led, 0, 2 * Math.PI, 160 );
+			lathe( dome, M.dome );
+			lathe( [ [ r0 - 0.002, DOME.y - 0.035 ], [ r0 - 0.002, DOME.y - 0.01 ] ], M.led );
 
 		}
 
@@ -895,16 +890,18 @@ export class Luminara {
 		const Db = R + o.depth, f = outward( phiC ), x = rightOf( phiC );
 		const outline = th.map( a => { const dx = Math.cos( a ), dy = Math.sin( a ), t = outlineT( o, c, dx, dy ); return [ c[ 0 ] + t * dx, c[ 1 ] + t * dy ]; } );
 		const back = ( s, y ) => o.shape === 'circle' ? onWall( phiC, s, y, Db ) : f.clone().multiplyScalar( Db ).addScaledVector( x, s ).setY( y );
-		const revealRings = [ 0, 0.5, 1 ].map( q => outline.map( ( [ s, y ], i ) => [ onWall( phiC, s, y ).lerp( back( s, y ), q ), i / outline.length * 4, q * o.depth ] ) );
+		const revealRings = [ 0, 0.25, 0.5, 0.75, 1 ].map( q => outline.map( ( [ s, y ], i ) => [ onWall( phiC, s, y ).lerp( back( s, y ), q ), i / outline.length * 4, q * o.depth ] ) );
 		add( ringsGeometry( revealRings, o.shape !== 'circle' ), o.shape === 'circle' ? M.lacquer : M.wall );
 		const F = frameAt( phiC, Db );		// (the back's frame: z 0 the back, +z into the room)
 		if ( o.shape === 'circle' ) {
 
 			// a round window: a white frame and a brass ring inside it, on the wall
-			const W = frameAt( phiC, R - 0.012, o.yc );
-			add( new THREE.TorusGeometry( o.a + 0.05, 0.1, 18, 192 ).applyMatrix4( W ), M.lacquer );		// (a thick rolled frame)
-			add( new THREE.TorusGeometry( o.a + 0.004, 0.018, 10, 192 ).translate( 0, 0, 0.045 ).applyMatrix4( W ), M.brass );
-			add( new THREE.TorusGeometry( o.a - 0.004, 0.014, 8, 192 ).applyMatrix4( frameAt( phiC, R + o.depth - 0.03, o.yc ) ), M.brass );		// (at the reveal's far end: the glass's)
+			// its rings as tubes along circles on the curved wall (flat tori stood off it in the middle and
+			// sank into it at the sides): a thick rolled frame, a brass ring inside it, one at the reveal's far end
+			const ring = rr => { const pts = []; for ( let i = 0; i < 192; ++ i ) { const t = 2 * Math.PI * i / 192; pts.push( [ rr * Math.cos( t ), o.yc + rr * Math.sin( t ) ] ); } return pts; };
+			add( this._wallTube( phiC, ring( o.a + 0.06 ), 0.1, true, R - 0.02, 20 ), M.lacquer );
+			add( this._wallTube( phiC, ring( o.a + 0.004 ), 0.018, true, R - 0.06, 10 ), M.brass );
+			add( this._wallTube( phiC, ring( o.a - 0.012 ), 0.014, true, R + o.depth - 0.03, 10 ), M.brass );
 			return;
 
 		}
@@ -912,10 +909,10 @@ export class Luminara {
 		const shape = new THREE.Shape();
 		if ( o.shape === 'rect' ) {
 
-			const { a, y0, y1, rc } = o;
-			shape.moveTo( a, y0 + rc ); shape.lineTo( a, y1 - rc ); shape.absarc( a - rc, y1 - rc, rc, 0, Math.PI / 2, false ); shape.lineTo( - a + rc, y1 );
-			shape.absarc( - a + rc, y1 - rc, rc, Math.PI / 2, Math.PI, false ); shape.lineTo( - a, y0 + rc ); shape.absarc( - a + rc, y0 + rc, rc, Math.PI, 1.5 * Math.PI, false );
-			shape.lineTo( a - rc, y0 ); shape.absarc( a - rc, y0 + rc, rc, 1.5 * Math.PI, 2 * Math.PI, false );
+			const { a, y0, y1, rc } = o, rb = o.rcBottom ?? rc;
+			shape.moveTo( a, y0 + rb ); shape.lineTo( a, y1 - rc ); shape.absarc( a - rc, y1 - rc, rc, 0, Math.PI / 2, false ); shape.lineTo( - a + rc, y1 );
+			shape.absarc( - a + rc, y1 - rc, rc, Math.PI / 2, Math.PI, false ); shape.lineTo( - a, y0 + rb ); shape.absarc( - a + rb, y0 + rb, rb, Math.PI, 1.5 * Math.PI, false );
+			shape.lineTo( a - rb, y0 ); shape.absarc( a - rb, y0 + rb, rb, 1.5 * Math.PI, 2 * Math.PI, false );
 
 		} else { shape.moveTo( o.a, o.y0 ); shape.lineTo( o.a, o.yS ); shape.absarc( 0, o.yS, o.a, 0, Math.PI, false ); shape.lineTo( - o.a, o.y0 ); shape.closePath(); }
 		const backGeo = new THREE.ShapeGeometry( shape, 48 ).applyMatrix4( F );
@@ -933,7 +930,7 @@ export class Luminara {
 			add( backGeo, kind === 'pipes' ? M.lacquer : kind === 'clef' || kind === 'shelves' ? M.wall : M.niche );		// (the clef: its pattern glows; the shelves: lit by their strips, not from behind)
 			const mid = new THREE.Vector3( 0, ( o.y0 + ( o.y1 ?? o.yS ) ) / 2, 0.25 ).applyMatrix4( F );
 			this.nichePoints.push( { kind, F, o, light: mid } );
-			if ( kind === 'shelves' ) this._shelving( add, F, o );
+			if ( kind === 'shelves' ) this.nichePoints[ this.nichePoints.length - 1 ].surfaces = this._shelving( add, F, o );
 			if ( kind === 'pipes' ) this._pipes( add, F, o );
 			if ( kind !== 'shelves' ) add( new THREE.BoxGeometry( 2 * o.a - 0.04, 0.01, 0.012 ).translate( 0, o.y0 + 0.006, 0.02 ).applyMatrix4( F ), M.ledWall );		// (a strip along the back's foot)
 
@@ -947,7 +944,7 @@ export class Luminara {
 
 		if ( o.shape === 'rect' ) {
 
-			const g = { ...o, a: o.a + 0.03, y0: o.y0 - 0.03, y1: o.y1 + 0.03, rc: o.rc + 0.03 }, c = centreOf( g ), pts = [];
+			const g = { ...o, a: o.a + 0.03, y0: o.y0 - 0.03, y1: o.y1 + 0.03, rc: o.rc + 0.03, rcBottom: ( o.rcBottom ?? o.rc ) + 0.03 }, c = centreOf( g ), pts = [];
 			for ( let i = 0; i < 160; ++ i ) { const t = 2 * Math.PI * i / 160, dx = Math.cos( t ), dy = Math.sin( t ), d = outlineT( g, c, dx, dy ); pts.push( [ c[ 0 ] + d * dx, c[ 1 ] + d * dy ] ); }
 			return this._wallTube( phiC, pts, 0.01, true );
 
@@ -961,46 +958,57 @@ export class Luminara {
 	}
 
 	/** A thin tube along points (s, y) of bay φc's wall, just in front of it. */
-	_wallTube( phiC, pts, tube, closed ) {
+	_wallTube( phiC, pts, tube, closed, r = R - 0.006, radial = 8 ) {		// (`r`: the cylinder it follows)
 
-		const curve = new THREE.CatmullRomCurve3( pts.map( ( [ s, y ] ) => onWall( phiC, s, y, R - 0.006 ) ), closed, 'catmullrom', 0.1 );
-		return new THREE.TubeGeometry( curve, Math.max( 64, pts.length * 2 ), tube, 8, closed );
+		const curve = new THREE.CatmullRomCurve3( pts.map( ( [ s, y ] ) => onWall( phiC, s, y, r ) ), closed, 'catmullrom', 0.1 );
+		return new THREE.TubeGeometry( curve, Math.max( 64, pts.length * 2 ), tube, radial, closed );
 
 	}
 
 	/** Built-in shelving in a rounded-rect niche (frame F: its back): four shelves, two uprights, a strip of light under each shelf's front. */
 	_shelving( add, F, o ) {
 
-		const M = this.materials, hh = o.y1 - o.y0, t = 0.035, w = 2 * o.a + 0.1, d = o.depth;
-		this.shelves = [];		// [ y of its top, x of each compartment's middle, its half width ] (the ornaments: _build)
-		const ys = [ 0, 1, 2, 3 ].map( k => o.y0 + 0.05 + k * ( hh - 0.1 ) / 4 );
-		// a strip of light under each shelf (and the niche's top) along its back edge, by the back wall,
-		// facing down and a little back: each compartment lit from its top, its back washed below it
-		// (as the reference's); none lit as a whole. Its light: a line light (addSegmentGlow, the bake's)
-		const f = outward( 0 ), facing = new THREE.Vector3( 0, - 0.85, 0.53 ).normalize();		// (in F: z into the room; back: - z)
-		const strip = ( y, half ) => {
+		// as the reference's, not a grid: a closed lacquered cabinet along the foot (three doors, brass
+		// pulls), above it an upright off the middle, two columns of shelves at different heights; a
+		// strip of light under each shelf (and the niche's top) along its back edge, by the back wall,
+		// facing down and a little back: each part lit from its top, its back washed below it. Its
+		// light: a line light (addSegmentGlow, the bake's). Surfaces for ornaments: n.surfaces
+		const M = this.materials, t = 0.035, d = o.depth, m = this._shelvingCount = ( this._shelvingCount ?? 0 ) + 1, sx = m % 2 ? 1 : - 1;		// (the other bay's mirrored)
+		const cabTop = o.y0 + 0.62, xDiv = sx * - 0.18, top = o.y1 - 0.02;
+		const facing = new THREE.Vector3( 0, - 0.85, 0.53 ).normalize();		// (in F: z into the room; back: - z)
+		const strip = ( x0, x1, y ) => {
 
-			const z = 0.04, yy = y - 0.007;
-			add( new THREE.BoxGeometry( 2 * half, 0.007, 0.012 ).translate( 0, yy, z ).applyMatrix4( F ), M.shelfLed );
-			const a = new THREE.Vector3( - half, yy - 0.004, z ).applyMatrix4( F ), b = new THREE.Vector3( half, yy - 0.004, z ).applyMatrix4( F );
+			const z = 0.04, yy = y - 0.007, cx = ( x0 + x1 ) / 2, half = ( x1 - x0 ) / 2;
+			add( new THREE.BoxGeometry( 2 * half, 0.007, 0.012 ).translate( cx, yy, z ).applyMatrix4( F ), M.shelfLed );
+			const a = new THREE.Vector3( x0, yy - 0.004, z ).applyMatrix4( F ), b = new THREE.Vector3( x1, yy - 0.004, z ).applyMatrix4( F );
 			const n = new THREE.Vector3( facing.x, facing.y, - facing.z ).transformDirection( F );		// (down, and to the back wall)
 			const out = new THREE.Vector3( 0, 0, 1 ).transformDirection( F ).negate(), opening = new THREE.Vector3( 0, 0, d + 0.02 ).applyMatrix4( F );
 			this.segments.push( { a, b, n, clip: new THREE.Vector4( out.x, out.y, out.z, - out.dot( opening ) ), kind: 'shelf' } );		// (only inside its niche)
 
 		};
-		void f;
-		for ( const y of ys.slice( 1 ) ) {
+		const board = ( x0, x1, y ) => add( new RoundedBoxGeometry( x1 - x0, t, d - 0.02, 2, 0.008 ).translate( ( x0 + x1 ) / 2, y - t / 2, d / 2 - 0.01 ).applyMatrix4( F ), M.lacquer );
+		// the cabinet: its body, its top, its doors and pulls
+		const cw = 2 * o.a - 0.02;
+		add( new RoundedBoxGeometry( cw, cabTop - o.y0 - t, d - 0.03, 2, 0.01 ).translate( 0, o.y0 + ( cabTop - o.y0 - t ) / 2, ( d - 0.03 ) / 2 ).applyMatrix4( F ), M.lacquer );
+		board( - o.a + 0.01, o.a - 0.01, cabTop );
+		for ( let i = 0; i < 3; ++ i ) {
 
-			add( new RoundedBoxGeometry( w, t, d - 0.02, 2, 0.008 ).translate( 0, y - t / 2, d / 2 ).applyMatrix4( F ), M.lacquer );
-			strip( y - t, o.a - 0.06 );
+			const x = ( i - 1 ) * cw / 3;
+			add( new RoundedBoxGeometry( cw / 3 - 0.012, cabTop - o.y0 - t - 0.04, 0.018, 2, 0.006 ).translate( x, o.y0 + ( cabTop - o.y0 - t ) / 2, d - 0.03 + 0.009 ).applyMatrix4( F ), M.lacquer );
+			add( new THREE.CylinderGeometry( 0.006, 0.006, 0.16, 12 ).translate( x + ( i === 1 ? 0 : - Math.sign( x ) * ( cw / 6 - 0.06 ) ), o.y0 + ( cabTop - o.y0 ) * 0.62, d - 0.03 + 0.03 ).applyMatrix4( F ), M.brass );
 
 		}
-		strip( o.y1, o.a - o.rc - 0.02 );		// (the niche's top)
-		const xs = [ - 1, 1 ].map( s => s * ( o.a - 0.06 ) / 3 );
-		for ( const x of xs ) add( new RoundedBoxGeometry( t, hh - 0.06, d - 0.02, 2, 0.008 ).translate( x, o.y0 + hh / 2, d / 2 ).applyMatrix4( F ), M.lacquer );
-		const half = ( o.a - 0.06 ) / 3 - t;
-		for ( const [ k, y ] of ys.entries() ) this.shelves.push( [ k ? y : o.y0, [ - 2 * ( o.a - 0.06 ) / 3, 0, 2 * ( o.a - 0.06 ) / 3 ], half ] );		// (the lowest: on the niche's floor)
-		return ys;
+		// the upright, and the two columns' shelves (the narrow one's higher)
+		add( new RoundedBoxGeometry( t, top - cabTop, d - 0.02, 2, 0.008 ).translate( xDiv, ( top + cabTop ) / 2, d / 2 - 0.01 ).applyMatrix4( F ), M.lacquer );
+		const L = [ - o.a + 0.01, xDiv - t / 2 ], Rr = [ xDiv + t / 2, o.a - 0.01 ], narrow = sx > 0 ? L : Rr, wide = sx > 0 ? Rr : L;
+		const hNarrow = [ cabTop + 1.31, cabTop + 2.21 ], hWide = [ cabTop + 1.0, cabTop + 1.76 ];
+		for ( const y of hNarrow ) { board( narrow[ 0 ], narrow[ 1 ], y ); strip( narrow[ 0 ] + 0.06, narrow[ 1 ] - 0.06, y - t ); }
+		for ( const y of hWide ) { board( wide[ 0 ], wide[ 1 ], y ); strip( wide[ 0 ] + 0.06, wide[ 1 ] - 0.06, y - t ); }
+		strip( - o.a + o.rc + 0.02, o.a - o.rc - 0.02, o.y1 );		// (the niche's top)
+		// where the ornaments stand: [ y, x of its middle, half width ] (the cabinet's top in its two
+		// columns, then each column's shelves); the ornaments' table (SHELVING) by these, in this order
+		const mid = c => ( c[ 0 ] + c[ 1 ] ) / 2, hw = c => ( c[ 1 ] - c[ 0 ] ) / 2 - 0.04;
+		return [ [ cabTop, mid( narrow ), hw( narrow ) ], [ cabTop, mid( wide ), hw( wide ) ], ...hNarrow.map( y => [ y, mid( narrow ), hw( narrow ) ] ), ...hWide.map( y => [ y, mid( wide ), hw( wide ) ] ) ];
 
 	}
 
@@ -1205,7 +1213,7 @@ export class Luminara {
 		if ( this.lampLight ) { this.lampLight.color.set( L.sconceColor ); this.lampLight.intensity = 0.35 * L.sconce; this.lampLight.visible = L.sconce > 0; }
 		for ( const m of this.shades ?? [] ) { m.emissive.set( L.sconceColor ); m.emissiveIntensity = 0.5 * L.sconce; }
 		// the line lights' intensity per metre: a tube, its radiance × its diameter (0.9: its gradient's mean); a strip, `shelf`
-		for ( const g of this.segments ) {
+		for ( const g of this.lineLights ) {
 
 			const c = g.col;
 			if ( ! c ) continue;
@@ -1254,6 +1262,9 @@ export class Luminara {
 	}
 
 	setQuality( hq ) { this.highQuality = hq; this.updateLights(); }
+
+	/** Every line light: the shell's (sconces, shelves) and the pack's (the sideboard's strip). */
+	get lineLights() { return [ ...this.segments, ...( this.packSegments ?? [] ) ]; }
 
 	/** The static shell's meshes that take baked light (in a fixed order: the lightmaps' shell matches it by place). */
 	bakeTargets() {
@@ -1389,6 +1400,7 @@ export class Luminara {
 			const look = m.userData.look, base = { color: m.color, roughness: m.roughness, metalness: m.metalness };
 			const p = {
 				brass: () => phys( { color: '#d6a95c', metalness: 1, roughness: 0.28 } ),
+				brassPolished: () => phys( { color: '#e2b46a', metalness: 1, roughness: 0.1, clearcoat: 0.4, clearcoatRoughness: 0.05 } ),		// (the sofa's plinth: a clear metal sheen)
 				lacquer: () => phys( { color: '#f3f1ed', roughness: 0.35, clearcoat: 0.45, clearcoatRoughness: 0.15 } ),		// (more: the shell mirrors the room and reads as glass)
 				boucle: () => leather( phys( { color: '#e8dfd0', roughness: 0.55, sheen: 0.25, sheenColor: new THREE.Color( '#fff4e6' ), sheenRoughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.28 } ) ),		// (cream leather: its coat's highlight, a fine grain)
 				marble: () => phys( { color: '#f1efec', map: marble, roughness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.05 } ),
@@ -1423,6 +1435,7 @@ export class Luminara {
 		const palm = { geo: palmGeometry(), mat: phys( { vertexColors: true, roughness: 0.55, side: THREE.DoubleSide } ) };
 		const soil = phys( { color: '#2c241e', roughness: 1 } );
 		let record = null;
+		this.packSegments = [];		// (line lights in the pack's things: the sideboard's strip; baked only)
 		const place = ( name, F, mirror = false ) => {
 
 			if ( ! nodes[ name ] && name !== 'gold-disc' ) return;
@@ -1460,6 +1473,16 @@ export class Luminara {
 
 				const [ w, h ] = size( name );
 				for ( const [ item, x, tt ] of ON_SIDEBOARD ) place( item, F.clone().multiply( new THREE.Matrix4().makeTranslation( x * w / 2, h, 0.02 ) ).multiply( turn( tt ) ) );
+				// a thin strip of light under its front (its foot's brass frame: about 0.12 up), a glow on the floor
+				{
+
+					const dd = size( name )[ 2 ], z = dd / 2 - 0.05, y = 0.125, half = w / 2 - 0.12;
+					const g = new THREE.Mesh( new THREE.BoxGeometry( 2 * half, 0.006, 0.01 ).translate( 0, y, z ).applyMatrix4( F ), M.stepLed );
+					g.name = 'luminara:sideboardStrip'; pack.add( g );
+					const a = new THREE.Vector3( - half, y - 0.004, z ).applyMatrix4( F ), b = new THREE.Vector3( half, y - 0.004, z ).applyMatrix4( F );
+					this.packSegments.push( { a, b, n: new THREE.Vector3( 0, - 0.8, 0.6 ).normalize().transformDirection( F ), clip: null, kind: 'step', col: new THREE.Color() } );
+
+				}
 				// the lamp's light
 				const lamp = new THREE.Vector3( 0.74 * w / 2, h + 0.75 * size( 'table-lamp' )[ 1 ], 0.02 ).applyMatrix4( F );
 				this.lampLight = new THREE.PointLight( '#ffdcb0', 0, 3.5, 2 );
@@ -1470,12 +1493,12 @@ export class Luminara {
 
 		}
 		// the shelving's ornaments, each on its shelf (the other bay's mirrored)
-		for ( const [ b, n ] of this.nichePoints.filter( n => n.kind === 'shelves' ).entries() ) SHELVING.forEach( ( row, k ) => row.forEach( ( items, j ) => {
+		for ( const [ b, n ] of this.nichePoints.filter( n => n.kind === 'shelves' ).entries() ) SHELVING.forEach( ( items, k ) => {
 
-			const [ y, xs, half ] = this.shelves[ k ], cx = ( b ? - 1 : 1 ) * xs[ j ];
-			for ( const [ item, x, tt ] of items ) place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( cx + ( b ? - 1 : 1 ) * x * half * 0.6, y, n.o.depth * 0.5 ) ).multiply( turn( b ? - tt : tt ) ), b === 1 );
+			const [ y, cx, half ] = n.surfaces[ k ], sg = b ? - 1 : 1;		// (the other bay's mirrored)
+			for ( const [ item, x, tt ] of items ) place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( cx + sg * x * half * 0.7, y, n.o.depth * 0.45 ) ).multiply( turn( sg * tt ) ), b === 1 );
 
-		} ) );
+		} );
 		this.pack = pack;
 		this.group.add( pack );
 

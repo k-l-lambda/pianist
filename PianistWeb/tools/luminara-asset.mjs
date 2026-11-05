@@ -35,6 +35,7 @@ const RELIEF = {};		// (none now: the clef is a light, src/luminara.js; the shel
 // `test( r, g, b )` (0..1), first match; `vertexColor`: keep the decoder's colour
 const MAT = {
 	brass: { color: [ 0.83, 0.62, 0.32 ], metallic: 1, roughness: 0.28, look: 'brass' },
+	brassPolished: { color: [ 0.88, 0.66, 0.36 ], metallic: 1, roughness: 0.1, look: 'brassPolished' },
 	lacquer: { color: [ 0.93, 0.92, 0.9 ], roughness: 0.18, look: 'lacquer' },
 	boucle: { color: [ 0.9, 0.87, 0.81 ], roughness: 0.95, look: 'boucle' },
 	marble: { color: [ 0.92, 0.91, 0.9 ], roughness: 0.12, look: 'marble' },
@@ -46,6 +47,9 @@ const MAT = {
 	shade: { color: [ 0.95, 0.92, 0.86 ], roughness: 0.9, look: 'shade' },		// (a lamp's shade, lit through)
 	crystal: { color: [ 0.93, 0.95, 0.97 ], roughness: 0.04, look: 'crystal' },
 };
+// a base made more of (BASE[ slug ]): the brass band at the foot `scale`× as high (the rest raised on
+// it), its surface smoothed (TRELLIS's is lumpy: no clean reflection), its material `mat`
+const BASE = { 'sofa-low': { scale: 2, mat: 'brassPolished', smooth: 6 } };
 // each test: ( r, g, b: the mean colour, 0..1; y: height, rad: distance from the axis, both in
 // fractions of its height ), measured on the TRELLIS meshes (tools/luminara-3d.py's)
 const warm = ( r, g, b ) => r - b > 0.18;		// brass: well above blue (the cream boucle's: 0.10-0.16)
@@ -128,7 +132,7 @@ for ( const slug of Object.keys( TRIS ) ) {
 	const [ axis, metres ] = SIZE[ slug ], k = metres / ( hi[ 'xyz'.indexOf( axis ) ] - lo[ 'xyz'.indexOf( axis ) ] );
 	const pos = new Float32Array( P.length );
 	for ( let i = 0; i < P.length; i += 3 ) { pos[ i ] = ( P[ i ] - ( lo[ 0 ] + hi[ 0 ] ) / 2 ) * k; pos[ i + 1 ] = ( P[ i + 1 ] - lo[ 1 ] ) * k; pos[ i + 2 ] = ( P[ i + 2 ] - ( lo[ 2 ] + hi[ 2 ] ) / 2 ) * k; }
-	const nor = normalsOf( pos, I ), height = ( hi[ 1 ] - lo[ 1 ] ) * k;
+	let nor = normalsOf( pos, I ), height = ( hi[ 1 ] - lo[ 1 ] ) * k;
 	// each triangle's class: by its vertices' mean colour (and height, as a fraction)
 	const classes = CLASSES[ slug ], tris = new Map();
 	for ( let t = 0; t < I.length; t += 3 ) {
@@ -138,6 +142,36 @@ for ( const slug of Object.keys( TRIS ) ) {
 		const name = classes.find( ( [ , test ] ) => test( r, g, b, y, rad ) )[ 0 ];
 		if ( ! tris.has( name ) ) tris.set( name, [] );
 		tris.get( name ).push( I[ t ], I[ t + 1 ], I[ t + 2 ] );
+
+	}
+	if ( BASE[ slug ] && tris.has( 'brass' ) ) {		// the base: higher, smoothed, its own material
+
+		const B = BASE[ slug ], idx = tris.get( 'brass' ), inBase = new Uint8Array( nv );
+		for ( const v of idx ) inBase[ v ] = 1;
+		const ys = [ ...new Set( idx ) ].map( v => pos[ 3 * v + 1 ] ).sort( ( a, b ) => a - b ), yb = ys[ Math.floor( ys.length * 0.85 ) ];		// (its top)
+		for ( let v = 0; v < nv; ++ v ) { const y = pos[ 3 * v + 1 ]; pos[ 3 * v + 1 ] = y <= yb ? y * B.scale : y + yb * ( B.scale - 1 ); }
+		// smoothed: its vertices to their neighbours' mean, a few times (the rest kept)
+		const nb = Array.from( { length: nv }, () => [] );
+		for ( let t = 0; t < I.length; t += 3 ) for ( let j = 0; j < 3; ++ j ) { const a = I[ t + j ], b = I[ t + ( j + 1 ) % 3 ]; if ( inBase[ a ] || inBase[ b ] ) { nb[ a ].push( b ); nb[ b ].push( a ); } }
+		for ( let it = 0; it < B.smooth; ++ it ) {
+
+			const nxt = pos.slice();
+			for ( let v = 0; v < nv; ++ v ) {
+
+				if ( ! inBase[ v ] || ! nb[ v ].length ) continue;
+				let x = 0, y = 0, z = 0;
+				for ( const u of nb[ v ] ) { x += pos[ 3 * u ]; y += pos[ 3 * u + 1 ]; z += pos[ 3 * u + 2 ]; }
+				const n = nb[ v ].length;
+				nxt[ 3 * v ] = 0.5 * pos[ 3 * v ] + 0.5 * x / n; nxt[ 3 * v + 1 ] = Math.max( 0, 0.5 * pos[ 3 * v + 1 ] + 0.5 * y / n ); nxt[ 3 * v + 2 ] = 0.5 * pos[ 3 * v + 2 ] + 0.5 * z / n;
+
+			}
+			pos.set( nxt );
+
+		}
+		nor = normalsOf( pos, I );
+		height += yb * ( B.scale - 1 );
+		tris.set( B.mat, idx ); tris.delete( 'brass' );
+		say( `  ${ slug }: its base ${ ( yb * 100 ).toFixed( 1 ) } -> ${ ( yb * B.scale * 100 ).toFixed( 1 ) } cm, smoothed, ${ B.mat }` );
 
 	}
 	const posA = acc( 'VEC3', pos ), norA = acc( 'VEC3', nor ), colA = acc( 'VEC3', col );

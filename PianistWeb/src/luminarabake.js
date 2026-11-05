@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import { MeshBVH, MeshBVHUniformStruct, FloatVertexAttributeTexture, BVHShaderGLSL } from 'three-mesh-bvh';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
-const SAMPLES = { orient: 48, direct: 32, gather: [ 1024, 512, 320, 256 ] };		// per texel
+const SAMPLES = { orient: 48, direct: 40, gather: [ 1536, 640, 384, 256 ] };		// (more at the first bounce: its noise, smoothed within each chart, showed as seams between them)		// per texel
 const ALBEDO_SCALE = 0.95;		// (a map's mean below its material's colour)
 const TILE = 512;		// texels a side drawn at once (a whole 2048 map's heavier passes in one draw: the GPU reset, the context lost)
 
@@ -334,7 +334,7 @@ export class LuminaraBaker {
 		}
 		while ( sp.pos.length < MAXS ) { sp.pos.push( new THREE.Vector3() ); sp.dir.push( new THREE.Vector3( 0, - 1, 0 ) ); sp.col.push( new THREE.Color( 0 ) ); sp.cone.push( new THREE.Vector2( 1, 1 ) ); sp.range.push( 0 ); }
 		// the line lights (the sconces' tubes, the shelves' strips: src/luminara.js's segments, their intensity per metre as drawn)
-		const G = L.segments, gain = L.light.bakeInterior ?? 1, NS = G.length;		// (all of them: the step lights too)
+		const G = L.lineLights, gain = L.light.bakeInterior ?? 1, NS = G.length;		// (all of them: the sideboard's strip too)
 		const U = { uSegA: { value: G.map( g => g.a ) }, uSegB: { value: G.map( g => g.b ) }, uSegCol: { value: G.map( g => g.col.clone().multiplyScalar( gain ) ) },
 			uSegN: { value: G.map( g => g.n ? new THREE.Vector4( g.n.x, g.n.y, g.n.z, 1 ) : new THREE.Vector4( 0, 0, 0, 0 ) ) } };
 		const direct = target( n, 2 );		// [ 0 ]: all direct (the bounce's source), [ 1 ]: the line lights' (stored)
