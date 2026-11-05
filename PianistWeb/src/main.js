@@ -15,6 +15,7 @@ import { buildUpright } from './upright.js';
 import { buildGrand } from './grand.js';
 import { Room } from './room.js';
 import { ConcertHall } from './hall.js';
+import { Luminara, prefetchLuminara } from './luminara.js';
 import { berlinProgress, berlinStatus, berlinStatusText, prefetchBerlinHall } from './berlinhall.js';
 import { GIProbe } from './gi.js';
 import { PathTracer } from './pathtracer.js';
@@ -39,7 +40,7 @@ await new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
 //   #?gi&grand-black&pathtrace&handheld&screen&script=path/to/scene.yaml
 // Bare words in the hash: a piano style id, `realtime` / `pathtrace`, or a flag (gi, handheld,
 // screen, loading, capture). key=value: style, mode, gi=0|1, exposure, tone=AgX|ACES|Neutral,
-// shadow=vsm, preset, shake, hall=procedural, script (a name in public/scripts/, a path from the
+// shadow=vsm, preset, shake, hall=procedural, venue=room|hall|luminara (a grand's, over its style's), script (a name in public/scripts/, a path from the
 // site root, or a URL), at (start the script that far in: 95, 1:35, 1:35.5; the part before runs
 // silently at once). Changing the hash reloads the scene with the new parameters.
 const params = new URLSearchParams( location.search );
@@ -69,8 +70,17 @@ const settings = {
 	volume: 0.5,
 };
 
-// a grand stands in the Berlin hall (by default): fetch its packs now, while the scene builds
-if ( STYLES.find( s => s.id === settings.style )?.type === 'grand' && params.get( 'hall' ) !== 'procedural' && ! RENDER ) prefetchBerlinHall();
+// the venue of a style: the uprights in the room, each grand in its own (the black in the
+// concert hall, the white in Luminara; ?venue= for another)
+const venueOf = style => style.type === 'grand' ? params.get( 'venue' ) ?? style.venue ?? 'hall' : 'room';
+// fetch its packs now, while the scene builds
+{
+
+	const style = STYLES.find( s => s.id === settings.style );
+	if ( style && venueOf( style ) === 'hall' && params.get( 'hall' ) !== 'procedural' && ! RENDER ) prefetchBerlinHall();
+	if ( style && venueOf( style ) === 'luminara' ) prefetchLuminara();
+
+}
 
 // ---------------------------------------------------------------------------
 // renderer
@@ -101,6 +111,8 @@ const baker = new TextureBaker( renderer );
 // venues, by the piano's type: uprights in the room, grands in the concert hall
 const room = new Room( scene, baker );
 const hall = new ConcertHall( scene, baker );
+const luminara = new Luminara( scene, baker );
+const venues = { room, hall, luminara };
 let venue = room;
 room.activate();
 const probe = new GIProbe( renderer, scene );
@@ -326,7 +338,7 @@ function setStyle( id ) {
 	piano.group.traverse( o => o.userData.pedal && piano.pedalMeshes.push( o ) );
 	for ( const [ name, holds ] of Object.entries( pedalHolds ) ) if ( holds.size ) piano.action?.setPedal( name, true );
 	// its venue, and its place in it
-	switchVenue( style.type === 'grand' ? hall : room );
+	switchVenue( venues[ venueOf( style ) ] ?? hall );
 	venue.place( piano );
 	piano.materials = M;
 	applyGlass( M.glass, settings.gi || settings.mode === 'pathtrace' );
@@ -370,6 +382,7 @@ function applyQuality( relight = true ) {
 	renderer.transmissionResolutionScale = 1.0;
 	room.setQuality( hq );
 	hall.setQuality( hq );
+	luminara.setQuality( hq );
 	keyShadow.setEnabled( hq && ! keyShadow.broken );
 	if ( piano ) applyGlass( piano.materials.glass, hq || venue.mode === 'pathtrace' );
 	shadowsDirty = true;
@@ -384,6 +397,7 @@ function setLightingMode( mode ) {
 
 	room.setMode( mode );
 	hall.setMode( mode );
+	luminara.setMode( mode );
 	if ( piano ) applyGlass( piano.materials.glass, mode === 'pathtrace' || settings.gi );
 	shadowsDirty = true;
 	scene.environment = mode === 'pathtrace' ? venue.environment : probeEnv;
@@ -831,6 +845,26 @@ fHall.add( hallView, 'view', [ 'At the piano', ...Object.keys( hall.views() ) ] 
 
 } );
 
+// Luminara's viewpoints; its pack (furniture, reliefs, sky, marble) shows when loaded: the probe again
+const fLuminara = gui.addFolder( 'Luminara' ).close().hide();
+const luminaraView = { view: 'At the piano' };
+fLuminara.add( luminaraView, 'view', [ 'At the piano', ...Object.keys( luminara.views() ) ] ).name( 'View' ).onChange( name => {
+
+	const off = piano.group.position;
+	const v = name === 'At the piano' ? { position: piano.camera.position.clone().add( off ), target: piano.camera.target.clone().add( off ) } : luminara.views()[ name ];
+	camera.position.copy( v.position );
+	controls.target.copy( v.target );
+	controls.update();
+
+} );
+luminara.onLoad = () => {
+
+	if ( venue === luminara && piano ) refreshLighting();
+	shadowsDirty = true;
+	ptDirty = true;
+
+};
+
 /** The venue for the piano's type: its geometry and lights in the scene, its lighting controls. */
 function switchVenue( v ) {
 
@@ -843,7 +877,9 @@ function switchVenue( v ) {
 	buildLightFolder();
 	fRoom.show( venue === room );
 	fHall.show( venue === hall );
-	hallView.view = 'At the piano';
+	fLuminara.show( venue === luminara );
+	hallView.view = luminaraView.view = 'At the piano';
+	fLuminara.controllersRecursive().forEach( c => c.updateDisplay() );
 	fHall.controllersRecursive().forEach( c => c.updateDisplay() );
 	ptDirty = true;
 	shadowsDirty = true;
@@ -1402,7 +1438,7 @@ if ( params.has( 'preset' ) ) gui.controllersRecursive().find( c => c.property =
 if ( params.has( 'shake' ) ) gui.controllersRecursive().find( c => c.object === handheld && c.property === 'intensity' )?.setValue( Number( params.get( 'shake' ) ) );
 if ( flag( 'handheld' ) ) gui.controllersRecursive().find( c => c._name === 'Handheld' )?.setValue( true );
 if ( flag( 'screen' ) ) setScreenPower( true );
-window.__pianist = { scene, camera, renderer, room, hall, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
+window.__pianist = { scene, camera, renderer, room, hall, luminara, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
 if ( RENDER ) startRender(); else requestAnimationFrame( frame );
 
 // ---------------------------------------------------------------------------
@@ -1472,6 +1508,7 @@ function startRender() {
 
 		};
 		await hall.loading;		// ?hall=berlin: the packs
+		await luminara.loading;		// its pack
 		await until( () => handheld.person.info, 'the person cut-out' );
 		await until( () => roll.bootAnim?.ready, 'the boot artwork' );
 		await until( () => roll.bootLength !== null, 'the power-on chime' );

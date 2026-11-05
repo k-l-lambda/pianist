@@ -148,6 +148,7 @@ export const STYLES = [
 	{ id: 'upright-oak', name: 'Upright · weathered oak (UF)', type: 'upright' },
 	{ id: 'upright-walnut', name: 'Upright · walnut', type: 'upright' },
 	{ id: 'upright-black', name: 'Upright · black lacquer', type: 'upright' },
-	{ id: 'grand-black', name: 'Grand · black lacquer', type: 'grand' },
-	{ id: 'grand-white', name: 'Grand · white lacquer', type: 'grand' },
+	// venue: where it stands (main.js; the uprights in the room)
+	{ id: 'grand-black', name: 'Grand · black lacquer', type: 'grand', venue: 'hall' },
+	{ id: 'grand-white', name: 'Grand · white lacquer', type: 'grand', venue: 'luminara' },
 ];
