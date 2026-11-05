@@ -163,10 +163,20 @@ for ( const [ slug, h ] of Object.entries( RELIEF ) ) {
 	}
 	const albedo = await sharp( out, { raw: { width: 1024, height: 1024, channels: 3 } } ).webp( { quality: 88, effort: 5 } ).toBuffer();
 	const nmap = await sharp( fs.readFileSync( path.join( G, 'relief', `${ slug }-normal.png` ) ) ).removeAlpha().resize( 1024, 1024, { fit: 'fill', kernel: 'lanczos3' } ).webp( { quality: 92, effort: 6 } ).toBuffer();
+	// the gold in the photo (the clef's inlay): a glow mask (src/luminara.js lights it as a line of light)
+	let glow = null;
+	if ( slug === 'clef' ) {
+
+		const m = Buffer.alloc( 1024 * 1024 );
+		for ( let i = 0, j = 0; i < data.length; i += 3, ++ j ) m[ j ] = Math.round( 255 * Math.min( 1, Math.max( 0, ( data[ i ] + data[ i + 1 ] - 2 * data[ i + 2 ] ) / 255 - 0.1 ) / 0.12 ) );
+		glow = await sharp( m, { raw: { width: 1024, height: 1024, channels: 1 } } ).blur( 1.2 ).linear( 1.8, 0 ).webp( { quality: 90 } ).toBuffer();
+
+	}
 	const mat = doc.createMaterial( `relief-${ slug }` ).setBaseColorFactor( [ 1, 1, 1, 1 ] ).setRoughnessFactor( 0.55 ).setMetallicFactor( 0 ).setDoubleSided( true )
 		.setBaseColorTexture( doc.createTexture( `${ slug }-albedo` ).setImage( albedo ).setMimeType( 'image/webp' ) )
 		.setNormalTexture( doc.createTexture( `${ slug }-normal` ).setImage( nmap ).setMimeType( 'image/webp' ) )
 		.setExtras( { look: 'relief', objectNormal: true } );
+	if ( glow ) mat.setEmissiveTexture( doc.createTexture( `${ slug }-glow` ).setImage( glow ).setMimeType( 'image/webp' ) ).setEmissiveFactor( [ 1, 1, 1 ] );
 	const prim = doc.createPrimitive().setIndices( acc( 'SCALAR', idx ) ).setAttribute( 'POSITION', acc( 'VEC3', pos ) ).setAttribute( 'NORMAL', acc( 'VEC3', normalsOf( pos, idx ) ) )
 		.setAttribute( 'TEXCOORD_0', acc( 'VEC2', uv ) ).setMaterial( mat );
 	simplifyPrimitive( prim, { simplifier: MeshoptSimplifier, ratio: 0.5, error: 0.0015 / h, lockBorder: true } );
