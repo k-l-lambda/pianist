@@ -7,8 +7,237 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { BENCH_TOP } from './benchtop.js';
 
 const W = 0.76, D = 0.36;			// cushion
+
+// The cushion's top: the tufted relief measured from a photo (benchtop.js: a quadrant, in face
+// widths) over the whole top, its pillows' middle level the seat's height; at the edge it rolls down
+// to the vertical side (one surface: no rim, no seam). TUFT_GAIN: a photo's depth reads shallow.
+const TUFT_GAIN = 3.5;
+const PLAN_R = 0.022;			// the cushion's corners in plan
+const ROLL = 0.008;				// the edge's roll down to the side (radius)
+const BLEND = 0.016;			// the edge's last strip, where the relief eases to its rim's mean level
+let _tuft = null;
+/** The relief (m, about the pillows' middle level) at (s, t): fractions of the half sizes, -1..1, mirrored. */
+function tuftRelief( s, t ) {
+
+	if ( ! _tuft ) {
+
+		const [ nu, nv ] = BENCH_TOP.size, raw = Uint8Array.from( atob( BENCH_TOP.data ), c => c.charCodeAt( 0 ) );
+		const T = Float32Array.from( raw, v => BENCH_TOP.min + ( BENCH_TOP.max - BENCH_TOP.min ) * v / 255 );
+		const mid = [];
+		for ( let j = 0; j < 0.8 * nv; ++ j ) for ( let i = 0; i < 0.8 * nu; ++ i ) mid.push( T[ j * nu + i ] );
+		mid.sort( ( a, b ) => a - b );
+		let rim = 0;
+		for ( let i = 0; i < nu; ++ i ) rim += T[ ( nv - 1 ) * nu + i ];
+		for ( let j = 0; j < nv; ++ j ) rim += T[ j * nu + nu - 1 ];
+		_tuft = { nu, nv, T, zero: mid[ mid.length >> 1 ], rim: rim / ( nu + nv ) };
+
+	}
+	const { nu, nv, T, zero } = _tuft;
+	const x = Math.min( 1, Math.abs( s ) ) * ( nu - 1 ), y = Math.min( 1, Math.abs( t ) ) * ( nv - 1 );
+	const i = Math.min( nu - 2, Math.floor( x ) ), j = Math.min( nv - 2, Math.floor( y ) ), fx = x - i, fy = y - j;
+	const at = ( a, b ) => T[ b * nu + a ];
+	const h = ( at( i, j ) * ( 1 - fx ) + at( i + 1, j ) * fx ) * ( 1 - fy ) + ( at( i, j + 1 ) * ( 1 - fx ) + at( i + 1, j + 1 ) * fx ) * fy;
+	return TUFT_GAIN * ( h - zero ) * W;
+
+}
+/** The relief's level along the rim (m, as tuftRelief's). */
+const tuftRim = () => ( tuftRelief( 0, 0 ), TUFT_GAIN * ( _tuft.rim - _tuft.zero ) * W );
+
+/**
+ * A polyline [ a, r ] with its corners rounded (each point's radius, [ a, r, radius ]), and long
+ * straight runs split (a vertex every `step` m): the knob's profile.
+ */
+function roundedProfile( pts, step = 0.0015, arcSteps = 7 ) {
+
+	const out = [], P = pts.map( p => new THREE.Vector2( p[ 0 ], p[ 1 ] ) );
+	const corners = [ { a: P[ 0 ], b: P[ 0 ] } ];		// each point's arc: from a to b (the ends: the point itself)
+	for ( let i = 1; i < P.length - 1; ++ i ) {
+
+		const rad = pts[ i ][ 2 ] ?? 0, u = P[ i - 1 ].clone().sub( P[ i ] ), v = P[ i + 1 ].clone().sub( P[ i ] );
+		const lu = u.length(), lv = v.length(); u.divideScalar( lu ); v.divideScalar( lv );
+		const th = Math.acos( THREE.MathUtils.clamp( u.dot( v ), - 1, 1 ) );
+		if ( ! rad || th > Math.PI - 1e-3 ) { corners.push( { a: P[ i ], b: P[ i ] } ); continue; }
+		const t = Math.min( rad / Math.tan( th / 2 ), 0.45 * lu, 0.45 * lv ), r = t * Math.tan( th / 2 );
+		const c = P[ i ].clone().add( u.clone().add( v ).normalize().multiplyScalar( r / Math.sin( th / 2 ) ) );
+		corners.push( { a: P[ i ].clone().addScaledVector( u, t ), b: P[ i ].clone().addScaledVector( v, t ), c, r } );
+
+	}
+	corners.push( { a: P[ P.length - 1 ], b: P[ P.length - 1 ] } );
+	for ( let i = 0; i < corners.length; ++ i ) {
+
+		const k = corners[ i ];
+		if ( k.c ) {		// the arc
+
+			let a0 = Math.atan2( k.a.y - k.c.y, k.a.x - k.c.x ), a1 = Math.atan2( k.b.y - k.c.y, k.b.x - k.c.x );
+			if ( a1 - a0 > Math.PI ) a1 -= 2 * Math.PI; else if ( a0 - a1 > Math.PI ) a1 += 2 * Math.PI;
+			for ( let s = 0; s <= arcSteps; ++ s ) { const a = a0 + ( a1 - a0 ) * s / arcSteps; out.push( [ k.c.x + k.r * Math.cos( a ), k.c.y + k.r * Math.sin( a ) ] ); }
+
+		} else out.push( [ k.a.x, k.a.y ] );
+		if ( i < corners.length - 1 ) {		// the straight run to the next arc
+
+			const from = k.b, to = corners[ i + 1 ].a, n = Math.floor( from.distanceTo( to ) / step );
+			for ( let s = 1; s < n; ++ s ) out.push( [ from.x + ( to.x - from.x ) * s / n, from.y + ( to.y - from.y ) * s / n ] );
+
+		}
+
+	}
+	return out;
+
+}
+
+const KNOB_FLUTES = 14, KNOB_SEGMENTS = 14 * 8;
+/**
+ * A height knob: turned about its axle (x, out of the box's end at `x0` on side `sx`, at y, z), one
+ * seamless indexed mesh (smooth normals all round): a thin rosette on the box, a neck, the knob's
+ * back rounded out to the grip, a band of shallow flutes (fading in and out along it, so no step),
+ * a rounded front edge and a gently domed face.
+ */
+function knobGeometry( sx, x0, y, z ) {
+
+	// [ along the axle from the box, radius, corner radius ]
+	const prof = roundedProfile( [
+		[ 0, 0.021 ], [ 0.0025, 0.0215, 0.0012 ], [ 0.004, 0.012, 0.0015 ],		// the rosette (its back hidden in the box)
+		[ 0.009, 0.0115, 0.003 ], [ 0.0135, 0.0295, 0.005 ],		// the neck, the knob's back
+		[ 0.033, 0.0305, 0.004 ], [ 0.0375, 0.022, 0.005 ], [ 0.0395, 0, 0.0 ],		// the grip, its front edge, the face (to the axis)
+	] );
+	const fl = a => THREE.MathUtils.smoothstep( a, 0.016, 0.0195 ) * ( 1 - THREE.MathUtils.smoothstep( a, 0.0295, 0.0335 ) );		// the flutes along the grip
+	const P = [], I = [], N = KNOB_SEGMENTS, rings = prof.length - 1;		// (the last point: the face's centre, one vertex)
+	for ( let i = 0; i < rings; ++ i ) {
+
+		const [ a, r ] = prof[ i ], w = fl( a );
+		for ( let k = 0; k < N; ++ k ) {
+
+			const t = 2 * Math.PI * k / N, rr = r - 0.0011 * w * ( 0.5 - 0.5 * Math.cos( KNOB_FLUTES * t ) );
+			P.push( sx * ( x0 + a ), y + rr * Math.cos( t ), z + rr * Math.sin( t ) );
+
+		}
+
+	}
+	const tip = P.length / 3;
+	P.push( sx * ( x0 + prof[ rings ][ 0 ] ), y, z );
+	const quads = [];
+	for ( let i = 0; i < rings - 1; ++ i ) for ( let k = 0; k < N; ++ k ) quads.push( [ i * N + k, i * N + ( k + 1 ) % N, ( i + 1 ) * N + ( k + 1 ) % N, ( i + 1 ) * N + k ] );
+	// winding: a quad on the grip faces out from the axle
+	const v = j => new THREE.Vector3( P[ 3 * j ], P[ 3 * j + 1 ], P[ 3 * j + 2 ] );
+	const q = quads[ Math.floor( quads.length / 2 ) ], n = new THREE.Vector3().crossVectors( v( q[ 1 ] ).sub( v( q[ 0 ] ) ), v( q[ 3 ] ).sub( v( q[ 0 ] ) ) );
+	const out = v( q[ 0 ] ).sub( new THREE.Vector3( P[ 3 * q[ 0 ] ], y, z ) ), flip = n.dot( out ) < 0;
+	for ( const [ a, b, c, d ] of quads ) flip ? I.push( a, d, c, a, c, b ) : I.push( a, b, c, a, c, d );
+	for ( let k = 0; k < N; ++ k ) { const a = ( rings - 1 ) * N + k, b = ( rings - 1 ) * N + ( k + 1 ) % N; flip ? I.push( a, tip, b ) : I.push( a, b, tip ); }
+	const geo = new THREE.BufferGeometry();
+	geo.setAttribute( 'position', new THREE.Float32BufferAttribute( P, 3 ) );
+	geo.setIndex( I );
+	geo.computeVertexNormals();
+	return geo;
+
+}
+
+/** Coordinates across the top: uniform inside, crowded towards the edge (the roll), from -h to h. */
+function edgeCrowded( h, step ) {
+
+	const inner = h - ROLL, n = Math.ceil( 2 * inner / step ), out = [];
+	for ( let k = 6; k >= 1; -- k ) out.push( - inner - ROLL * Math.sin( k / 6 * Math.PI / 2 ) );
+	for ( let k = 0; k <= n; ++ k ) out.push( - inner + 2 * inner * k / n );
+	for ( let k = 1; k <= 6; ++ k ) out.push( inner + ROLL * Math.sin( k / 6 * Math.PI / 2 ) );
+	return out;
+
+}
+
+/**
+ * The cushion (above the box's top, y 0 its bottom): one indexed mesh, the tufted top over the
+ * whole of its plan (a rounded rectangle), rolled down at the edge into its vertical side, which
+ * shares the top's outline vertices (smooth across), and a flat bottom. Returns the geometry and
+ * the top's height function (for the buttons).
+ */
+function cushionGeometry( height ) {
+
+	const hw = W / 2, hd = D / 2, crown = ( x, z ) => 0.006 * ( 1 - ( x / hw ) ** 4 ) * ( 1 - ( z / hd ) ** 4 );
+	const inner = ( x, z ) => height + crown( x, z ) + tuftRelief( x / hw, z / hd );
+	const rimLevel = height + tuftRim();
+	// a grid point -> the plan (its corner squares onto quarter discs) and its distance to the outline
+	const plan = ( x, z ) => {
+
+		const ex = Math.abs( x ) - ( hw - PLAN_R ), ez = Math.abs( z ) - ( hd - PLAN_R );
+		if ( ex > 0 && ez > 0 ) {
+
+			const m = Math.max( ex, ez ), k = m / Math.hypot( ex, ez );
+			return [ Math.sign( x ) * ( hw - PLAN_R + ex * k ), Math.sign( z ) * ( hd - PLAN_R + ez * k ), PLAN_R - m ];
+
+		}
+		return [ x, z, Math.min( hw - Math.abs( x ), hd - Math.abs( z ) ) ];
+
+	};
+	const y = ( x, z, d ) => {
+
+		const w = 1 - THREE.MathUtils.smoothstep( d, 0, BLEND );
+		const base = inner( x, z ) * ( 1 - w ) + rimLevel * w;
+		return d < ROLL ? base - ( ROLL - Math.sqrt( ROLL * ROLL - ( ROLL - d ) ** 2 ) ) : base;
+
+	};
+	const xs = edgeCrowded( hw, 0.005 ), zs = edgeCrowded( hd, 0.005 ), nx = xs.length, nz = zs.length;
+	const P = [], UV = [], I = [];
+	for ( let j = 0; j < nz; ++ j ) for ( let i = 0; i < nx; ++ i ) {
+
+		const [ px, pz, d ] = plan( xs[ i ], zs[ j ] );
+		P.push( px, y( px, pz, Math.max( 0, d ) ), pz );
+		UV.push( ( px + hw ) / W, ( pz + hd ) / D );
+
+	}
+	const id = ( i, j ) => j * nx + i;
+	for ( let j = 0; j < nz - 1; ++ j ) for ( let i = 0; i < nx - 1; ++ i ) {
+
+		const a = id( i, j ), b = id( i + 1, j ), c = id( i + 1, j + 1 ), d = id( i, j + 1 );
+		I.push( a, d, c, a, c, b );		// (facing up)
+
+	}
+	// the side: the top's outline (shared) down to the bottom, its UVs unfolded outwards from the top's
+	const ring = [];
+	for ( let i = 0; i < nx; ++ i ) ring.push( id( i, 0 ) );
+	for ( let j = 1; j < nz; ++ j ) ring.push( id( nx - 1, j ) );
+	for ( let i = nx - 2; i >= 0; -- i ) ring.push( id( i, nz - 1 ) );
+	for ( let j = nz - 2; j >= 1; -- j ) ring.push( id( 0, j ) );
+	const low = ring.map( k => {
+
+		const px = P[ 3 * k ], pz = P[ 3 * k + 2 ], h = P[ 3 * k + 1 ];
+		const ex = Math.abs( px ) - ( hw - PLAN_R ), ez = Math.abs( pz ) - ( hd - PLAN_R );
+		let nxp = ex > 0 ? Math.sign( px ) * ex : 0, nzp = ez > 0 ? Math.sign( pz ) * ez : 0;
+		const l = Math.hypot( nxp, nzp ) || 1; nxp /= l; nzp /= l;		// (the outline's outward normal in plan)
+		P.push( px, 0, pz );
+		UV.push( UV[ 2 * k ] + nxp * h / W, UV[ 2 * k + 1 ] + nzp * h / D );
+		return P.length / 3 - 1;
+
+	} );
+	// winding: the first quad's normal must point out of the plan
+	const v = k => new THREE.Vector3( P[ 3 * k ], P[ 3 * k + 1 ], P[ 3 * k + 2 ] );
+	const mid = Math.floor( ring.length / 8 ), n0 = new THREE.Vector3().crossVectors( v( ring[ mid + 1 ] ).sub( v( ring[ mid ] ) ), v( low[ mid ] ).sub( v( ring[ mid ] ) ) );
+	const flip = n0.dot( v( ring[ mid ] ).setY( 0 ) ) < 0;
+	for ( let k = 0; k < ring.length; ++ k ) {
+
+		const k1 = ( k + 1 ) % ring.length, a = ring[ k ], b = ring[ k1 ], c = low[ k1 ], d = low[ k ];
+		if ( flip ) I.push( a, d, c, a, c, b ); else I.push( a, b, c, a, c, d );
+
+	}
+	// the bottom: its own outline (a sharp edge there), a fan, facing down
+	const b0 = P.length / 3;
+	P.push( 0, 0, 0 ); UV.push( 0.5, 0.5 );
+	for ( const k of ring ) { P.push( P[ 3 * k ], 0, P[ 3 * k + 2 ] ); UV.push( UV[ 2 * k ], UV[ 2 * k + 1 ] ); }
+	const down = new THREE.Vector3().crossVectors( v( b0 + 2 + mid ).sub( v( b0 ) ), v( b0 + 3 + mid ).sub( v( b0 ) ) ).y < 0;		// (b0, a, b) faces down?
+	for ( let k = 0; k < ring.length; ++ k ) {
+
+		const a = b0 + 1 + k, b = b0 + 1 + ( k + 1 ) % ring.length;
+		if ( down ) I.push( b0, a, b ); else I.push( b0, b, a );
+
+	}
+	const geo = new THREE.BufferGeometry();
+	geo.setAttribute( 'position', new THREE.Float32BufferAttribute( P, 3 ) );
+	geo.setAttribute( 'uv', new THREE.Float32BufferAttribute( UV, 2 ) );
+	geo.setIndex( I );
+	geo.computeVertexNormals();
+	return { geo, top: inner, check: { flip, verts: P.length / 3, tris: I.length / 3 } };
+
+}
 
 // Tileable normal map of leather grain: pebbles (cells of a jittered grid, domed, with creases
 // between), a few per centimetre at the cushion's UV repeat
@@ -82,7 +311,7 @@ export function buildBench( lacquer, { dark = true } = {} ) {
 		clearcoat: 1, clearcoatRoughness: dark ? 0.12 : 0.2, clearcoatNormalMap: grain, clearcoatNormalScale: new THREE.Vector2( 0.08, 0.08 ),
 	} );
 	const button = new THREE.MeshPhysicalMaterial( { color: dark ? '#060607' : '#ddd8cf', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 } );		// covered in the same leather
-	const knobMat = new THREE.MeshPhysicalMaterial( { color: dark ? '#111112' : '#e9dfc9', roughness: 0.4 } );
+	const knobMat = new THREE.MeshPhysicalMaterial( { color: dark ? '#111112' : '#e9dfc9', roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.2 } );		// (lacquered, like the case)
 	const metal = new THREE.MeshStandardMaterial( { color: '#1b1b1d', metalness: 0.8, roughness: 0.45 } );
 	const rubber = new THREE.MeshStandardMaterial( { color: '#111111', roughness: 0.9 } );
 
@@ -128,73 +357,26 @@ export function buildBench( lacquer, { dark = true } = {} ) {
 
 	mesh( mergeGeometries( bars ), metal );
 
-	// cushion: a rounded slab, its top tufted (pulled down at the buttons, in two staggered rows)
-	const cushion = new RoundedBoxGeometry( W, SEAT - BOX_TOP, D, 4, 0.022 );
-	const tufts = [];
-	for ( let r = 0; r < 2; ++ r ) for ( let k = 0; k < 5 - r; ++ k ) tufts.push( [ - W / 2 + W * ( k + 1 + r * 0.5 ) / ( 6 ), ( r ? 0.07 : - 0.07 ) ] );
+	// cushion: the tufted relief measured from a photo of a tufted bench (benchtop.js,
+	// tools/bench-top.py: 13 buttons in three staggered rows, the diamond creases between them) over
+	// the whole top, rolled down into the side at its edge (cushionGeometry: one surface)
 	{
 
-		// enough vertices on the top for the dimples: subdivide by re-tessellating a plane there
-		const top = new THREE.PlaneGeometry( W - 0.044, D - 0.044, 48, 24 ).rotateX( - Math.PI / 2 );
-		const pos = top.attributes.position;
-		for ( let i = 0; i < pos.count; ++ i ) {
-
-			const x = pos.getX( i ), z = pos.getZ( i );
-			let dip = 0;
-			for ( const [ bx, bz ] of tufts ) dip = Math.max( dip, Math.exp( - ( ( x - bx ) ** 2 + ( z - bz ) ** 2 ) / ( 2 * 0.022 ** 2 ) ) );
-			// a little crown in the middle of the seat, pulled down at the buttons
-			const crown = 0.006 * ( 1 - ( 2 * x / W ) ** 4 ) * ( 1 - ( 2 * z / D ) ** 4 );
-			pos.setY( i, SEAT - BOX_TOP + crown - 0.012 * dip );		// level with the box's top at its edges
-
-		}
-
-		top.computeVertexNormals();
-		cushion.translate( 0, ( SEAT - BOX_TOP ) / 2, 0 );
-		// the rounded slab without its flat top (the tufted surface replaces it: left in, it showed
-		// through the dimples as flat discs)
-		const slab = cushion.toNonIndexed(), sp = slab.attributes.position, keep = [], ht = SEAT - BOX_TOP;
-		const inTop = k => sp.getY( k ) > ht - 1e-4 && Math.abs( sp.getX( k ) ) < W / 2 - 0.022 + 1e-4 && Math.abs( sp.getZ( k ) ) < D / 2 - 0.022 + 1e-4;
-		for ( let k = 0; k < sp.count; k += 3 ) if ( ! ( inTop( k ) && inTop( k + 1 ) && inTop( k + 2 ) ) ) keep.push( k, k + 1, k + 2 );
-		const side = new THREE.BufferGeometry();
-		for ( const name of Object.keys( slab.attributes ) ) {
-
-			const a = slab.attributes[ name ], arr = new Float32Array( keep.length * a.itemSize );
-			keep.forEach( ( k, j ) => { for ( let c = 0; c < a.itemSize; ++ c ) arr[ j * a.itemSize + c ] = a.array[ k * a.itemSize + c ]; } );
-			side.setAttribute( name, new THREE.BufferAttribute( arr, a.itemSize ) );
-
-		}
-
-		mesh( mergeGeometries( [ side, top.toNonIndexed() ] ).translate( 0, BOX_TOP, 0 ), leather );
+		const { geo, top } = cushionGeometry( SEAT - BOX_TOP );
+		mesh( geo.translate( 0, BOX_TOP, 0 ), leather );
 		const btn = [];
-		for ( const [ bx, bz ] of tufts ) btn.push( new THREE.SphereGeometry( 0.0075, 10, 6 ).scale( 1, 0.6, 1 ).translate( bx, SEAT - 0.016, bz ).toNonIndexed() );
+		for ( const [ u, v ] of BENCH_TOP.buttons ) for ( const sx of u ? [ - 1, 1 ] : [ 1 ] ) for ( const sz of v ? [ - 1, 1 ] : [ 1 ] ) {
+
+			const bx = sx * u * W / 2, bz = sz * v * D / 2;
+			btn.push( new THREE.SphereGeometry( 0.0075, 12, 8 ).scale( 1, 0.55, 1 ).translate( bx, BOX_TOP + top( bx, bz ) + 0.0012, bz ).toNonIndexed() );		// (on the dimple's floor)
+
+		}
 		mesh( mergeGeometries( btn ), button );
 
 	}
 
-	// the height knobs, one each end of the box: ribbed discs on short axles
-	for ( const sx of [ - 1, 1 ] ) {
-
-		const knob = new THREE.CylinderGeometry( 0.032, 0.032, 0.03, 24, 1 );
-		const p = knob.attributes.position;
-		for ( let i = 0; i < p.count; ++ i ) {
-
-			const a = Math.atan2( p.getZ( i ), p.getX( i ) ), rr = Math.hypot( p.getX( i ), p.getZ( i ) );
-			if ( rr > 0.03 ) {
-
-				const k = 1 + 0.06 * Math.cos( 12 * a );
-				p.setX( i, p.getX( i ) * k );
-				p.setZ( i, p.getZ( i ) * k );
-
-			}
-
-		}
-
-		knob.computeVertexNormals();
-		knob.rotateZ( Math.PI / 2 ).translate( sx * ( W / 2 + 0.012 ), ( BOX_TOP + BOX_BOTTOM ) / 2, 0.02 );
-		mesh( knob, knobMat );
-		mesh( new THREE.CylinderGeometry( 0.015, 0.018, 0.012, 16 ).rotateZ( Math.PI / 2 ).translate( sx * ( W / 2 - 0.004 ), ( BOX_TOP + BOX_BOTTOM ) / 2, 0.02 ), knobMat );
-
-	}
+	// the height knobs, one each end of the box (knobGeometry: a rosette on the box, a neck, a fluted grip)
+	for ( const sx of [ - 1, 1 ] ) mesh( knobGeometry( sx, ( W - 0.01 ) / 2, ( BOX_TOP + BOX_BOTTOM ) / 2, 0.02 ), knobMat );
 
 	return group;
 
