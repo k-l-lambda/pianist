@@ -77,12 +77,12 @@ const COFFEE = [ [ 90, 4.3 ], [ - 90, 4.3 ] ];		// drum coffee tables before the
 // walls' ornament; ledFloor), the windows' outside one of four hours (`outside`; the probe sees it).
 // Warm: 2700-3000 K. Bloom faint (a bright room: more reads overexposed). ACES keeps the contrast.
 export const LUMINARA_PRESETS = {
-	'Afternoon': { baked: true, outside: 'day', sky: 1.25, cove: 1.6, coveColor: '#ffc98c', washer: 70, dome: 130, downColor: '#ffd3a0', sconce: 5, sconceColor: '#ffdcb0', niche: 1.0, nicheColor: '#ffc684', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.5, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Golden hour': { baked: true, outside: 'sunset', sky: 1.1, cove: 1.8, coveColor: '#ffc283', washer: 70, dome: 120, downColor: '#ffcd95', sconce: 5.5, sconceColor: '#ffd6a4', niche: 1.1, nicheColor: '#ffc07a', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.52, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Blue hour': { baked: true, outside: 'dusk', sky: 0.9, cove: 2.0, coveColor: '#ffc98c', washer: 80, dome: 130, downColor: '#ffd3a0', sconce: 6, sconceColor: '#ffdcb0', niche: 1.2, nicheColor: '#ffc684', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.55, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
-	'Night': { baked: true, outside: 'night', sky: 0.75, cove: 2.2, coveColor: '#ffc283', washer: 85, dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Afternoon': { baked: true, shelf: 1.0, outside: 'day', sky: 1.25, cove: 1.6, coveColor: '#ffc98c', washer: 70, dome: 130, downColor: '#ffd3a0', sconce: 5, sconceColor: '#ffdcb0', niche: 1.0, nicheColor: '#ffc684', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.5, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Golden hour': { baked: true, shelf: 1.1, outside: 'sunset', sky: 1.1, cove: 1.8, coveColor: '#ffc283', washer: 70, dome: 120, downColor: '#ffcd95', sconce: 5.5, sconceColor: '#ffd6a4', niche: 1.1, nicheColor: '#ffc07a', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.52, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Blue hour': { baked: true, shelf: 1.2, outside: 'dusk', sky: 0.9, cove: 2.0, coveColor: '#ffc98c', washer: 80, dome: 130, downColor: '#ffd3a0', sconce: 6, sconceColor: '#ffdcb0', niche: 1.2, nicheColor: '#ffc684', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffc98a', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.55, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Night': { baked: true, shelf: 1.3, outside: 'night', sky: 0.75, cove: 2.2, coveColor: '#ffc283', washer: 85, dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
 	// the house down, the piano under a single spot from the dome's crown
-	'Recital': { baked: true, outside: 'night', sky: 0.5, cove: 0.5, coveColor: '#ffc283', washer: 0, dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.6, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
+	'Recital': { baked: true, shelf: 0.45, outside: 'night', sky: 0.5, cove: 0.5, coveColor: '#ffc283', washer: 0, dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.6, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
 };
 export const LUMINARA_OUTSIDE = [ 'day', 'sunset', 'dusk', 'night' ];
 
@@ -156,29 +156,44 @@ function addBake( material, U ) {
 }
 
 /**
- * `material` lit by the sconces too (cheaply, as line lights: each tube a segment, its light to the
- * nearest point on it, cos / d², diffuse only, no shadow): the walls and the lacquer round them, which
- * real lights for twelve sconces would cost every material in the room. `U`: the uniforms (shared).
+ * `material` lit by the line lights too, cheaply (no shadow, diffuse only): the sconces' tubes and the
+ * strips under the shelves, each a segment of radiant intensity per metre (uSegCol: its colour × W/m/sr),
+ * its light at a point the line's integral 1 / d² along it ((atan(e1/r) - atan(e0/r)) / r) × the cosines
+ * at its nearest point (the receiver's; the strip's own, it faces one way: uSegN.w 1; a tube's none).
+ * uSegClip: a plane the receiver must be in front of (a strip: inside its niche). Real lights for twenty
+ * of them would cost every material in the room. `U`: the uniforms (shared); uSconceOff: their light
+ * already in the lightmap (the baked materials').
  */
-function addSconceGlow( material, U ) {
+function addSegmentGlow( material, U ) {
 
 	chainCompile( material, shader => {
 
 		Object.assign( shader.uniforms, U );
-		shader.defines = { ...shader.defines, SCONCES: U.uSconceA.value.length };
+		shader.defines = { ...shader.defines, SEGS: U.uSegA.value.length };
+		shader.vertexShader = shader.vertexShader
+			.replace( '#include <common>', '#include <common>\nvarying vec3 vSegWorld;' )
+			.replace( '#include <worldpos_vertex>', '#include <worldpos_vertex>\nvSegWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;' );
 		shader.fragmentShader = shader.fragmentShader
-			.replace( '#include <common>', '#include <common>\nuniform vec3 uSconceA[ SCONCES ];\nuniform vec3 uSconceB[ SCONCES ];\nuniform vec3 uSconceColor;\nuniform float uSconceOff;' )
-			.replace( '#include <lights_fragment_end>', `for ( int i = 0; i < SCONCES; i ++ ) {
+			.replace( '#include <common>', '#include <common>\nvarying vec3 vSegWorld;\nuniform vec3 uSegA[ SEGS ];\nuniform vec3 uSegB[ SEGS ];\nuniform vec4 uSegN[ SEGS ];\nuniform vec4 uSegClip[ SEGS ];\nuniform vec3 uSegCol[ SEGS ];\nuniform float uSconceOff;' )
+			.replace( '#include <lights_fragment_end>', `if ( uSconceOff < 0.5 ) {
 
-				vec3 a = ( viewMatrix * vec4( uSconceA[ i ], 1.0 ) ).xyz, b = ( viewMatrix * vec4( uSconceB[ i ], 1.0 ) ).xyz, ab = b - a;
-				vec3 q = a + clamp( dot( geometryPosition - a, ab ) / dot( ab, ab ), 0.0, 1.0 ) * ab - geometryPosition;
-				float l2 = max( dot( q, q ), 0.012 );
-				reflectedLight.directDiffuse += ( 1.0 - uSconceOff ) * BRDF_Lambert( material.diffuseColor ) * uSconceColor * max( dot( geometryNormal, q * inversesqrt( l2 ) ), 0.0 ) / l2;		// (baked: in the map)
+				vec3 P = vSegWorld, Nw = inverseTransformDirection( geometryNormal, viewMatrix ), E = vec3( 0.0 );
+				for ( int i = 0; i < SEGS; i ++ ) {
+
+					if ( dot( uSegClip[ i ].xyz, P ) + uSegClip[ i ].w < 0.0 ) continue;
+					vec3 a = uSegA[ i ], ab = uSegB[ i ] - a; float L = length( ab ); vec3 u = ab / L;
+					float sf = dot( P - a, u ), r = max( length( a + u * sf - P ), 0.02 );
+					vec3 l = a + u * clamp( sf, 0.0, L ) - P; float d = length( l ); l /= max( d, 1e-4 );
+					float c = max( dot( Nw, l ), 0.0 ) * ( uSegN[ i ].w > 0.5 ? max( dot( uSegN[ i ].xyz, - l ), 0.0 ) : 1.0 );
+					E += uSegCol[ i ] * c * ( atan( ( L - sf ) / r ) - atan( - sf / r ) ) / r;
+
+				}
+				reflectedLight.directDiffuse += BRDF_Lambert( material.diffuseColor ) * E;
 
 			}
 			#include <lights_fragment_end>` );
 
-	}, 'luminaraSconces' );
+	}, 'luminaraSegments' );
 
 }
 
@@ -493,10 +508,13 @@ export class Luminara {
 		this.onLoad = null;		// called once the pack shows (main.js: the probe again)
 		this.glow = [];			// the pack's materials glowing with the walls' lines (the clef's raised pattern)
 		this.skies = {};		// the windows' outsides, by hour (the pack's)
-		this.sconceU = { uSconceA: { value: [] }, uSconceB: { value: [] }, uSconceColor: { value: new THREE.Color() } };
+		// the line lights (the sconces, the shelves' strips: addSegmentGlow), the pack's materials' a copy lit always (not baked)
+		this.segU = { uSegA: { value: [] }, uSegB: { value: [] }, uSegN: { value: [] }, uSegClip: { value: [] }, uSegCol: { value: [] } };
+		this.segments = [];
 		const black = new THREE.DataTexture( new Uint8Array( 4 ), 1, 1 ); black.needsUpdate = true;
 		this.bakeU = { uBake: { value: black }, uBakeScale: { value: 1 }, uBakeOn: { value: 0 } };
-		this.sconceU.uSconceOff = this.bakeU.uBakeOn;		// (the same: baked, the sconces' glow is in the map)
+		this.segU.uSconceOff = this.bakeU.uBakeOn;		// (the same: baked, the line lights' is in the map)
+		this.segUPack = { ...this.segU, uSconceOff: { value: 0 } };
 		this.bakes = null;		// preset -> { map, scale } (the pack's, while its shell is ours)
 
 		const plaster = baker.plaster();
@@ -538,7 +556,8 @@ export class Luminara {
 
 		this.materials.ledWall = this.materials.led.clone();
 		this.materials.ledFloor = this.materials.led.clone();
-		for ( const m of [ this.materials.wall, this.materials.lacquer ] ) addSconceGlow( m, this.sconceU );
+		this.materials.shelfLed = this.materials.led.clone();		// (the shelves' strips: seen dim; their light: the segments')
+		for ( const m of [ this.materials.wall, this.materials.lacquer ] ) addSegmentGlow( m, this.segU );
 		this.mirror = new FloorMirror();
 		for ( const m of [ this.materials.floor, this.materials.border ] ) this.mirror.addTo( m );
 		for ( const m of [ this.materials.wall, this.materials.ceiling, this.materials.lacquer, this.materials.floor, this.materials.border, this.materials.rug ] ) addBake( m, this.bakeU );
@@ -612,7 +631,7 @@ export class Luminara {
 			[ 'baked', 'bool', 'Baked light (its preset\'s lightmap)' ], [ 'outside', LUMINARA_OUTSIDE, 'Outside' ], [ 'sky', 0, 4, 0.01, 'Sky (windows)' ],
 			[ 'cove', 0, 8, 0.01, 'Coves' ], [ 'coveColor', 'color', 'Cove color' ],
 			[ 'washer', 0, 300, 1, 'Wall washers (cd)' ], [ 'dome', 0, 400, 1, 'Dome spots (cd)' ], [ 'downColor', 'color', 'Downlight color' ],
-			[ 'sconce', 0, 15, 0.1, 'Sconces' ], [ 'sconceColor', 'color', 'Sconce color' ],
+			[ 'sconce', 0, 15, 0.1, 'Sconces' ], [ 'sconceColor', 'color', 'Sconce color' ], [ 'shelf', 0, 6, 0.01, 'Shelf strips' ],
 			[ 'niche', 0, 6, 0.01, 'Niches' ], [ 'nicheColor', 'color', 'Niche color' ],
 			[ 'led', 0, 40, 0.1, 'Ceiling lines' ], [ 'ledWall', 0, 20, 0.1, 'Wall lines' ], [ 'ledFloor', 0, 10, 0.1, 'Floor lines' ], [ 'ledColor', 'color', 'Line color' ],
 			[ 'top', 0, 2000, 10, 'Recital spot' ], [ 'topColor', 'color', 'Recital spot color' ], [ 'topAngle', 5, 40, 0.5, 'Recital spot cone (°)' ],
@@ -628,7 +647,7 @@ export class Luminara {
 		const M = this.materials, parts = new Map();		// material -> geometries (merged at the end)
 		const add = ( geo, mat ) => { if ( ! parts.has( mat ) ) parts.set( mat, [] ); parts.get( mat ).push( geo.index ? geo.toNonIndexed() : geo ); };
 		this.nichePoints = [];
-		this.sconceU.uSconceA.value.length = this.sconceU.uSconceB.value.length = 0;
+		this.segments = [];		// { a, b, n (the strip's facing; null: a tube), clip (a plane, Vector4; null), kind }
 		this.washers = [];		// [ position, target ] of the first soffit's downlights
 
 		// the bays: a panel of wall round each opening, the opening's reveal and back
@@ -645,8 +664,7 @@ export class Luminara {
 			add( pil.band.clone().applyMatrix4( F ), M.brass );
 			for ( const g of pil.sconce.brass ) add( g.clone().applyMatrix4( F ), M.brass );
 			add( pil.sconce.glass.clone().applyMatrix4( F ), M.sconce );
-			this.sconceU.uSconceA.value.push( pil.sconce.seg[ 0 ].clone().applyMatrix4( F ) );
-			this.sconceU.uSconceB.value.push( pil.sconce.seg[ 1 ].clone().applyMatrix4( F ) );
+			this.segments.push( { a: pil.sconce.seg[ 0 ].clone().applyMatrix4( F ), b: pil.sconce.seg[ 1 ].clone().applyMatrix4( F ), n: null, clip: null, kind: 'sconce' } );
 
 		}
 
@@ -758,7 +776,7 @@ export class Luminara {
 
 			const mesh = new THREE.Mesh( mergeGeometries( geos, false ), mat );
 			geos.forEach( g => g.dispose() );
-			mesh.castShadow = ! [ M.cove, M.dome, M.ceiling, M.led, M.ledWall, M.ledFloor, M.sconce, M.neon ].includes( mat );
+			mesh.castShadow = ! [ M.cove, M.dome, M.ceiling, M.led, M.ledWall, M.ledFloor, M.shelfLed, M.sconce, M.neon ].includes( mat );
 			mesh.receiveShadow = true;
 			mesh.name = `luminara:${ Object.keys( M ).find( k => M[ k ] === mat ) }`;
 			this.group.add( mesh );
@@ -782,6 +800,15 @@ export class Luminara {
 
 		}
 		if ( this.pack ) this.group.add( this.pack );
+		{		// the line lights' uniforms (their count fixed from the first build: the shaders')
+
+			const U = this.segU;
+			U.uSegA.value = this.segments.map( g => g.a ); U.uSegB.value = this.segments.map( g => g.b );
+			U.uSegN.value = this.segments.map( g => g.n ? new THREE.Vector4( g.n.x, g.n.y, g.n.z, 1 ) : new THREE.Vector4( 0, 0, 0, 0 ) );
+			U.uSegClip.value = this.segments.map( g => g.clip ?? new THREE.Vector4( 0, 0, 0, 1 ) );
+			U.uSegCol.value = this.segments.map( () => new THREE.Color() );
+
+		}
 		this._hash = this._computeHash();
 		if ( this._bakeSrc ) this._applyBake();
 
@@ -856,7 +883,7 @@ export class Luminara {
 
 		} else {
 
-			add( backGeo, kind === 'pipes' ? M.lacquer : kind === 'clef' ? M.wall : M.niche );		// (the clef: its pattern glows, not the niche)
+			add( backGeo, kind === 'pipes' ? M.lacquer : kind === 'clef' || kind === 'shelves' ? M.wall : M.niche );		// (the clef: its pattern glows; the shelves: lit by their strips, not from behind)
 			const mid = new THREE.Vector3( 0, ( o.y0 + ( o.y1 ?? o.yS ) ) / 2, 0.25 ).applyMatrix4( F );
 			this.nichePoints.push( { kind, F, o, light: mid } );
 			if ( kind === 'shelves' ) this._shelving( add, F, o );
@@ -900,13 +927,28 @@ export class Luminara {
 		const M = this.materials, hh = o.y1 - o.y0, t = 0.035, w = 2 * o.a + 0.1, d = o.depth;
 		this.shelves = [];		// [ y of its top, x of each compartment's middle, its half width ] (the ornaments: _build)
 		const ys = [ 0, 1, 2, 3 ].map( k => o.y0 + 0.05 + k * ( hh - 0.1 ) / 4 );
+		// a strip of light under each shelf (and the niche's top) along its back edge, by the back wall,
+		// facing down and a little back: each compartment lit from its top, its back washed below it
+		// (as the reference's); none lit as a whole. Its light: a line light (addSegmentGlow, the bake's)
+		const f = outward( 0 ), facing = new THREE.Vector3( 0, - 0.85, 0.53 ).normalize();		// (in F: z into the room; back: - z)
+		const strip = ( y, half ) => {
+
+			const z = 0.04, yy = y - 0.007;
+			add( new THREE.BoxGeometry( 2 * half, 0.007, 0.012 ).translate( 0, yy, z ).applyMatrix4( F ), M.shelfLed );
+			const a = new THREE.Vector3( - half, yy - 0.004, z ).applyMatrix4( F ), b = new THREE.Vector3( half, yy - 0.004, z ).applyMatrix4( F );
+			const n = new THREE.Vector3( facing.x, facing.y, - facing.z ).transformDirection( F );		// (down, and to the back wall)
+			const out = new THREE.Vector3( 0, 0, 1 ).transformDirection( F ).negate(), opening = new THREE.Vector3( 0, 0, d + 0.02 ).applyMatrix4( F );
+			this.segments.push( { a, b, n, clip: new THREE.Vector4( out.x, out.y, out.z, - out.dot( opening ) ), kind: 'shelf' } );		// (only inside its niche)
+
+		};
+		void f;
 		for ( const y of ys.slice( 1 ) ) {
 
 			add( new RoundedBoxGeometry( w, t, d - 0.02, 2, 0.008 ).translate( 0, y - t / 2, d / 2 ).applyMatrix4( F ), M.lacquer );
-			add( new THREE.BoxGeometry( w - 0.24, 0.008, 0.012 ).translate( 0, y - t - 0.006, d - 0.04 ).applyMatrix4( F ), M.ledWall );
+			strip( y - t, o.a - 0.06 );
 
 		}
-		add( new THREE.BoxGeometry( 2 * o.a - 0.2, 0.008, 0.012 ).translate( 0, o.y1 - 0.02, d - 0.06 ).applyMatrix4( F ), M.ledWall );		// (the top's)
+		strip( o.y1, o.a - o.rc - 0.02 );		// (the niche's top)
 		const xs = [ - 1, 1 ].map( s => s * ( o.a - 0.06 ) / 3 );
 		for ( const x of xs ) add( new RoundedBoxGeometry( t, hh - 0.06, d - 0.02, 2, 0.008 ).translate( x, o.y0 + hh / 2, d / 2 ).applyMatrix4( F ), M.lacquer );
 		const half = ( o.a - 0.06 ) / 3 - t;
@@ -1120,16 +1162,25 @@ export class Luminara {
 		M.neon.emissive.set( L.ledColor ).lerp( new THREE.Color( '#ffffff' ), 0.35 ); M.neon.emissiveIntensity = 2.1 * L.ledWall;
 		if ( this.lampLight ) { this.lampLight.color.set( L.sconceColor ); this.lampLight.intensity = 0.35 * L.sconce; this.lampLight.visible = L.sconce > 0; }
 		for ( const m of this.shades ?? [] ) { m.emissive.set( L.sconceColor ); m.emissiveIntensity = 0.5 * L.sconce; }
-		this.sconceU.uSconceColor.value.set( L.sconceColor ).multiplyScalar( 0.04 * L.sconce );
+		// the line lights' intensity per metre: a tube, its radiance × its diameter (0.9: its gradient's mean); a strip, `shelf`
+		for ( const [ i, g ] of this.segments.entries() ) {
+
+			const c = this.segU.uSegCol.value[ i ];
+			if ( ! c ) continue;
+			if ( g.kind === 'sconce' ) c.set( L.sconceColor ).multiplyScalar( 0.9 * L.sconce * 0.056 );
+			else c.set( L.ledColor ).multiplyScalar( L.shelf ?? 1 );
+
+		}
+		M.shelfLed.emissive.set( L.ledColor ); M.shelfLed.emissiveIntensity = L.ledWall;
 		for ( const m of [ M.cove, M.dome ] ) { m.emissive.set( L.coveColor ); m.emissiveIntensity = L.cove * ( m === M.dome ? 0.7 : 1 ); }
 		M.niche.emissive.set( L.nicheColor ); M.niche.emissiveIntensity = L.niche;
 		for ( const [ m, v ] of [ [ M.led, L.led ], [ M.ledWall, L.ledWall ], [ M.ledFloor, L.ledFloor ] ] ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = v; }
 		M.staff.color.set( L.ledColor ).multiplyScalar( 0.75 * L.ledWall );		// (on the ceiling, but ornament: the walls' tier)
 		for ( const m of this.glow ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = 2.2 * L.ledWall; }		// (the clef's raised pattern: the walls' brightest, below the bloom)
-		if ( this.nicheLights.length !== this.nichePoints.filter( n => n.kind !== 'clef' ).length ) {
+		if ( this.nicheLights.length !== this.nichePoints.filter( n => n.kind === 'pipes' ).length ) {		// (the pipes' only: the shelves lit by their strips)
 
 			for ( const l of this.nicheLights ) this.lights.remove( l );
-			this.nicheLights = this.nichePoints.filter( n => n.kind !== 'clef' ).map( n => {
+			this.nicheLights = this.nichePoints.filter( n => n.kind === 'pipes' ).map( n => {
 
 				const l = new THREE.PointLight( '#ffffff', 0, 2.5, 2 );
 				l.position.copy( n.light );
@@ -1310,6 +1361,7 @@ export class Luminara {
 					...( m.emissiveMap ? { emissiveMap: m.emissiveMap, emissive: new THREE.Color( '#ffd9a6' ) } : {} ) } ),		// (the clef's gold: a line of light)
 			}[ look ]?.() ?? phys( base );
 			if ( p.map ) p.map.colorSpace = THREE.SRGBColorSpace;
+			if ( p.isMeshStandardMaterial ) addSegmentGlow( p, this.segUPack );		// (the shelves' ornaments: lit by their strips)
 			// both sides: TRELLIS's surfaces are not wound one way (culled, the egg chair's shell shows
 			// through to its cushion: glass)
 			p.side = THREE.DoubleSide;

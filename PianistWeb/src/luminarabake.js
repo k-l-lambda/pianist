@@ -5,10 +5,10 @@
 //   texel G-buffer   the shell drawn in its lightmap UVs (uvBake, tools/luminara-unwrap.py's): each
 //                    texel's world position and normal; the side it is seen from found by rays (the
 //                    room's surfaces are not wound one way)
-//   direct           spots (the washers, the dome's, the Recital's: as three lights them) and the
-//                    sconces (frosted tubes, sampled on their facing half), each sample with a shadow
-//                    ray. The spots stay real-time (their direct light not stored, only their bounce);
-//                    the sconces' is stored (soft shadows: in the map)
+//   direct           spots (the washers, the dome's, the Recital's: as three lights them) and the line
+//                    lights (the sconces' frosted tubes, the shelves' strips: src/luminara.js's
+//                    segments), each sample with a shadow ray. The spots stay real-time (their direct
+//                    light not stored, only their bounce); the line lights' is stored (soft shadows)
 //   gather × 4       cosine-weighted rays from each texel: what they hit sends back its emission (the
 //                    coves, the dome, the lines of light, the niches, the neon, the shades), the sky
 //                    (the windows: the sky cylinder, analytically, its photo as drawn) and its albedo
@@ -148,7 +148,7 @@ export class LuminaraBaker {
 			}
 			const cnt = g.attributes.position.count, alb = new Float32Array( cnt * 4 ), emi = new Float32Array( cnt * 4 ), bk = new Float32Array( cnt * 4 );
 			const a = albedoOf( mat ), vc = mat.vertexColors && g.attributes.color, uv = g.attributes.uv;
-			const emissive = !! mat.emissive && mat !== M.sconce;		// (each a source, its colour per preset: emit(); the sconces: sampled directly)
+			const emissive = !! mat.emissive && mat !== M.sconce && mat !== M.shelfLed;		// (each a source, its colour per preset: emit(); the line lights: sampled directly)
 			const src = emissive ? sourceOf( mat ) : 0, grad = mat.emissiveMap?.image?.data, gh = mat.emissiveMap?.image?.height;
 			const baked = targets.has( o ), ub = g.attributes.uvBake;
 			for ( let i = 0; i < cnt; ++ i ) {
@@ -311,12 +311,12 @@ export class LuminaraBaker {
 
 		}
 		while ( sp.pos.length < MAXS ) { sp.pos.push( new THREE.Vector3() ); sp.dir.push( new THREE.Vector3( 0, - 1, 0 ) ); sp.col.push( new THREE.Color( 0 ) ); sp.cone.push( new THREE.Vector2( 1, 1 ) ); sp.range.push( 0 ); }
-		const sc = { a: L.sconceU.uSconceA.value, b: L.sconceU.uSconceB.value, col: L.materials.sconce.emissive.clone().multiplyScalar( 0.9 * L.materials.sconce.emissiveIntensity ) };		// (0.9: its gradient's mean)
-		const NS = sc.a.length;
-		const direct = target( n, 2 );		// [ 0 ]: all direct (the bounce's source), [ 1 ]: the sconces' (stored)
+		// the line lights (the sconces' tubes, the shelves' strips: src/luminara.js's segments, their intensity per metre as drawn)
+		const U = L.segU, NS = U.uSegA.value.length;
+		const direct = target( n, 2 );		// [ 0 ]: all direct (the bounce's source), [ 1 ]: the line lights' (stored)
 		const dp = this._pass( /* glsl */`
 			uniform vec3 spPos[ ${ MAXS } ], spDir[ ${ MAXS } ], spCol[ ${ MAXS } ]; uniform vec2 spCone[ ${ MAXS } ]; uniform float spRange[ ${ MAXS } ];
-			uniform vec3 scA[ ${ NS } ], scB[ ${ NS } ], scCol; uniform float spp;
+			uniform vec3 sgA[ ${ NS } ], sgB[ ${ NS } ], sgCol[ ${ NS } ]; uniform vec4 sgN[ ${ NS } ]; uniform float spp;
 			layout( location = 0 ) out vec4 oAll; layout( location = 1 ) out vec4 oSconce;
 			void main() {
 				seedRng();
@@ -332,19 +332,19 @@ export class LuminaraBaker {
 					float w = spRange[ i ] > 0.0 ? pow( clamp( 1.0 - pow( d / spRange[ i ], 4.0 ), 0.0, 1.0 ), 2.0 ) : 1.0;
 					if ( ! occluded( x, l, d - 0.02 ) ) Ed += spCol[ i ] * sa * w * c / ( d * d );
 				}
-				// the sconces: a point on each tube's half facing x, one shadow ray (its glass: the end short of it)
+				// the line lights: a point along each (a tube's: on its side towards x; a strip's: its face), one
+				// shadow ray (stopping short of the emitter's own glass or box); intensity per metre × cosines / d² × its length
 				for ( int i = 0; i < ${ NS }; ++ i ) {
-					vec3 a = scA[ i ], ax = scB[ i ] - a; float h = length( ax ); vec3 u = ax / h;
-					vec3 c = a + u * clamp( dot( x - a, u ), 0.0, h ), toX = x - c; vec3 f = normalize( toX - u * dot( toX, u ) );
-					vec3 sd = normalize( cross( u, f ) );
-					float ang = ( rnd() - 0.5 ) * 3.14159265, yy = rnd() * h;
-					vec3 nrm = f * cos( ang ) + sd * sin( ang ), p = a + u * yy + nrm * 0.028, l = p - x; float d = length( l ); l /= d;
-					float cr = dot( N.xyz, l ), ce = dot( nrm, - l );
+					vec3 a = sgA[ i ], ax = sgB[ i ] - a; float h = length( ax ); vec3 u = ax / h;
+					vec3 p = a + u * ( rnd() * h ), toX = x - p, f = toX - u * dot( toX, u );
+					p += sgN[ i ].w > 0.5 ? sgN[ i ].xyz * 0.005 : normalize( f ) * 0.031;
+					vec3 l = p - x; float d = length( l ); l /= d;
+					float cr = dot( N.xyz, l ), ce = sgN[ i ].w > 0.5 ? dot( sgN[ i ].xyz, - l ) : 1.0;
 					if ( cr <= 0.0 || ce <= 0.0 ) continue;
-					if ( ! occluded( x, l, d - 0.006 ) ) Es += scCol * cr * ce / ( d * d ) * ( 3.14159265 * 0.028 * h );
+					if ( ! occluded( x, l, d - 0.01 ) ) Es += sgCol[ i ] * cr * ce / ( d * d ) * h;
 				}
 				oAll = vec4( ( Ed + Es ) / spp, 1.0 ); oSconce = vec4( Es / spp, 1.0 );
-			}`, { spPos: { value: sp.pos }, spDir: { value: sp.dir }, spCol: { value: sp.col }, spCone: { value: sp.cone }, spRange: { value: sp.range }, scA: { value: sc.a }, scB: { value: sc.b }, scCol: { value: sc.col }, spp: { value: SAMPLES.direct } }, direct, { blend: true } );
+			}`, { spPos: { value: sp.pos }, spDir: { value: sp.dir }, spCol: { value: sp.col }, spCone: { value: sp.cone }, spRange: { value: sp.range }, sgA: { value: U.uSegA.value }, sgB: { value: U.uSegB.value }, sgCol: { value: U.uSegCol.value }, sgN: { value: U.uSegN.value }, spp: { value: SAMPLES.direct } }, direct, { blend: true } );
 		await dp.run( SAMPLES.direct );
 		// the sky: as drawn (src/luminara.js's cylinder and its map's transform)
 		const sky = L.materials.sky, skyMap = sky.map, cyl = L.sky.geometry.parameters;
