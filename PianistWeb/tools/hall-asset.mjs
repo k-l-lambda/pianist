@@ -36,7 +36,11 @@
 // --originals): the floor's vents as decal meshes (a quad each, mapped as its baked grille, in the
 // pack most of them are in; their own colour and normal maps, alpha blended: extras.grille), and
 // the stage floor's grain (its texture in the stage floor's materials' emissive slot, their
-// emissive factor 0: extras.floorDetail; src/berlinhall.js multiplies the albedo by it).
+// emissive factor 0: extras.floorDetail; src/berlinhall.js multiplies the albedo by it); and the
+// composers' busts (generated/busts/relief: tools/bust-batch.py's): each old bust, and its pedestal
+// and block (the console under them stays), replaced by the composer's (bust-gen.mjs: who stands
+// where) on the console, at the old one's place and facing, in its colour, marble (an object-space
+// normal map: extras.objectNormal; its own node transform).
 // Output frame: metres, y up, x across (the audience's right +), z from the stage's front edge
 // towards the back of the hall (the stage at z < 0), y 0 at the stalls floor (the stage's front
 // at 0.61 m). The frame and the options are in each GLB's extras.
@@ -58,6 +62,7 @@ import { cloneDocument, join, prune, quantize, reorder, simplifyPrimitive, weldP
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import { detailTexture, DETAIL_RAW } from './floor-detail.mjs';
 import { GRILLES, grilleItems, grilleRaw, grilleTextures } from './floor-grille.mjs';
+import { COMPOSERS } from './bust-gen.mjs';
 
 const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..' );
 
@@ -661,6 +666,116 @@ if ( opt.originals ) {
 
 }
 
+// 1c. the composers' busts: the old ones found (the bust materials' parts, joined by position),
+// each given its composer (by level and wall, in order from the stage: bust-gen.mjs's lists), its
+// colour sampled (the albedo at its triangles, with its material's gain: as step 3 makes it); the
+// old bust and its pedestal and block (above the console) cut away where a new one is there
+const BUST_MATS = new Set( [ 'wagner-buesten', 'brahms-buesten', 'haendel-buesten-low' ] ), BASE_MAT = 'buesten-sockel';
+const BUST_H = 0.55, CONSOLE = 0.28, NEW_H = 0.74, NEW_W = 0.5;		// the old bust's height; its bottom above the console's top; the new one's height and widest (all times the old bust's size / BUST_H)
+const reliefDir = opt.generated ? path.join( opt.generated, 'busts', 'relief' ) : null;
+const placements = [];
+if ( reliefDir && fs.existsSync( reliefDir ) ) {
+
+	const inst = [];
+	for ( const node of nodes ) for ( const p of node.getMesh().listPrimitives() ) {
+
+		if ( ! BUST_MATS.has( p.getMaterial()?.getName() ) ) continue;
+		const P = p.getAttribute( 'POSITION' ).getArray(), I = p.getIndices().getArray(), nv = P.length / 3;
+		const key = i => `${ Math.round( P[ 3 * i ] * 1000 ) },${ Math.round( P[ 3 * i + 1 ] * 1000 ) },${ Math.round( P[ 3 * i + 2 ] * 1000 ) }`, id = new Map(), parent = [];
+		const vid = Int32Array.from( { length: nv }, ( _, i ) => { const k = key( i ); if ( ! id.has( k ) ) { id.set( k, id.size ); parent.push( id.size - 1 ); } return id.get( k ); } );
+		const find = x => { while ( parent[ x ] !== x ) x = parent[ x ] = parent[ parent[ x ] ]; return x; };
+		for ( let t = 0; t < I.length; t += 3 ) { const a = find( vid[ I[ t ] ] ); parent[ find( vid[ I[ t + 1 ] ] ) ] = a; parent[ find( vid[ I[ t + 2 ] ] ) ] = a; }
+		const groups = new Map();
+		for ( let t = 0; t < I.length / 3; ++ t ) { const r = find( vid[ I[ 3 * t ] ] ); if ( ! groups.has( r ) ) groups.set( r, [] ); groups.get( r ).push( t ); }
+		for ( const ts of groups.values() ) {
+
+			if ( ts.length < 200 ) continue;
+			let cx = 0, cz = 0, n = 0, y0 = Infinity, y1 = - Infinity;
+			for ( const t of ts ) for ( let k = 0; k < 3; ++ k ) { const v = I[ 3 * t + k ]; cx += P[ 3 * v ]; cz += P[ 3 * v + 2 ]; ++ n; y0 = Math.min( y0, P[ 3 * v + 1 ] ); y1 = Math.max( y1, P[ 3 * v + 1 ] ); }
+			cx /= n; cz /= n;
+			let sxx = 0, szz = 0, sxz = 0;
+			for ( const t of ts ) for ( let k = 0; k < 3; ++ k ) { const v = I[ 3 * t + k ], dx = P[ 3 * v ] - cx, dz = P[ 3 * v + 2 ] - cz; sxx += dx * dx; szz += dz * dz; sxz += dx * dz; }
+			const th = 0.5 * Math.atan2( 2 * sxz, sxx - szz ), minor = [ - Math.sin( th ), Math.cos( th ) ], tow = [ - cx, 5 - cz ];
+			const sg = Math.sign( minor[ 0 ] * tow[ 0 ] + minor[ 1 ] * tow[ 1 ] ) || 1, face = [ sg * minor[ 0 ], sg * minor[ 1 ] ];
+			let back = Infinity;		// its back: the least along its facing
+			for ( const t of ts ) for ( let k = 0; k < 3; ++ k ) { const v = I[ 3 * t + k ]; back = Math.min( back, ( P[ 3 * v ] - cx ) * face[ 0 ] + ( P[ 3 * v + 2 ] - cz ) * face[ 1 ] ); }
+			inst.push( { prim: p, ts, c: [ cx, y0, cz ], h: y1 - y0, face, back } );
+
+		}
+
+	}
+	// who goes where: the level by height, the wall by place; each wall's own composers from the
+	// stage on, a wall with more places than composers given the back wall's (left: its first, right:
+	// its last), the back wall its middle ones
+	const levelOf = b => b.c[ 1 ] < 5 ? 'stalls' : 'tier2', wallOf = b => b.c[ 0 ] < - 6 ? 'left' : b.c[ 0 ] > 6 ? 'right' : 'back';
+	const listOf = ( level, wall ) => COMPOSERS.filter( c => c[ 3 ] === level && c[ 4 ] === wall ).map( c => c[ 0 ] );
+	const byWall = {};
+	for ( const b of inst ) ( byWall[ `${ levelOf( b ) }/${ wallOf( b ) }` ] ??= [] ).push( b );
+	for ( const [ k, bs ] of Object.entries( byWall ) ) {
+
+		const [ level, wall ] = k.split( '/' );
+		bs.sort( wall === 'back' ? ( a, b ) => a.c[ 0 ] - b.c[ 0 ] : ( a, b ) => a.c[ 2 ] - b.c[ 2 ] );
+		let names = listOf( level, wall ), extra = listOf( level, 'back' );
+		if ( wall === 'back' ) { const m = Math.floor( ( names.length - bs.length ) / 2 ); names = names.slice( m, m + bs.length ); }
+		else if ( names.length < bs.length ) names = [ ...names, ...( wall === 'left' ? extra : extra.reverse() ) ].slice( 0, bs.length );
+		bs.forEach( ( b, i ) => b.slug = names[ i ] );
+
+	}
+	// their colour: the albedo at their triangles (the source's texture, the median), with the
+	// material's gain (step 3's: the look's luminance over the texture's)
+	const decoded = new Map();
+	const texOf = async m => decoded.get( m ) ?? decoded.set( m, await sharp( Buffer.from( m.getBaseColorTexture().getImage() ) ).removeAlpha().raw().toBuffer( { resolveWithObject: true } ) ).get( m );
+	const gainOf = new Map();
+	for ( const b of inst ) {
+
+		const m = b.prim.getMaterial(), { data, info } = await texOf( m ), U = b.prim.getAttribute( 'TEXCOORD_0' ).getArray(), I = b.prim.getIndices().getArray(), w = info.width, h = info.height;
+		const at = t => { let u = 0, v = 0; for ( let k = 0; k < 3; ++ k ) { u += U[ 2 * I[ 3 * t + k ] ] / 3; v += U[ 2 * I[ 3 * t + k ] + 1 ] / 3; } const o = 3 * ( Math.min( h - 1, Math.max( 0, Math.floor( v * h ) ) ) * w + Math.min( w - 1, Math.max( 0, Math.floor( u * w ) ) ) ); return [ data[ o ], data[ o + 1 ], data[ o + 2 ] ]; };
+		if ( ! gainOf.has( m ) ) {		// the material's: over all its triangles
+
+			const all = []; for ( let t = 0; t < I.length / 3; ++ t ) { const c = at( t ); if ( c[ 0 ] + c[ 1 ] + c[ 2 ] >= 30 ) all.push( luma( ...c.map( v => TO_LINEAR[ v ] ) ) ); }
+			const look = LOOK_OF[ m.getName() ] ?? 'ivory', target = luma( ...linear( LOOKS[ look ].color ) ), mean = all.reduce( ( a, v ) => a + v, 0 ) / Math.max( 1, all.length );
+			gainOf.set( m, Math.min( 1.6, Math.max( 0.7, ( target / Math.max( 1e-4, mean ) ) ** 0.35 ) ) );
+
+		}
+		const cs = b.ts.map( at ).filter( c => c[ 0 ] + c[ 1 ] + c[ 2 ] >= 30 ), med = k => cs.map( c => c[ k ] ).sort( ( x, y ) => x - y )[ cs.length >> 1 ];
+		b.color = [ 0, 1, 2 ].map( k => Math.min( 1, TO_LINEAR[ med( k ) ] * gainOf.get( m ) ) );
+
+	}
+	// the ones with a new bust: cut the old and its pedestal and block
+	const cutTris = new Map();		// primitive -> Set of triangles
+	for ( const b of inst ) {
+
+		if ( ! b.slug || ! fs.existsSync( path.join( reliefDir, `${ b.slug }.json` ) ) ) { say( `  bust at ${ b.c.map( v => v.toFixed( 1 ) ) }: ${ b.slug ?? 'nobody' }, no relief: kept` ); continue; }
+		( cutTris.get( b.prim ) ?? cutTris.set( b.prim, new Set() ).get( b.prim ) ) && b.ts.forEach( t => cutTris.get( b.prim ).add( t ) );
+		const s = b.h / BUST_H, top = b.c[ 1 ] - CONSOLE * s;
+		placements.push( { slug: b.slug, at: [ b.c[ 0 ], top, b.c[ 2 ] ], face: b.face, back: b.back, s, color: b.color, top, c: b.c } );
+
+	}
+	for ( const node of nodes ) for ( const p of node.getMesh().listPrimitives() ) {		// the pedestals and blocks: above a console's top, round a new bust
+
+		if ( p.getMaterial()?.getName() !== BASE_MAT ) continue;
+		const P = p.getAttribute( 'POSITION' ).getArray(), I = p.getIndices().getArray(), set = new Set();
+		for ( let t = 0; t < I.length / 3; ++ t ) {
+
+			let x = 0, y = 0, z = 0; for ( let k = 0; k < 3; ++ k ) { const v = I[ 3 * t + k ]; x += P[ 3 * v ] / 3; y += P[ 3 * v + 1 ] / 3; z += P[ 3 * v + 2 ] / 3; }
+			if ( placements.some( q => y > q.top && y < q.c[ 1 ] + 0.2 * q.s && Math.hypot( x - q.c[ 0 ], z - q.c[ 2 ] ) < 0.35 * q.s ) ) set.add( t );
+
+		}
+		if ( set.size ) cutTris.set( p, set );
+
+	}
+	let cut = 0;
+	for ( const [ p, set ] of cutTris ) {
+
+		const I = p.getIndices().getArray(), keep = [];
+		for ( let t = 0; t < I.length / 3; ++ t ) if ( ! set.has( t ) ) keep.push( I[ 3 * t ], I[ 3 * t + 1 ], I[ 3 * t + 2 ] ); else ++ cut;
+		p.getIndices().setArray( new Uint32Array( keep ) );
+
+	}
+	say( `busts: ${ inst.length } old ones; ${ placements.length } replaced (${ cut } triangles of them and their pedestals cut): ${ placements.map( q => q.slug ).join( ' ' ) }` );
+
+}
+
 // 2. per material: its look, its triangles' UVs (for the islands); per triangle the texel
 // density it needs (screen pixels per texel at --texel, at its distance), its pack, and whether
 // it is near the camera
@@ -996,6 +1111,53 @@ if ( opt.generated ) {
 		say( `  floor grain: ${ ( D.webp.length / 1024 ).toFixed( 0 ) } KB on ${ grains.map( m => m.getName() ).join( ', ' ) }` );
 
 	} else say( `  no ${ DETAIL_RAW }: no floor grain` );
+
+	// the busts: each its mesh in its own frame (x right, y up, z its front: the relief's), its node
+	// at its place and facing; marble in the old one's colour, its object-space normal map
+	let bustTris = 0, bustBytes = 0;
+	for ( const q of placements ) {
+
+		const R = JSON.parse( fs.readFileSync( path.join( reliefDir, `${ q.slug }.json` ), 'utf8' ) );
+		const dec = ( b, T ) => { const u = Buffer.from( b, 'base64' ); return new T( u.buffer.slice( u.byteOffset, u.byteOffset + u.byteLength ) ); };
+		const pos = dec( R.positions, Float32Array ), uv = dec( R.uvs, Float32Array ), idx = dec( R.indices, Uint32Array );
+		const k = Math.min( NEW_H * q.s, NEW_W * q.s / R.size[ 0 ] );		// (the relief: 1 high)
+		let zmin = Infinity;
+		for ( let i = 0; i < pos.length; i += 3 ) { pos[ i ] *= k; pos[ i + 1 ] *= k; pos[ i + 2 ] *= k; zmin = Math.min( zmin, pos[ i + 2 ] ); }
+		for ( let i = 1; i < uv.length; i += 2 ) uv[ i ] = 1 - uv[ i ];		// (glTF: v down the image)
+		const nor = new Float32Array( pos.length );		// area-weighted
+		for ( let t = 0; t < idx.length; t += 3 ) {
+
+			const [ a, b, c ] = [ 3 * idx[ t ], 3 * idx[ t + 1 ], 3 * idx[ t + 2 ] ], u = [ 0, 1, 2 ].map( d => pos[ b + d ] - pos[ a + d ] ), v = [ 0, 1, 2 ].map( d => pos[ c + d ] - pos[ a + d ] );
+			const f = [ u[ 1 ] * v[ 2 ] - u[ 2 ] * v[ 1 ], u[ 2 ] * v[ 0 ] - u[ 0 ] * v[ 2 ], u[ 0 ] * v[ 1 ] - u[ 1 ] * v[ 0 ] ];
+			for ( const o of [ a, b, c ] ) for ( let d = 0; d < 3; ++ d ) nor[ o + d ] += f[ d ];
+
+		}
+		for ( let i = 0; i < nor.length; i += 3 ) { const l = Math.hypot( nor[ i ], nor[ i + 1 ], nor[ i + 2 ] ) || 1; nor[ i ] /= l; nor[ i + 1 ] /= l; nor[ i + 2 ] /= l; }
+		const buffer = doc.getRoot().listBuffers()[ 0 ];
+		const prim = doc.createPrimitive().setIndices( doc.createAccessor().setType( 'SCALAR' ).setArray( idx ).setBuffer( buffer ) )
+			.setAttribute( 'POSITION', doc.createAccessor().setType( 'VEC3' ).setArray( pos ).setBuffer( buffer ) )
+			.setAttribute( 'NORMAL', doc.createAccessor().setType( 'VEC3' ).setArray( nor ).setBuffer( buffer ) )
+			.setAttribute( 'TEXCOORD_0', doc.createAccessor().setType( 'VEC2' ).setArray( uv ).setBuffer( buffer ) );
+		const d = Math.max( 0.3, boxDistance( { min: [ q.at[ 0 ] - 0.3, q.at[ 1 ], q.at[ 2 ] - 0.3 ], max: [ q.at[ 0 ] + 0.3, q.at[ 1 ] + k, q.at[ 2 ] + 0.3 ] }, CAMERA_ZONE ) );
+		if ( opt.simplify ) simplifyPrimitive( prim, { simplifier: MeshoptSimplifier, ratio: 0, error: opt.errorPx * PX_PER_M * d / k, lockBorder: true } );
+		bustTris += prim.getIndices().getCount() / 3;
+		const size = d < 9 ? 1024 : 512;
+		const nmap = await sharp( fs.readFileSync( path.join( reliefDir, `${ q.slug }-normal.png` ) ) ).removeAlpha().resize( size, size, { fit: 'fill', kernel: 'lanczos3' } ).webp( { quality: 92, effort: 6 } ).toBuffer();
+		bustBytes += nmap.length;
+		const mat = doc.createMaterial( `bust-${ q.slug }` ).setBaseColorFactor( [ ...q.color, 1 ] ).setRoughnessFactor( 0.32 ).setMetallicFactor( 0 ).setDoubleSided( true )
+			.setNormalTexture( doc.createTexture( `bust-${ q.slug }-normal` ).setImage( nmap ).setMimeType( 'image/webp' ) )
+			.setExtras( { look: 'bust', objectNormal: true, composer: q.slug } );
+		prim.setMaterial( mat );
+		// its frame: x = up x front, y up, z its front; its back on the old one's
+		const f = q.face, rx = [ f[ 1 ], 0, - f[ 0 ] ], o = [ q.at[ 0 ] + f[ 0 ] * ( q.back - zmin ), q.at[ 1 ], q.at[ 2 ] + f[ 1 ] * ( q.back - zmin ) ];
+		const node = doc.createNode( `bust-${ q.slug }` ).setMesh( doc.createMesh( `bust-${ q.slug }` ).addPrimitive( prim ) )
+			.setMatrix( [ rx[ 0 ], rx[ 1 ], rx[ 2 ], 0, 0, 1, 0, 0, f[ 0 ], 0, f[ 1 ], 0, o[ 0 ], o[ 1 ], o[ 2 ], 1 ] );
+		const pack = q.at[ 2 ] < STAGE_Z ? 'stage' : 'house';
+		group( pack ).addChild( node );
+		texBytes[ pack ] += nmap.length; gpu[ pack ] += size * size * 4 * 4 / 3;
+
+	}
+	if ( placements.length ) say( `  busts: ${ placements.length } (${ bustTris } triangles, normal maps ${ ( bustBytes / 1024 ).toFixed( 0 ) } KB)` );
 
 }
 

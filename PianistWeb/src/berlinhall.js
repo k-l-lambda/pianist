@@ -29,6 +29,7 @@ const FINISH = {
 	parquetDark: { clearcoat: 0.2, clearcoatRoughness: 0.35 },
 	woodFrame: { clearcoat: 0.3, clearcoatRoughness: 0.3 },
 	gilt: { metalness: 0.7 },
+	bust: { clearcoat: 0.2, clearcoatRoughness: 0.15 },		// the composers' marble busts: a faint polish
 	ivoryGilt: { metalness: 0.7 },
 };
 // the hall's chandeliers: two rows of seven over the stalls and the stage, their candle rings
@@ -93,13 +94,14 @@ function hallMaterial( m, anisotropy ) {
 	const p = new THREE.MeshPhysicalMaterial( {
 		name: m.name, color: m.color, map: m.map, roughness: m.roughness, metalness: f.metalness ?? m.metalness, roughnessMap: m.roughnessMap, metalnessMap: m.metalnessMap,
 		aoMap: m.aoMap, aoMapIntensity: m.aoMapIntensity, normalMap: m.normalMap, normalScale: m.normalScale,
+		normalMapType: m.userData.objectNormal ? THREE.ObjectSpaceNormalMap : THREE.TangentSpaceNormalMap,		// (a bust's: its own frame)
 		emissive: m.emissive, emissiveMap: grain ? null : m.emissiveMap, emissiveIntensity: m.emissiveIntensity,
 		transparent: m.transparent, depthWrite: m.depthWrite, ...( m.userData.grille ? GRILLE_OFFSET : {} ),
 		clearcoat: f.clearcoat ?? 0, clearcoatRoughness: f.clearcoatRoughness ?? 0, side: m.userData.grille ? THREE.FrontSide : THREE.DoubleSide,
 	} );
 	if ( m.sheen ) Object.assign( p, { sheen: m.sheen, sheenColor: m.sheenColor, sheenRoughness: m.sheenRoughness } );
 	for ( const t of [ p.map, p.normalMap, p.roughnessMap, p.emissiveMap ] ) if ( t ) t.anisotropy = anisotropy;
-	p.userData = { look, lamp: !! m.userData.lamp, lampGroup: m.userData.lamp ? LAMP_GROUP[ m.name.replace( /-near$/, '' ) ] ?? 'lamps' : null, grille: m.userData.grille ?? null, grain };
+	p.userData = { look, bust: !! m.userData.objectNormal, lamp: !! m.userData.lamp, lampGroup: m.userData.lamp ? LAMP_GROUP[ m.name.replace( /-near$/, '' ) ] ?? 'lamps' : null, grille: m.userData.grille ?? null, grain };
 	if ( grain ) { grain.wrapS = grain.wrapT = THREE.RepeatWrapping; grain.colorSpace = THREE.NoColorSpace; grain.anisotropy = anisotropy; grain.needsUpdate = true; }
 	if ( p.userData.lamp ) p.emissive.set( LAMP_TINT );		// candle-warm, not white
 	return p;
@@ -148,6 +150,7 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
 
 	const M = new THREE.Matrix4().multiplyMatrices( toWorld, berlinToHall( pianoZ ) );
 	const parts = new Map();		// our material -> geometries (world)
+	const busts = [];			// the composers' busts: each its own mesh, its node's transform kept
 	const ours = new Map();		// the pack's material -> ours
 	for ( const g of gltfs ) {
 
@@ -162,6 +165,7 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
 			for ( const k of [ 'position', 'normal', 'uv', 'uv1' ] ) if ( o.geometry.attributes[ k ] ) geo.setAttribute( k, toFloat( o.geometry.attributes[ k ] ) );
 			geo.setIndex( o.geometry.index.clone() );
 			const W = new THREE.Matrix4().multiplyMatrices( M, o.matrixWorld );
+			if ( mat.userData.bust ) { busts.push( { geo, mat, W } ); return; }		// (its normal map is in its own frame: not merged)
 			geo.applyMatrix4( W );
 			if ( W.determinant() < 0 ) {		// a mirrored part: wind its triangles the other way round
 
@@ -189,6 +193,15 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8 } ) {
 		mesh.castShadow = ! mat.userData.lamp && ! mat.userData.grille;
 		mesh.receiveShadow = true;
 		if ( mat.userData.grille ) { mesh.userData.noAO = true; mesh.renderOrder = 1; }		// (transparent: not in GTAO's depth; after the floor)
+		mesh.name = `berlinHall:${ mat.name }`;
+		group.add( mesh );
+
+	}
+	for ( const { geo, mat, W } of busts ) {
+
+		const mesh = new THREE.Mesh( geo, mat );
+		mesh.matrixAutoUpdate = false; mesh.matrix.copy( W );		// (the dequantisation and its place: a uniform scale and a turn)
+		mesh.castShadow = mesh.receiveShadow = true;
 		mesh.name = `berlinHall:${ mat.name }`;
 		group.add( mesh );
 
