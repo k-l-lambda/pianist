@@ -6,9 +6,10 @@
 //     split by the vertex colour into its materials (CLASSES: brass by its hue, etc.; the colour
 //     kept per vertex where the material uses it)
 //   wall reliefs (MoGe-2: tools/bust-depth.py, bust-relief.py's relief/<slug>.json, -normal.png):
-//     at RELIEF[ slug ] m high, the photo as albedo (levelled), the object-space normal map
+//     at RELIEF[ slug ] m high, the photo as albedo (levelled), the object-space normal map, and
+//     its raised pattern's glow (tools/relief-glow.py's -glow.png) as its emissive map
 //   textures, each on a swatch (a small quad, not drawn: src/luminara.js takes its material's map):
-//     the sky outside (sky-raw.jpg, wrapped round), the floor's marble (marble-raw.jpg, made to tile)
+//     the skies outside (sky-day, -sunset, -dusk, -night: wrapped round), the floor's marble (made to tile)
 // Each a node named by its slug at the origin; src/luminara.js places copies of them.
 //
 //   node tools/luminara-asset.mjs --generated <dir> [--out public/luminara/luminara.glb]
@@ -23,10 +24,12 @@ import { prune, quantize, reorder, simplifyPrimitive, weldPrimitive } from '@glt
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 
 const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..' );
-const TRIS = { 'egg-chair': 24000, 'sofa': 24000, 'side-table': 9000, 'plant': 30000 };
+const TRIS = { 'sofa-low': 26000, 'tub-chair': 20000, 'side-table': 9000, 'plant': 12000, 'sideboard': 6000, 'table-lamp': 6000, 'roses': 16000,
+	'gold-disc': 4000, 'clef-statue': 6000, 'gold-ribbon': 6000, 'books': 8000, 'crystal': 4000 };
 // [ the axis sized ('y': height, 'x': length), m ]
-const SIZE = { 'egg-chair': [ 'y', 1.32 ], 'sofa': [ 'x', 2.7 ], 'side-table': [ 'y', 1.05 ], 'plant': [ 'y', 1.6 ] };
-const RELIEF = { clef: 2.1, shelf: 0.42 };
+const SIZE = { 'sofa-low': [ 'x', 2.3 ], 'tub-chair': [ 'x', 0.95 ], 'side-table': [ 'y', 1.05 ], 'plant': [ 'y', 1.6 ], 'sideboard': [ 'x', 2.2 ], 'table-lamp': [ 'y', 0.62 ],
+	'roses': [ 'y', 0.32 ], 'gold-disc': [ 'y', 0.36 ], 'clef-statue': [ 'y', 0.34 ], 'gold-ribbon': [ 'y', 0.3 ], 'books': [ 'x', 0.42 ], 'crystal': [ 'y', 0.22 ] };
+const RELIEF = {};		// (none now: the clef is a light, src/luminara.js; the shelves hold real ornaments)
 
 // materials (glTF PBR; extras.look: src/luminara.js's finish) and which vertices take each:
 // `test( r, g, b )` (0..1), first match; `vertexColor`: keep the decoder's colour
@@ -37,7 +40,11 @@ const MAT = {
 	marble: { color: [ 0.92, 0.91, 0.9 ], roughness: 0.12, look: 'marble' },
 	ceramic: { color: [ 0.92, 0.91, 0.88 ], roughness: 0.6, look: 'ceramic' },
 	foliage: { color: [ 1, 1, 1 ], roughness: 0.7, look: 'foliage', vertexColor: true },
-	natural: { color: [ 1, 1, 1 ], roughness: 0.8, look: 'natural', vertexColor: true },		// (pampas, the trunk)
+	natural: { color: [ 1, 1, 1 ], roughness: 0.8, look: 'natural', vertexColor: true },		// (pampas, the trunk, roses)
+	books: { color: [ 1, 1, 1 ], roughness: 0.6, look: 'books', vertexColor: true },
+	stone: { color: [ 0.03, 0.03, 0.035 ], roughness: 0.15, look: 'stone' },		// (black marble)
+	shade: { color: [ 0.95, 0.92, 0.86 ], roughness: 0.9, look: 'shade' },		// (a lamp's shade, lit through)
+	crystal: { color: [ 0.93, 0.95, 0.97 ], roughness: 0.04, look: 'crystal' },
 };
 // each test: ( r, g, b: the mean colour, 0..1; y: height, rad: distance from the axis, both in
 // fractions of its height ), measured on the TRELLIS meshes (tools/luminara-3d.py's)
@@ -46,6 +53,16 @@ const CLASSES = {
 	'egg-chair': [ [ 'brass', ( r, g, b, y ) => y < 0.3 && warm( r, g, b ) || y < 0.06 ], [ 'boucle', ( r, g, b ) => r - b > 0.04 ], [ 'lacquer', () => true ] ],
 	'sofa': [ [ 'brass', ( r, g, b, y ) => y < 0.1 && r - b > 0.2 ], [ 'boucle', () => true ] ],
 	'side-table': [ [ 'brass', ( r, g, b, y ) => y < 0.6 ], [ 'marble', ( r, g, b, y ) => y < 0.645 ], [ 'natural', ( r, g, b, y ) => y > 0.78 || r - b > 0.1 ], [ 'ceramic', () => true ] ],
+	'sofa-low': [ [ 'brass', ( r, g, b, y ) => y < 0.08 && r - b > 0.18 ], [ 'boucle', () => true ] ],
+	'tub-chair': [ [ 'brass', ( r, g, b, y ) => y < 0.06 && r - b > 0.18 ], [ 'boucle', () => true ] ],
+	'sideboard': [ [ 'brass', ( r, g, b, y ) => y < 0.18 && r - b > 0.1 ], [ 'lacquer', () => true ] ],
+	'table-lamp': [ [ 'ceramic', ( r, g, b, y ) => y < 0.36 ], [ 'brass', ( r, g, b, y ) => y < 0.56 ], [ 'shade', () => true ] ],
+	'roses': [ [ 'ceramic', ( r, g, b, y ) => y < 0.42 ], [ 'natural', () => true ] ],
+	'gold-disc': [ [ 'brass', () => true ] ],
+	'clef-statue': [ [ 'stone', ( r, g, b, y ) => y < 0.2 ], [ 'brass', () => true ] ],
+	'gold-ribbon': [ [ 'stone', ( r, g, b, y ) => y < 0.08 ], [ 'ceramic', ( r, g, b ) => r - b < 0.08 && ( r + g + b ) / 3 > 0.5 ], [ 'brass', () => true ] ],
+	'books': [ [ 'brass', ( r, g, b ) => r - b > 0.3 && g > 0.5 ], [ 'books', () => true ] ],
+	'crystal': [ [ 'crystal', () => true ] ],
 	'plant': [ [ 'brass', ( r, g, b, y ) => y > 0.35 && y < 0.41 && warm( r, g, b ) ], [ 'ceramic', ( r, g, b, y ) => y < 0.4 ], [ 'natural', ( r, g, b, y, rad ) => y < 0.56 || rad < 0.015 && y < 0.62 ], [ 'foliage', () => true ] ],
 };
 
@@ -163,15 +180,10 @@ for ( const [ slug, h ] of Object.entries( RELIEF ) ) {
 	}
 	const albedo = await sharp( out, { raw: { width: 1024, height: 1024, channels: 3 } } ).webp( { quality: 88, effort: 5 } ).toBuffer();
 	const nmap = await sharp( fs.readFileSync( path.join( G, 'relief', `${ slug }-normal.png` ) ) ).removeAlpha().resize( 1024, 1024, { fit: 'fill', kernel: 'lanczos3' } ).webp( { quality: 92, effort: 6 } ).toBuffer();
-	// the gold in the photo (the clef's inlay): a glow mask (src/luminara.js lights it as a line of light)
+	// its self-lit pattern (tools/relief-glow.py: where it stands out of its panel), if made
 	let glow = null;
-	if ( slug === 'clef' ) {
-
-		const m = Buffer.alloc( 1024 * 1024 );
-		for ( let i = 0, j = 0; i < data.length; i += 3, ++ j ) m[ j ] = Math.round( 255 * Math.min( 1, Math.max( 0, ( data[ i ] + data[ i + 1 ] - 2 * data[ i + 2 ] ) / 255 - 0.1 ) / 0.12 ) );
-		glow = await sharp( m, { raw: { width: 1024, height: 1024, channels: 1 } } ).blur( 1.2 ).linear( 1.8, 0 ).webp( { quality: 90 } ).toBuffer();
-
-	}
+	const glowFile = path.join( G, 'relief', `${ slug }-glow.png` );
+	if ( fs.existsSync( glowFile ) ) glow = await sharp( fs.readFileSync( glowFile ) ).resize( 1024, 1024 ).webp( { quality: 90 } ).toBuffer();
 	const mat = doc.createMaterial( `relief-${ slug }` ).setBaseColorFactor( [ 1, 1, 1, 1 ] ).setRoughnessFactor( 0.55 ).setMetallicFactor( 0 ).setDoubleSided( true )
 		.setBaseColorTexture( doc.createTexture( `${ slug }-albedo` ).setImage( albedo ).setMimeType( 'image/webp' ) )
 		.setNormalTexture( doc.createTexture( `${ slug }-normal` ).setImage( nmap ).setMimeType( 'image/webp' ) )
@@ -208,11 +220,26 @@ const swatch = ( slug, mat ) => {
 	scene.addChild( doc.createNode( slug ).setMesh( doc.createMesh( slug ).addPrimitive( prim ) ).setExtras( { kind: 'swatch' } ) );
 
 };
-if ( fs.existsSync( path.join( G, 'sky-raw.jpg' ) ) ) {
+// the windows' outside, one per hour (src/luminara.js's presets: `outside`): the day's and the
+// same city at other hours (tools/luminara-gen.mjs); the old single sky if none of them
+{
 
-	const b = await sharp( fs.readFileSync( path.join( G, 'sky-raw.jpg' ) ) ).resize( 3072, 1024 ).webp( { quality: 84, effort: 5 } ).toBuffer();
-	swatch( 'sky', doc.createMaterial( 'sky' ).setBaseColorTexture( doc.createTexture( 'sky' ).setImage( b ).setMimeType( 'image/webp' ) ).setExtras( { look: 'sky' } ) );
-	say( `sky: ${ ( b.length / 1024 ).toFixed( 0 ) } KB` );
+	let skies = [ 'sky-day', 'sky-sunset', 'sky-dusk', 'sky-night' ].filter( k => fs.existsSync( path.join( G, `${ k }-raw.jpg` ) ) );
+	if ( ! skies.length && fs.existsSync( path.join( G, 'sky-raw.jpg' ) ) ) skies = [ 'sky' ];
+	for ( const k of skies ) {
+
+		const b = await sharp( fs.readFileSync( path.join( G, `${ k }-raw.jpg` ) ) ).resize( 3072, 1024 ).webp( { quality: 80, effort: 5 } ).toBuffer();
+		swatch( k, doc.createMaterial( k ).setBaseColorTexture( doc.createTexture( k ).setImage( b ).setMimeType( 'image/webp' ) ).setExtras( { look: 'sky' } ) );
+		say( `${ k }: ${ ( b.length / 1024 ).toFixed( 0 ) } KB` );
+
+	}
+
+}
+if ( fs.existsSync( path.join( G, 'rug-raw.jpg' ) ) ) {		// the rug's pattern (a round rug seen from above, filling the square)
+
+	const b = await sharp( fs.readFileSync( path.join( G, 'rug-raw.jpg' ) ) ).resize( 2048, 2048 ).webp( { quality: 88, effort: 5 } ).toBuffer();
+	swatch( 'rug', doc.createMaterial( 'rug' ).setBaseColorTexture( doc.createTexture( 'rug' ).setImage( b ).setMimeType( 'image/webp' ) ).setExtras( { look: 'rug' } ) );
+	say( `rug: ${ ( b.length / 1024 ).toFixed( 0 ) } KB` );
 
 }
 if ( fs.existsSync( path.join( G, 'marble-raw.jpg' ) ) ) {
@@ -223,8 +250,46 @@ if ( fs.existsSync( path.join( G, 'marble-raw.jpg' ) ) ) {
 
 }
 
+// ---- the baked light (tools/luminara-bake.mjs): the static shell as baked (its meshes with their
+// lightmap UVs, TEXCOORD_1; node shell-<i>, in src/luminara.js's bakeTargets() order) and a lightmap
+// per preset (bake-<slug>, sRGB-encoded under its scale); bake-meta's extras: the shell's hash, each
+// preset's scale. src/luminara.js uses them while its procedural shell still hashes the same.
+{
+
+	const B = path.join( G, 'bake' ), metaFile = path.join( B, 'bake.json' ), shellFile = path.join( B, 'shell.json' );
+	if ( fs.existsSync( metaFile ) && fs.existsSync( shellFile ) ) {
+
+		const meta = JSON.parse( fs.readFileSync( metaFile, 'utf8' ) ), shell = JSON.parse( fs.readFileSync( shellFile, 'utf8' ) ), dummy = doc.createMaterial( 'shell' );
+		const f32 = b => { const u = Buffer.from( b, 'base64' ); return new Float32Array( u.buffer.slice( u.byteOffset, u.byteOffset + u.byteLength ) ); };
+		const u32 = b => { const u = Buffer.from( b, 'base64' ); return new Uint32Array( u.buffer.slice( u.byteOffset, u.byteOffset + u.byteLength ) ); };
+		let tris = 0;
+		for ( const m of shell.meshes ) {
+
+			const prim = doc.createPrimitive().setIndices( acc( 'SCALAR', u32( m.index ) ) ).setAttribute( 'POSITION', acc( 'VEC3', f32( m.position ) ) ).setAttribute( 'NORMAL', acc( 'VEC3', f32( m.normal ) ) )
+				.setAttribute( 'TEXCOORD_0', acc( 'VEC2', f32( m.uv ) ) ).setAttribute( 'TEXCOORD_1', acc( 'VEC2', f32( m.uvBake ) ) ).setMaterial( dummy );
+			weldPrimitive( prim, { overwrite: true } );		// (identical corners: one vertex)
+			tris += prim.getIndices().getCount() / 3;
+			scene.addChild( doc.createNode( `shell-${ m.i }` ).setMesh( doc.createMesh( `shell-${ m.i }` ).addPrimitive( prim ) ).setExtras( { kind: 'shell', of: m.name } ) );
+
+		}
+		const presets = {};
+		let bytes = 0;
+		for ( const [ name, p ] of Object.entries( meta.presets ) ) {
+
+			const slug = path.basename( p.file, '.png' ), b = await sharp( fs.readFileSync( path.join( B, p.file ) ) ).webp( { quality: 94, smartSubsample: true, effort: 6 } ).toBuffer();
+			swatch( `bake-${ slug }`, doc.createMaterial( `bake-${ slug }` ).setBaseColorTexture( doc.createTexture( `bake-${ slug }` ).setImage( b ).setMimeType( 'image/webp' ) ).setExtras( { look: 'bake' } ) );
+			presets[ name ] = { slug, scale: p.scale };
+			bytes += b.length;
+
+		}
+		scene.addChild( doc.createNode( 'bake-meta' ).setExtras( { kind: 'bake', hash: meta.hash, size: meta.size, texels: meta.texels, presets } ) );
+		say( `baked: the shell (${ shell.meshes.length } meshes, ${ tris } triangles) and ${ Object.keys( presets ).length } lightmaps of ${ meta.size } (${ ( bytes / 1024 ).toFixed( 0 ) } KB), hash ${ meta.hash }` );
+
+	}
+
+}
 await doc.transform( prune( { keepAttributes: true, keepLeaves: true } ) );
-await doc.transform( reorder( { encoder: MeshoptEncoder } ), quantize( { quantizePosition: 14, quantizeNormal: 8, quantizeTexcoord: 12, quantizeColor: 8 } ) );
+await doc.transform( reorder( { encoder: MeshoptEncoder } ), quantize( { quantizePosition: 14, quantizeNormal: 10, quantizeTexcoord: 14, quantizeColor: 8 } )		/* (texcoords: the lightmap's UVs within a texel of 2048) */ );
 doc.createExtension( EXTMeshoptCompression ).setRequired( true ).setEncoderOptions( { method: EXTMeshoptCompression.EncoderMethod.FILTER } );
 doc.getRoot().setExtras( { source: 'tools/luminara-asset.mjs', generated: new Date().toISOString() } );
 fs.mkdirSync( path.dirname( opt.out ), { recursive: true } );

@@ -28,6 +28,23 @@ export const ASSETS = {
 		'two plush round cushions, a thin polished brass plinth along its base. ' + PRODUCT },
 	'side-table': { kind: 'object', prompt: 'A small round side table: a white Carrara marble top with soft grey veins, a slim polished brass pedestal, ' +
 		'a tall white ceramic vase with a few dried pampas stems on it. ' + PRODUCT },
+	// after the reference (Footages.local/Luminara/f7a6e53c-...png): the low lounge set, the sideboard
+	// under the clef, the shelves' ornaments
+	'sofa-low': { kind: 'object', prompt: 'A long low curved lounge sofa in cream-white boucle, sitting almost on the floor: a deep wide seat cushion, a low rounded back with soft vertical channel tufting that curves round into rounded arms, ' +
+		'one small square cream cushion, a very thin polished brass plinth at its base, no visible legs, modern luxury, flat and close to the ground. ' + PRODUCT },
+	'tub-chair': { kind: 'object', prompt: 'A low round barrel lounge armchair in cream-white boucle: a deep round seat almost on the floor, a low curved back with soft vertical channel tufting wrapping round into its arms, ' +
+		'a small square cream cushion, a thin polished brass ring at its base, no visible legs, modern luxury. ' + PRODUCT },
+	'sideboard': { kind: 'object', prompt: 'A long low white lacquered sideboard cabinet with rounded ends, six flush drawer fronts with thin gaps and no handles, on a slender polished brass plinth frame with short brass legs, ' +
+		'modern luxury, empty top, seen from the front-left. ' + PRODUCT },
+	'table-lamp': { kind: 'object', prompt: 'A small elegant table lamp: a white ceramic urn-shaped base with a thin brass neck, a cream fabric drum lampshade, modern classic. ' + PRODUCT },
+	'roses': { kind: 'object', prompt: 'A small round white porcelain vase with a dense bouquet of cream-white roses and a few green leaves. ' + PRODUCT },
+	'gold-disc': { kind: 'object', prompt: 'A decorative golden vinyl record disc standing upright on a small polished brass stand, a gold-plated music award ornament. ' + PRODUCT },
+	'clef-statue': { kind: 'object', prompt: 'A small polished gold treble clef sculpture standing upright on a round white marble base, a decorative music ornament, about 30 cm tall. ' + PRODUCT },
+	'gold-ribbon': { kind: 'object', prompt: 'A small abstract sculpture of polished gold metal: a twisted flowing ribbon loop rising from a small square white marble base, a decorative ornament, about 25 cm tall. ' + PRODUCT },
+	'books': { kind: 'object', prompt: 'A neat row of seven upright hardcover books standing side by side, cream, white, black and gold spines, a small brass bookend at the end, seen from the front-left. ' + PRODUCT },
+	'crystal': { kind: 'object', prompt: 'A small clear crystal glass decorative sculpture: a faceted teardrop shape on a round clear glass base, sparkling, a luxury ornament, about 20 cm tall. ' + PRODUCT },
+	'rug': { kind: 'texture', prompt: 'Seamless top-down flat texture of a round luxury rug seen exactly from above, filling the whole square: a soft cream-white wool pile with a subtle tone-on-tone damask and floral arabesque pattern ' +
+		'in pale ivory and light beige, faint thin gold lines in concentric rings, a narrow pale gold border ring at the edge, plain white outside the circle, evenly lit, no shadows, no perspective, high detail' },
 	'plant': { kind: 'object', prompt: 'A tall indoor olive tree with a slim trunk and a rounded crown of small silver-green leaves, in a large round matt white ceramic planter with a thin brass rim. ' + PRODUCT },
 	'clef': { kind: 'relief', prompt: 'A large white plaster wall relief: a tall elegant treble clef sculpted in high relief with smooth rounded edges, ' +
 		'with five flowing curved staff lines sweeping across it like ribbons and a few small music notes, on a flat white plaster panel with a thin rounded border, ' +
@@ -37,6 +54,18 @@ export const ASSETS = {
 	'sky': { kind: 'texture', size: '3840x1280', prompt: 'A wide panoramic view from a very high tower window at the blue hour: a futuristic white city of slender towers and floating platforms ' +
 		'far below and in the distance, soft clouds at the horizon, a clear gradient sky from pale warm peach at the horizon to deep calm blue above, ' +
 		'gentle city lights beginning to glow, serene, dreamlike, photorealistic, wide angle, level horizon in the lower third, no window frame, no people, no text' },
+	// the windows' outside, one per lighting preset (src/luminara.js): the day's, as in the reference
+	// (a white city of spires over the clouds), and the same city at other hours from it (`ref`:
+	// image to image, so it stays the same city)
+	'sky-day': { kind: 'texture', size: '3840x1280', prompt: 'A wide panoramic view from a very high window in the afternoon: a futuristic city of slender white and pale crystal spires and towers ' +
+		'rising from a sea of soft white clouds, floating platforms and bridges between them, one sleek silver airship far away in the sky, a bright clear pale blue sky with a few thin wispy clouds, ' +
+		'soft warm sunlight from the right, airy and serene, dreamlike, photorealistic, wide angle, level horizon in the lower third, the city across the whole width, no window frame, no people, no text' },
+	'sky-sunset': { kind: 'texture', size: '3840x1280', ref: 'sky-day', prompt: 'The very same panoramic view of the same futuristic city of white spires over the clouds as in the reference image, unchanged in its layout, ' +
+		'at golden hour: a low warm sun near the horizon on the right, the sky glowing amber, peach and rose to soft lilac above, the spires lit gold on one side, long soft shadows on the clouds, photorealistic, no text' },
+	'sky-dusk': { kind: 'texture', size: '3840x1280', ref: 'sky-day', prompt: 'The very same panoramic view of the same futuristic city of white spires over the clouds as in the reference image, unchanged in its layout, ' +
+		'at the blue hour just after sunset: a deep calm blue sky fading to a pale warm glow at the horizon, the first stars, warm city lights beginning to glow in the towers\' windows, photorealistic, no text' },
+	'sky-night': { kind: 'texture', size: '3840x1280', ref: 'sky-day', prompt: 'The very same panoramic view of the same futuristic city of white spires over the clouds as in the reference image, unchanged in its layout, ' +
+		'at night: a dark navy starry sky with a bright moon, the towers lit from within with warm and cool lights, glowing windows and lines of light, the clouds below faintly moonlit, photorealistic, no text' },
 	'marble': { kind: 'texture', prompt: 'Seamless tileable texture of polished white Carrara marble seen straight from above, flat and evenly lit, ' +
 		'soft light grey veins flowing diagonally, subtle warm undertone, no tiles, no seams, no reflections, no shadows, high detail, photographic' },
 };
@@ -68,8 +97,9 @@ if ( process.argv[ 1 ] && path.resolve( process.argv[ 1 ] ) === fileURLToPath( i
 			try {
 
 				const t = Date.now();
-				fs.writeFileSync( file, await generate( a.prompt, null, a.size ?? '2048x2048' ) );
-				meta[ slug ] = { kind: a.kind, prompt: a.prompt, size: a.size ?? '2048x2048', generated: new Date().toISOString() };
+				const ref = a.ref ? fs.readFileSync( path.join( opt.generated, `${ a.ref }-raw.jpg` ) ) : null;		// (generated first: ASSETS' order)
+				fs.writeFileSync( file, await generate( a.prompt, ref, a.size ?? '2048x2048' ) );
+				meta[ slug ] = { kind: a.kind, prompt: a.prompt, ...( a.ref ? { ref: a.ref } : {} ), size: a.size ?? '2048x2048', generated: new Date().toISOString() };
 				console.log( `${ slug }: ${ ( ( Date.now() - t ) / 1000 ).toFixed( 0 ) } s` );
 				break;
 

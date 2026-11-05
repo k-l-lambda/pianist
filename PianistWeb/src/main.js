@@ -171,6 +171,7 @@ const handheld = new HandheldMode( {
 		if ( ! drawFrames ) return;		// offline render, not drawing: no mirror to capture
 		const opts = { lights: venue.specularOff, objects: venue.probeHidden };
 		const panel = piano?.roll?.screen && piano.materials?.panel;
+		venue.capturing = true;
 		if ( panel ) {
 
 			// a flat screen: exact planar reflection of the person, on the screen only. Lit by the
@@ -186,6 +187,7 @@ const handheld = new HandheldMode( {
 			if ( RENDER ) blurMirror( panel );
 
 		} else probe.updateSpecular( ahead, piano ? [ piano.group ] : [], opts );
+		venue.capturing = false;
 
 	},
 	specularRestore: () => {
@@ -442,7 +444,9 @@ function refreshLighting() {
 	probe.bounces = settings.gi ? settings.giBounces : 1;
 	renderer.shadowMap.needsUpdate = true;
 	shadowsDirty = true;
+	venue.capturing = true;		// (Luminara: its floor's reflection is the main view's, not the probe's)
 	probeEnv = probe.update( piano ? [ piano.group ] : [], { lights: venue.specularOff, objects: venue.probeHidden } );
+	venue.capturing = false;
 	// the venue's ambient level (the hall's Spotlight: the dark round the light stays dark)
 	probe.intensity = venue.light.env ?? 1;
 	if ( settings.mode !== 'pathtrace' ) scene.environmentIntensity = probe.intensity;
@@ -781,6 +785,8 @@ function buildLightFolder() {
 	for ( const [ key, a, b, c, d ] of venue.lightControls() ) {
 
 		if ( a === 'color' ) fLight.addColor( venue.light, key ).name( b ).onFinishChange( relight );
+		else if ( Array.isArray( a ) ) fLight.add( venue.light, key, a ).name( b ).onFinishChange( relight );		// (a choice: [ key, options, label ])
+		else if ( a === 'bool' ) fLight.add( venue.light, key ).name( b ).onChange( relight );		// (a switch: [ key, 'bool', label ])
 		else fLight.add( venue.light, key, a, b, c ).name( d ).onFinishChange( relight );
 
 	}
@@ -1348,6 +1354,7 @@ const hallBar = document.getElementById( 'hallbar' ), hallBarFill = hallBar.quer
 
 function frame() {
 
+	if ( window.__pianistPaused ) { requestAnimationFrame( frame ); return; }		// (tools/luminara-bake.mjs: the GPU its own)
 	updateMidiUI();
 
 	timer.update();
@@ -1396,6 +1403,7 @@ function frameBody( dt, scripted = false ) {
 
 			// keys can't be refit into the BVH cheaply; show the raster view while they move
 			if ( venue.mode !== 'raster' ) setLightingMode( 'raster' );
+			venue.beforeRender?.( renderer, camera );		// (Luminara: its floor's reflection)
 			composer.render();
 			ptDirty = true;
 
@@ -1417,6 +1425,7 @@ function frameBody( dt, scripted = false ) {
 
 	} else {
 
+		venue.beforeRender?.( renderer, camera );		// (Luminara: its floor's reflection)
 		composer.render();
 		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
 
