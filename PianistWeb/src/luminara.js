@@ -55,13 +55,16 @@ const COFFEE = [ [ 90, 4.45 ], [ - 90, 4.45 ] ];		// round marble tables before 
 
 export const LUMINARA_PRESETS = {
 	// the default: the city at the blue hour in the windows, the coves warm, the piano under a soft top light
-	// (led: the lines of light's radiance; bloom over them only, its threshold above the lit white
+	// (led: the ceiling's lines of light, the main ones; ledWall: the walls' (arches, pilasters, shelves,
+	// pipes, the clef, the staff), ledFloor: along the floor, each below the one before (radiance);
+	// bloom faint (a bright room: more and the whole frame reads overexposed), over the ceiling's
+	// lines only, its threshold above the walls' and the lit white
 	// walls; the probe's ambient down: an all-white room, captured, fogs itself)
 	// (ACES: the warm lines and the white walls keep their contrast, as in the reference)
-	'Blue hour': { key: 240, keyColor: '#fff0dc', top: 230, topColor: '#fff1e0', topAngle: 26, wash: 0, washColor: '#fff1e0', cove: 1.5, coveColor: '#ffcf96', niche: 1.5, nicheColor: '#ffc684', led: 14, ledColor: '#ffcf96', sky: 1.1, env: 0.42, exposure: 0.42, tone: 'ACES', saturation: 1.05, bloom: 0.32, bloomThreshold: 6 },
-	'Daylight': { key: 300, keyColor: '#ffffff', top: 260, topColor: '#ffffff', topAngle: 30, wash: 0, washColor: '#f7f6f2', cove: 1.2, coveColor: '#fff2e0', niche: 0.8, nicheColor: '#fff0dc', led: 6, ledColor: '#fff0dc', sky: 1.8, env: 0.8, exposure: 0.45, bloom: 0.25, bloomThreshold: 5 },
-	'Evening': { key: 260, keyColor: '#ffe7c8', top: 520, topColor: '#ffe9cc', topAngle: 20, wash: 0, washColor: '#ffdcb0', cove: 1.8, coveColor: '#ffc98a', niche: 1.8, nicheColor: '#ffc27a', led: 18, ledColor: '#ffcb8a', sky: 0.45, env: 0.38, exposure: 0.55, bloom: 0.35, bloomThreshold: 6 },
-	'Spotlight': { key: 0, keyColor: '#fff1de', top: 900, topColor: '#fff0dc', topAngle: 15, wash: 0, washColor: '#ffd9ad', cove: 0.5, coveColor: '#ffc98a', niche: 0.4, nicheColor: '#ffc27a', led: 4, ledColor: '#ffcb8a', sky: 0.25, env: 0.3, exposure: 0.6, bloom: 0.35, bloomThreshold: 4 },
+	'Blue hour': { key: 240, keyColor: '#fff0dc', top: 230, topColor: '#fff1e0', topAngle: 26, wash: 0, washColor: '#fff1e0', cove: 1.5, coveColor: '#ffcf96', niche: 0.9, nicheColor: '#ffc684', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffcf96', sky: 1.1, env: 0.42, exposure: 0.42, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
+	'Daylight': { key: 300, keyColor: '#ffffff', top: 260, topColor: '#ffffff', topAngle: 30, wash: 0, washColor: '#f7f6f2', cove: 1.2, coveColor: '#fff2e0', niche: 0.8, nicheColor: '#fff0dc', led: 6, ledWall: 1.6, ledFloor: 0.7, ledColor: '#fff0dc', sky: 1.8, env: 0.8, exposure: 0.45, bloom: 0.06, bloomThreshold: 9 },
+	'Evening': { key: 260, keyColor: '#ffe7c8', top: 520, topColor: '#ffe9cc', topAngle: 20, wash: 0, washColor: '#ffdcb0', cove: 1.8, coveColor: '#ffc98a', niche: 1.1, nicheColor: '#ffc27a', led: 18, ledWall: 4, ledFloor: 1.6, ledColor: '#ffcb8a', sky: 0.45, env: 0.38, exposure: 0.55, bloom: 0.15, bloomThreshold: 8 },
+	'Spotlight': { key: 0, keyColor: '#fff1de', top: 900, topColor: '#fff0dc', topAngle: 15, wash: 0, washColor: '#ffd9ad', cove: 0.5, coveColor: '#ffc98a', niche: 0.4, nicheColor: '#ffc27a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffcb8a', sky: 0.25, env: 0.3, exposure: 0.6, bloom: 0.12, bloomThreshold: 8 },
 };
 
 const phys = p => new THREE.MeshPhysicalMaterial( p );
@@ -206,6 +209,7 @@ export class Luminara {
 			// the lines of light (LED strips, the windows' and the arches' rings, the pilasters' bars):
 			// emissive only, a little in front of what they lie on
 			led: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#ffd9a6' ), emissiveIntensity: 14, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
+			ledWall: null, ledFloor: null,		// (the same, dimmer: below)
 			// the staff and its notes round the first riser (additive)
 			staff: new THREE.MeshBasicMaterial( { map: staffTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide } ),
 			// the round rug under the piano
@@ -226,6 +230,8 @@ export class Luminara {
 			sky: new THREE.MeshBasicMaterial( { color: '#33476e', side: THREE.BackSide, fog: false } ),
 		};
 
+		this.materials.ledWall = this.materials.led.clone();
+		this.materials.ledFloor = this.materials.led.clone();
 		this._buildLights();
 		this.rebuild();
 
@@ -298,7 +304,7 @@ export class Luminara {
 			[ 'wash', 0, 20, 0.1, 'Dome wash' ], [ 'washColor', 'color', 'Dome wash color' ],
 			[ 'cove', 0, 8, 0.01, 'Coves' ], [ 'coveColor', 'color', 'Cove color' ],
 			[ 'niche', 0, 6, 0.01, 'Niches' ], [ 'nicheColor', 'color', 'Niche color' ],
-			[ 'led', 0, 40, 0.1, 'Lines of light' ], [ 'ledColor', 'color', 'Line color' ],
+			[ 'led', 0, 40, 0.1, 'Ceiling lines' ], [ 'ledWall', 0, 20, 0.1, 'Wall lines' ], [ 'ledFloor', 0, 10, 0.1, 'Floor lines' ], [ 'ledColor', 'color', 'Line color' ],
 			[ 'sky', 0, 4, 0.01, 'Sky (windows)' ],
 			[ 'env', 0, 1.5, 0.01, 'Ambient (probe)' ],
 		];
@@ -325,7 +331,7 @@ export class Luminara {
 			add( pil.base.clone().applyMatrix4( F ), M.lacquer );
 			add( pil.capital.clone().applyMatrix4( F ), M.lacquer );
 			add( pil.band.clone().applyMatrix4( F ), M.brass );
-			add( pil.bar.clone().applyMatrix4( F ), M.led );
+			add( pil.bar.clone().applyMatrix4( F ), M.ledWall );
 			add( pil.caps.clone().applyMatrix4( F ), M.brass );
 
 		}
@@ -335,7 +341,7 @@ export class Luminara {
 		const lathe = ( pts, mat, a0 = 0, len = 2 * Math.PI, n = 192 ) => add( new THREE.LatheGeometry( pts.map( ( [ r, y ] ) => new THREE.Vector2( r, y ) ), n, a0, len ), mat );
 		lathe( [ [ R, 0 ], [ R - 0.035, 0 ], [ R - 0.035, 0.15 ], [ R - 0.02, 0.17 ], [ R, 0.17 ] ], M.lacquer, doorHalf, 2 * Math.PI - 2 * doorHalf );
 		lathe( [ [ R, 0.17 ], [ R - 0.012, 0.17 ], [ R - 0.012, 0.185 ], [ R, 0.185 ] ], M.brass, doorHalf, 2 * Math.PI - 2 * doorHalf );
-		lathe( [ [ R - 0.036, 0.008 ], [ R - 0.036, 0.024 ] ], M.led, doorHalf, 2 * Math.PI - 2 * doorHalf );		// (a line of light along the floor)
+		lathe( [ [ R - 0.036, 0.008 ], [ R - 0.036, 0.024 ] ], M.ledFloor, doorHalf, 2 * Math.PI - 2 * doorHalf );		// (a line of light along the floor)
 		lathe( [ [ R + 0.01, LUMINARA.wall - 0.02 ], [ R - 0.05, LUMINARA.wall ], [ R - 0.06, LUMINARA.wall + 0.1 ], [ R - 0.16, LUMINARA.wall + 0.2 ], [ R - 0.2, LUMINARA.wall + 0.3 ], [ R - 0.2, STEPS[ 0 ][ 1 ] ] ], M.lacquer );
 		lathe( [ [ R - 0.062, LUMINARA.wall + 0.1 ], [ R - 0.062, LUMINARA.wall + 0.125 ] ], M.led );		// (a line of light in the cornice)
 
@@ -386,7 +392,7 @@ export class Luminara {
 		for ( const m of [ floor, border ] ) { m.receiveShadow = true; m.name = 'luminara:floor'; this.group.add( m ); }
 		for ( const [ a, b ] of [ [ 2.68, 2.695 ], [ 5.88, 5.92 ] ] ) add( disc( a, b, 0.0005 ), M.inlay );
 		// a ring of light round the rug: a bead (a flat strip this thin breaks up at grazing angles)
-		add( new THREE.TorusGeometry( 2.56, 0.009, 6, 256 ).rotateX( Math.PI / 2 ).scale( 1, 0.6, 1 ), M.led );
+		add( new THREE.TorusGeometry( 2.56, 0.009, 6, 256 ).rotateX( Math.PI / 2 ).scale( 1, 0.6, 1 ), M.ledFloor );
 		{
 
 			const rug = new THREE.Mesh( disc( 0, 2.42, 0.006 ), M.rug );
@@ -463,10 +469,6 @@ export class Luminara {
 			const W = frameAt( phiC, R - 0.012, o.yc );
 			add( new THREE.TorusGeometry( o.a + 0.045, 0.075, 16, 128 ).applyMatrix4( W ), M.lacquer );
 			add( new THREE.TorusGeometry( o.a + 0.005, 0.018, 10, 128 ).translate( 0, 0, 0.03 ).applyMatrix4( W ), M.brass );
-			add( new THREE.TorusGeometry( o.a + 0.03, 0.009, 8, 128 ).translate( 0, 0, 0.06 ).applyMatrix4( W ), M.led );
-			const halo = [];
-			for ( let i = 0; i < 128; ++ i ) { const t = 2 * Math.PI * i / 128; halo.push( [ ( o.a + 0.19 ) * Math.cos( t ), o.yc + ( o.a + 0.19 ) * Math.sin( t ) ] ); }
-			add( this._wallTube( phiC, halo, 0.008, true ), M.led );
 			return;
 
 		}
@@ -491,14 +493,14 @@ export class Luminara {
 			if ( kind === 'shelves' ) for ( const y of [ 1.25, 2.0 ] ) {
 
 				add( new THREE.BoxGeometry( 2 * o.a + 0.1, 0.03, o.depth ).translate( 0, y - 0.015, o.depth / 2 ).applyMatrix4( F ), M.lacquer );
-				add( new THREE.BoxGeometry( 2 * o.a - 0.06, 0.008, 0.012 ).translate( 0, y - 0.034, o.depth - 0.03 ).applyMatrix4( F ), M.led );		// (a strip under its front)
+				add( new THREE.BoxGeometry( 2 * o.a - 0.06, 0.008, 0.012 ).translate( 0, y - 0.034, o.depth - 0.03 ).applyMatrix4( F ), M.ledWall );		// (a strip under its front)
 
 			}
 			if ( kind === 'pipes' ) this._pipes( add, F, o );
-			add( new THREE.BoxGeometry( 2 * o.a - 0.04, 0.01, 0.012 ).translate( 0, o.y0 + 0.006, 0.02 ).applyMatrix4( F ), M.led );		// (a strip along the back's foot)
+			add( new THREE.BoxGeometry( 2 * o.a - 0.04, 0.01, 0.012 ).translate( 0, o.y0 + 0.006, 0.02 ).applyMatrix4( F ), M.ledWall );		// (a strip along the back's foot)
 
 		}
-		add( this._archTrim( phiC, o ), kind === 'door' ? M.brass : M.led );
+		add( this._archTrim( phiC, o ), kind === 'door' ? M.brass : M.ledWall );
 
 	}
 
@@ -529,7 +531,7 @@ export class Luminara {
 
 			const x = ( i - ( n - 1 ) / 2 ) * 0.125, h = 0.95 + 0.75 * ( 1 - ( x / o.a ) ** 2 ), z = 0.15;
 			add( new THREE.CylinderGeometry( 0.034, 0.034, h, 24 ).translate( x, o.y0 + h / 2, z ).applyMatrix4( F ), M.lacquer );
-			add( new THREE.BoxGeometry( 0.012, h - 0.12, 0.004 ).translate( x, o.y0 + 0.06 + ( h - 0.12 ) / 2, z + 0.034 ).applyMatrix4( F ), M.led );
+			add( new THREE.BoxGeometry( 0.012, h - 0.12, 0.004 ).translate( x, o.y0 + 0.06 + ( h - 0.12 ) / 2, z + 0.034 ).applyMatrix4( F ), M.ledWall );
 			add( new THREE.CylinderGeometry( 0.036, 0.036, 0.018, 24 ).translate( x, o.y0 + 0.28, z ).applyMatrix4( F ), M.brass );
 			add( new THREE.CylinderGeometry( 0.036, 0.036, 0.012, 24 ).translate( x, o.y0 + h - 0.006, z ).applyMatrix4( F ), M.brass );
 
@@ -635,9 +637,9 @@ export class Luminara {
 		this.wash.intensity = L.wash; this.wash.color.set( L.washColor ); this.wash.visible = L.wash > 0;
 		for ( const m of [ M.cove, M.dome ] ) { m.emissive.set( L.coveColor ); m.emissiveIntensity = L.cove * ( m === M.dome ? 0.7 : 1 ); }
 		M.niche.emissive.set( L.nicheColor ); M.niche.emissiveIntensity = L.niche;
-		M.led.emissive.set( L.ledColor ); M.led.emissiveIntensity = L.led;
-		M.staff.color.set( L.ledColor ).multiplyScalar( 0.6 * L.led );
-		for ( const m of this.glow ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = 0.25 * L.led; }
+		for ( const [ m, v ] of [ [ M.led, L.led ], [ M.ledWall, L.ledWall ], [ M.ledFloor, L.ledFloor ] ] ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = v; }
+		M.staff.color.set( L.ledColor ).multiplyScalar( 0.75 * L.ledWall );		// (on the ceiling, but ornament: the walls' tier)
+		for ( const m of this.glow ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = 0.8 * L.ledWall; }
 		if ( this.nicheLights.length !== this.nichePoints.length ) {
 
 			for ( const l of this.nicheLights ) this.lights.remove( l );
