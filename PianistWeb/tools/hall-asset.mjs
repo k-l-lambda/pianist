@@ -40,7 +40,10 @@
 // composers' busts (generated/busts/relief: tools/bust-batch.py's): each old bust, and its pedestal
 // and block (the console under them stays), replaced by the composer's (bust-gen.mjs: who stands
 // where) on the console, at the old one's place and facing, in its colour, marble (an object-space
-// normal map: extras.objectNormal; its own node transform).
+// normal map: extras.objectNormal; its own node transform). A bust seen from the pianist's eye
+// more than VIEW_LIMIT degrees off its facing (tools/bust-views.mjs) uses the relief of its view
+// photo (<slug>-view), stood turned to the eye: its facing the wall's as the photo shows it turned,
+// at the frontal one's size and place. Writes busts/relief/placements.json (where they are).
 // Output frame: metres, y up, x across (the audience's right +), z from the stage's front edge
 // towards the back of the hall (the stage at z < 0), y 0 at the stalls floor (the stage's front
 // at 0.61 m). The frame and the options are in each GLB's extras.
@@ -63,6 +66,7 @@ import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import { detailTexture, DETAIL_RAW } from './floor-detail.mjs';
 import { GRILLES, grilleItems, grilleRaw, grilleTextures } from './floor-grille.mjs';
 import { COMPOSERS } from './bust-gen.mjs';
+import { LIMIT as VIEW_LIMIT, viewAngle } from './bust-views.mjs';
 
 const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..' );
 
@@ -772,6 +776,8 @@ if ( reliefDir && fs.existsSync( reliefDir ) ) {
 		p.getIndices().setArray( new Uint32Array( keep ) );
 
 	}
+	fs.writeFileSync( path.join( reliefDir, 'placements.json' ), JSON.stringify( { frame: "the packs' (tools/hall-asset.mjs): pos the base's middle, face the facing (x, z)",
+		busts: Object.fromEntries( placements.map( q => [ q.slug, { pos: q.at.map( v => +v.toFixed( 3 ) ), face: q.face.map( v => +v.toFixed( 4 ) ) } ] ) ) }, null, '\t' ) + '\n' );
 	say( `busts: ${ inst.length } old ones; ${ placements.length } replaced (${ cut } triangles of them and their pedestals cut): ${ placements.map( q => q.slug ).join( ' ' ) }` );
 
 }
@@ -1114,15 +1120,19 @@ if ( opt.generated ) {
 
 	// the busts: each its mesh in its own frame (x right, y up, z its front: the relief's), its node
 	// at its place and facing; marble in the old one's colour, its object-space normal map
-	let bustTris = 0, bustBytes = 0;
+	let bustTris = 0, bustBytes = 0; const views = [];
 	for ( const q of placements ) {
 
-		const R = JSON.parse( fs.readFileSync( path.join( reliefDir, `${ q.slug }.json` ), 'utf8' ) );
 		const dec = ( b, T ) => { const u = Buffer.from( b, 'base64' ); return new T( u.buffer.slice( u.byteOffset, u.byteOffset + u.byteLength ) ); };
+		const F = JSON.parse( fs.readFileSync( path.join( reliefDir, `${ q.slug }.json` ), 'utf8' ) );		// (the frontal: its size and place)
+		const yaw = viewAngle( { pos: [ q.at[ 0 ], q.at[ 1 ] + 0.45, q.at[ 2 ] ], face: q.face } ), viewFile = path.join( reliefDir, `${ q.slug }-view.json` );
+		const view = Math.abs( yaw ) > VIEW_LIMIT && fs.existsSync( viewFile ), name = view ? `${ q.slug }-view` : q.slug;
+		const R = view ? JSON.parse( fs.readFileSync( viewFile, 'utf8' ) ) : F;
 		const pos = dec( R.positions, Float32Array ), uv = dec( R.uvs, Float32Array ), idx = dec( R.indices, Uint32Array );
-		const k = Math.min( NEW_H * q.s, NEW_W * q.s / R.size[ 0 ] );		// (the relief: 1 high)
+		const k = Math.min( NEW_H * q.s, NEW_W * q.s / F.size[ 0 ] );		// (the reliefs: 1 high)
 		let zmin = Infinity;
-		for ( let i = 0; i < pos.length; i += 3 ) { pos[ i ] *= k; pos[ i + 1 ] *= k; pos[ i + 2 ] *= k; zmin = Math.min( zmin, pos[ i + 2 ] ); }
+		{ const fp = dec( F.positions, Float32Array ); for ( let i = 2; i < fp.length; i += 3 ) zmin = Math.min( zmin, fp[ i ] * k ); }
+		for ( let i = 0; i < pos.length; i += 3 ) { pos[ i ] *= k; pos[ i + 1 ] *= k; pos[ i + 2 ] *= k; }
 		for ( let i = 1; i < uv.length; i += 2 ) uv[ i ] = 1 - uv[ i ];		// (glTF: v down the image)
 		const nor = new Float32Array( pos.length );		// area-weighted
 		for ( let t = 0; t < idx.length; t += 3 ) {
@@ -1142,22 +1152,26 @@ if ( opt.generated ) {
 		if ( opt.simplify ) simplifyPrimitive( prim, { simplifier: MeshoptSimplifier, ratio: 0, error: opt.errorPx * PX_PER_M * d / k, lockBorder: true } );
 		bustTris += prim.getIndices().getCount() / 3;
 		const size = d < 9 ? 1024 : 512;
-		const nmap = await sharp( fs.readFileSync( path.join( reliefDir, `${ q.slug }-normal.png` ) ) ).removeAlpha().resize( size, size, { fit: 'fill', kernel: 'lanczos3' } ).webp( { quality: 92, effort: 6 } ).toBuffer();
+		const nmap = await sharp( fs.readFileSync( path.join( reliefDir, `${ name }-normal.png` ) ) ).removeAlpha().resize( size, size, { fit: 'fill', kernel: 'lanczos3' } ).webp( { quality: 92, effort: 6 } ).toBuffer();
 		bustBytes += nmap.length;
 		const mat = doc.createMaterial( `bust-${ q.slug }` ).setBaseColorFactor( [ ...q.color, 1 ] ).setRoughnessFactor( 0.32 ).setMetallicFactor( 0 ).setDoubleSided( true )
 			.setNormalTexture( doc.createTexture( `bust-${ q.slug }-normal` ).setImage( nmap ).setMimeType( 'image/webp' ) )
-			.setExtras( { look: 'bust', objectNormal: true, composer: q.slug } );
+			.setExtras( { look: 'bust', objectNormal: true, composer: q.slug, ...( view ? { view: +yaw.toFixed( 1 ) } : {} ) } );
 		prim.setMaterial( mat );
-		// its frame: x = up x front, y up, z its front; its back on the old one's
-		const f = q.face, rx = [ f[ 1 ], 0, - f[ 0 ] ], o = [ q.at[ 0 ] + f[ 0 ] * ( q.back - zmin ), q.at[ 1 ], q.at[ 2 ] + f[ 1 ] * ( q.back - zmin ) ];
+		// its frame: x = up x z, y up, z its front (a view: towards the eye, the bust in it turned by
+		// the angle, so facing the wall's way); its back on the old one's (the frontal's place)
+		const f = q.face, r = [ f[ 1 ], - f[ 0 ] ], a = view ? yaw * Math.PI / 180 : 0;
+		const z = [ Math.cos( a ) * f[ 0 ] + Math.sin( a ) * r[ 0 ], Math.cos( a ) * f[ 1 ] + Math.sin( a ) * r[ 1 ] ], x = [ z[ 1 ], - z[ 0 ] ];
+		const o = [ q.at[ 0 ] + f[ 0 ] * ( q.back - zmin ), q.at[ 1 ], q.at[ 2 ] + f[ 1 ] * ( q.back - zmin ) ];
 		const node = doc.createNode( `bust-${ q.slug }` ).setMesh( doc.createMesh( `bust-${ q.slug }` ).addPrimitive( prim ) )
-			.setMatrix( [ rx[ 0 ], rx[ 1 ], rx[ 2 ], 0, 0, 1, 0, 0, f[ 0 ], 0, f[ 1 ], 0, o[ 0 ], o[ 1 ], o[ 2 ], 1 ] );
+			.setMatrix( [ x[ 0 ], 0, x[ 1 ], 0, 0, 1, 0, 0, z[ 0 ], 0, z[ 1 ], 0, o[ 0 ], o[ 1 ], o[ 2 ], 1 ] );
+		if ( view ) views.push( `${ q.slug } ${ yaw.toFixed( 0 ) }` );
 		const pack = q.at[ 2 ] < STAGE_Z ? 'stage' : 'house';
 		group( pack ).addChild( node );
 		texBytes[ pack ] += nmap.length; gpu[ pack ] += size * size * 4 * 4 / 3;
 
 	}
-	if ( placements.length ) say( `  busts: ${ placements.length } (${ bustTris } triangles, normal maps ${ ( bustBytes / 1024 ).toFixed( 0 ) } KB)` );
+	if ( placements.length ) say( `  busts: ${ placements.length } (${ bustTris } triangles, normal maps ${ ( bustBytes / 1024 ).toFixed( 0 ) } KB); from their view: ${ views.join( ', ' ) || 'none' }` );
 
 }
 

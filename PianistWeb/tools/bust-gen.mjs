@@ -57,13 +57,18 @@ export const prompt = ( name, look ) => `Studio photograph of a classical white 
 	'seen exactly from the front at eye level, symmetric pose looking straight ahead, orthographic, centred, the whole bust and socle in frame filling 85% of the height, ' +
 	'soft even studio light from the front-left, gentle shading that shows the relief, no harsh shadows, plain neutral mid-grey seamless background, nothing else in the image, sharp, high detail';
 const MODEL = 'seedream-5.0-lite', SIZE = '2048x2048';
+// where the busts are looked at from (tools/bust-views.mjs): the pianist's eye, seated at the
+// keyboard (the packs' frame, tools/hall-asset.mjs; measured in the app: the piano's keyboard front
+// 1.25 m up, its default place on the stage)
+export const VIEW_EYE = [ - 1.0, 1.86, - 1.3 ];
 
-async function generate( text ) {
+/** A photo (seedream); `ref`: an image to keep to (bytes, image to image). */
+export async function generate( text, ref = null ) {
 
 	const base = ( process.env.CLAUDE_BASE_URL ?? 'https://apiproxy.paigod.work' ).replace( /\/+$/, '' ), key = process.env.PAIGOD_API_KEY;
 	if ( ! key ) throw new Error( 'PAIGOD_API_KEY not set' );
 	const res = await fetch( `${ base }/v3/${ MODEL }`, { method: 'POST', headers: { Authorization: `Bearer ${ key }`, 'Content-Type': 'application/json' },
-		body: JSON.stringify( { prompt: text, size: SIZE, watermark: false, sequential_image_generation: 'disabled' } ), signal: AbortSignal.timeout( 300000 ) } );
+		body: JSON.stringify( { prompt: text, size: SIZE, watermark: false, sequential_image_generation: 'disabled', ...( ref ? { image: [ 'data:image/jpeg;base64,' + ref.toString( 'base64' ) ] } : {} ) } ), signal: AbortSignal.timeout( 300000 ) } );
 	const body = await res.json().catch( () => ( {} ) ), urls = body.images ?? body.image_urls ?? [];
 	if ( ! res.ok || ! urls.length ) throw new Error( `HTTP ${ res.status } ${ JSON.stringify( body ).slice( 0, 300 ) }` );
 	return Buffer.from( await ( await fetch( typeof urls[ 0 ] === 'string' ? urls[ 0 ] : urls[ 0 ].url, { signal: AbortSignal.timeout( 300000 ) } ) ).arrayBuffer() );
