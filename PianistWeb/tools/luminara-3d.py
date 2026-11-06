@@ -22,6 +22,7 @@ def main():
 	ap.add_argument('--trellis', required=True)
 	ap.add_argument('--seed', type=int, default=1)
 	ap.add_argument('--force', action='store_true')
+	ap.add_argument('--views', action='store_true', help="also <slug>-view1-raw.jpg, ... (tools/luminara-gen.mjs crop views): TRELLIS's multi-image conditioning, the main photo first (its front: +z)")
 	ap.add_argument('--key', action='store_true', help="also keep what differs from the backdrop's colour (rembg drops white or pale parts on a plain backdrop: a marble base, silver-green leaves)")
 	a = ap.parse_args()
 	os.environ.setdefault('TORCH_HOME', os.path.join(a.trellis, 'trellis-weights', 'torch-hub'))
@@ -39,8 +40,8 @@ def main():
 	pipe.cuda()
 	stats_file = os.path.join(a.generated, 'trellis-stats.json')
 	stats = json.load(open(stats_file)) if os.path.exists(stats_file) else {}
-	for s in todo:
-		img = Image.open(os.path.join(a.generated, f'{s}-raw.jpg')).convert('RGB')
+	def cutout(name, s):
+		img = Image.open(os.path.join(a.generated, f'{name}-raw.jpg')).convert('RGB')
 		img = img.resize(( 1024, 1024 ), Image.Resampling.LANCZOS)
 		cut = rembg.remove(img, session=session)
 		if a.key:		# rembg's mask, and what is not the backdrop's colour (the border's median), its largest blob, holes filled
@@ -54,16 +55,25 @@ def main():
 			key = ndimage.binary_fill_holes(ndimage.binary_opening(key, iterations=2))
 			al = np.maximum(np.asarray(cut)[..., 3], ( key * 255 ).astype(np.uint8))
 			cut = Image.fromarray(np.dstack([ np.asarray(img), al ]))
-		cut.save(os.path.join(a.generated, f'{s}-rgba.png'))
+		cut.save(os.path.join(a.generated, f'{name}-rgba.png'))
+		return cut
+
+	for s in todo:
+		cut = cutout(s, s)
+		views = []
+		if a.views:
+			k = 1
+			while os.path.exists(os.path.join(a.generated, f'{s}-view{k}-raw.jpg')):
+				views.append(cutout(f'{s}-view{k}', s)); k += 1
 		torch.cuda.reset_peak_memory_stats(); t = time.time()
-		out = pipe.run(cut, seed=a.seed, formats=[ 'mesh' ])
+		out = pipe.run_multi_image([ cut, *views ], seed=a.seed, formats=[ 'mesh' ], mode='stochastic') if views else pipe.run(cut, seed=a.seed, formats=[ 'mesh' ])
 		torch.cuda.synchronize(); dt = time.time() - t
 		m = out['mesh'][0]
 		v = m.vertices.detach().cpu().numpy() @ np.array([ [ 1, 0, 0 ], [ 0, 0, - 1 ], [ 0, 1, 0 ] ])		# (z up -> y up, as TRELLIS's to_glb)
 		f = m.faces.detach().cpu().numpy()
 		c = m.vertex_attrs[:, :3].detach().float().clamp(0, 1).cpu().numpy()
 		trimesh.Trimesh(v, f, vertex_colors=( c * 255 ).round().astype(np.uint8), process=False).export(os.path.join(a.generated, f'{s}-trellis.glb'))
-		stats[s] = { 'seconds': round(dt, 1), 'peak_vram_gb': round(torch.cuda.max_memory_allocated() / 2 ** 30, 2), 'triangles': int(len(f)),
+		stats[s] = { 'views': 1 + len(views), 'seconds': round(dt, 1), 'peak_vram_gb': round(torch.cuda.max_memory_allocated() / 2 ** 30, 2), 'triangles': int(len(f)),
 			'extent': [ round(float(x), 3) for x in v.max(0) - v.min(0) ], 'seed': a.seed }
 		print(s, json.dumps(stats[s]), file=sys.stderr)
 		json.dump(stats, open(stats_file, 'w'), indent=1)

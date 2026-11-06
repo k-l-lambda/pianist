@@ -77,21 +77,33 @@ const DOME_SPOTS = [ 35, - 35, 145, - 145 ];		// φ (deg) of the dome's spots: t
 // the furniture: [ the pack's node, φ (deg), r (null: its back on the wall), turn (deg, about its own up), face (optional:
 // [ φ, r ], the point it faces, in place of the room's middle) ]
 const FURNITURE = [
-	// by window L (252): a sofa under it, a drum table, two tub chairs facing it, a side table at the sofa's end
-	[ 'sofa-low', 252, 6.05, 0 ], [ 'tub-chair', 229, 4.95, 0, [ 252, 4.75 ] ], [ 'tub-chair', 274, 4.9, 0, [ 252, 4.75 ] ], [ 'side-table', 267, 6.35, 0 ],
+	// by window L (252): the set after its product sheets (Footages.local/Luminara/e3600454-..., ce870b1c-..., d048f4be-...):
+	// the curved sofa under it, the round coffee table, two swivel chairs facing it; a side table at the sofa's end
+	[ 'sofa-body', 252, 5.95, 0 ], [ 'coffee-table', 252, 4.75, 0 ], [ 'chair-body', 229, 4.95, 0, [ 252, 4.75 ] ], [ 'chair-body', 274, 4.9, 0, [ 252, 4.75 ] ], [ 'side-table', 267, 6.35, 0 ],
 	[ 'plant', 235, 6.3, 30 ],
 	// the clef's sideboard (204); a lily planter by window M (the bench under the curtain: BENCH)
 	[ 'sideboard', 204, null, 0 ], [ 'lily-planter', 167, 6.35, 0 ],
 	// shelving 2 (137): a small cabinet and a small round table before it; by window R (108) a chair alone
-	[ 'small-cabinet', 129, 6.2, 0 ], [ 'plant', 121, 6.35, 70 ], [ 'tub-chair', 106, 5.7, 0 ],
+	[ 'small-cabinet', 129, 6.2, 0 ], [ 'plant', 121, 6.35, 70 ], [ 'chair-body', 106, 5.7, 0 ],
 	// the front: plants by the doors, side tables and chairs by the paintings (37, 323)
 	[ 'plant', 18, 6.3, 110 ], [ 'plant', - 18, 6.3, 150 ], [ 'side-table', 41, 6.3, 0 ], [ 'side-table', - 41, 6.3, 0 ],
 	[ 'tub-chair', 52, 5.7, 0 ], [ 'tub-chair', - 52, 5.7, 0 ],
 ];
 // on the small standing cabinet (before shelving 2): [ node, x (fraction of its half width), z (m, from its middle), turn ]
 const ON_SMALL_CABINET = [ [ 'gramophone', 0, - 0.02, 25 ] ];		// (the big-horned gramophone on the cabinet)
-// tables built here: [ φ, r, kind ('drum': the coffee table; 'round': a small one), what stands on it ]
-const TABLES = [ [ 252, 4.75, 'drum', [ [ 'white-flowers', - 0.18, 0, 0 ], [ 'books-flat', 0.22, 0.05, 25 ] ] ], [ 142, 5.55, 'round', [ [ 'clef-statue', 0, 0, 0 ] ] ] ];
+// tables built here: [ φ, r, kind ('round': a small one, a marble top on a brass stem), what stands on it ] (the sofa
+// group's coffee table: the pack's, FURNITURE)
+const TABLES = [ [ 142, 5.55, 'round', [ [ 'clef-statue', 0, 0, 0 ] ] ] ];
+// the set's pillows, each its own mesh (TRELLIS, from a photo of one), on the pillow-free bodies: per body, its seat's top
+// and its back cushion's front there ( y, z, m in its frame: tools/luminara-asset.mjs's sizes, the sofa 1.8 m, the chair
+// 0.86 ), then [ node, x, z (m, from the back cushion's front), yaw, lean (deg) ]: as the sheets (the sofa's two blue and
+// the cream between, the chair's lumbar)
+const SEAT_PILLOWS = {
+	'sofa-body': { y: 0.495, z: - 0.2, pillows: [ [ 'pillow-blue', - 0.48, 0.0, 8, 4 ], [ 'pillow-cream', 0.08, 0.05, - 4, 2 ], [ 'pillow-blue', 0.5, 0.0, - 10, 4 ] ] },
+	'chair-body': { y: 0.42, z: - 0.115, pillows: [ [ 'pillow-lumbar', 0, 0.0, 0, 4 ] ] },
+};
+// on the sofa group's coffee table (the pack's, FURNITURE): [ node, x, z (m, from its middle), turn ] on its top (its extras' `top`)
+const ON_COFFEE_TABLE = [ [ 'white-flowers', - 0.17, 0, 0 ], [ 'books-flat', 0.21, 0.05, 25 ] ];
 // a bench from under the curtain to under shelving 2, between the lily planter and the small round table: as the
 // sideboard (white lacquer, rounded ends, flush drawers, a slim brass plinth on short brass legs); beige fabric
 // cushions on it, here and there. φ from, to (deg), its back's distance from the middle (m)
@@ -109,7 +121,7 @@ const SHELVING = {
 		[ [ 'books-grey', - 0.4, 0 ], [ 'perfume', 0.3, - 15 ], [ 'crystal-gem', 0.75, 0 ] ],
 		[ [ 'pothos', - 0.6, 0 ], [ 'armillary', 0.05, 0 ], [ 'figurine', 0.62, - 20 ] ],
 		[ [ 'picture', - 0.5, 0 ], [ 'loop-sculpture', 0.15, 0 ], [ 'shell', 0.65, 20 ] ],
-		[ [ 'books', - 0.35, 0 ], [ 'gold-star', 0.55, 0 ] ],
+		[ [ 'carousel', - 0.32, 0 ], [ 'gold-star', 0.55, 0 ] ],		// (the carousel music box in the books' place)
 		[ [ 'brass-globe', - 0.4, 0 ], [ 'jewelry-box', 0.45, 10 ] ],
 	],
 	2: [		// (shelving 2, by window R)
@@ -626,7 +638,7 @@ function glyphMaps( G ) {
  * coat's) tilted by a little value noise in the object's own space, a few mm across, so the coat's
  * highlight breaks up as on hide.
  */
-function leather( material ) {
+function leather( material, { scale = 260, amount = 0.05, coat = 0.035 } = {} ) {
 
 	chainCompile( material, shader => {
 
@@ -643,14 +655,14 @@ function leather( material ) {
 			vec3 gGrad( vec3 p ) { const float e = 0.15; return vec3( gNoise( p + vec3( e, 0, 0 ) ) - gNoise( p - vec3( e, 0, 0 ) ), gNoise( p + vec3( 0, e, 0 ) ) - gNoise( p - vec3( 0, e, 0 ) ), gNoise( p + vec3( 0, 0, e ) ) - gNoise( p - vec3( 0, 0, e ) ) ) / ( 2.0 * e ); }` )
 			.replace( '#include <clearcoat_normal_fragment_maps>', `#include <clearcoat_normal_fragment_maps>
 			{		// (after both normals are set: the coat's declared in clearcoat_normal_fragment_begin)
-				vec3 gp = vGrainPos * 260.0, gv = ( viewMatrix * vec4( gGrad( gp ) + 0.5 * gGrad( gp * 2.3 ), 0.0 ) ).xyz;
-				normal = normalize( normal - 0.05 * ( gv - dot( gv, normal ) * normal ) );
+				vec3 gp = vGrainPos * ${ scale.toFixed( 1 ) }, gv = ( viewMatrix * vec4( gGrad( gp ) + 0.5 * gGrad( gp * 2.3 ), 0.0 ) ).xyz;
+				normal = normalize( normal - ${ amount.toFixed( 3 ) } * ( gv - dot( gv, normal ) * normal ) );
 				#ifdef USE_CLEARCOAT
-					clearcoatNormal = normalize( clearcoatNormal - 0.035 * ( gv - dot( gv, clearcoatNormal ) * clearcoatNormal ) );
+					clearcoatNormal = normalize( clearcoatNormal - ${ coat.toFixed( 3 ) } * ( gv - dot( gv, clearcoatNormal ) * clearcoatNormal ) );
 				#endif
 			}` );
 
-	}, 'leatherGrain' );
+	}, `leatherGrain${ scale }-${ amount }-${ coat }` );
 	return material;
 
 }
@@ -736,6 +748,194 @@ function framedPicture( tex, w, h, lean = 0 ) {
 	g.traverse( o => { if ( o.isMesh ) o.castShadow = o.receiveShadow = true; } );
 	if ( lean ) { g.position.y = h / 2 + fr; g.position.z = - 0.04; g.rotation.x = - lean; const out = new THREE.Group(); out.add( g ); return out; }
 	return g;
+
+}
+
+/**
+ * The carousel music box (the sheets Footages.local/Luminara/5d2295d4-..., e50eec08-...), about 0.33 m high, its
+ * parts each their own material: a still base (an ivory lacquered drum, fluted, gilt rings and ribs, six gilt ball
+ * feet) and on it the carousel, turning (`root.userData.turn( t )`, t in s): its platform, a fluted ivory centre
+ * column, four twisted gilt poles, the horses (`horse`: the pack's TRELLIS horse, white porcelain, pale blue saddle,
+ * gilt; four round the platform, rising and falling out of phase), the canopy (a pale blue enamel band with gilt
+ * notes and a scalloped hem, warm bulbs under it, an ivory bell roof, gilt ribs, a finial with a tilted ring).
+ */
+function carouselBox( horse ) {
+
+	const ivory = phys( { color: '#f4efe6', roughness: 0.22, clearcoat: 0.7, clearcoatRoughness: 0.08 } );		// (lacquered porcelain)
+	const gilt = phys( { color: '#e2bf7a', metalness: 1, roughness: 0.16, clearcoat: 0.25, clearcoatRoughness: 0.08 } );
+	const bulb = phys( { color: '#fff3dc', roughness: 0.4, emissive: new THREE.Color( '#ffc982' ), emissiveIntensity: 3.2 } );
+	const root = new THREE.Group(), turning = new THREE.Group();
+	root.name = 'carousel'; turning.name = 'carousel:turning';
+	const mesh = ( g, m, parent = root, shadow = true ) => { const o = new THREE.Mesh( g, m ); o.castShadow = shadow; o.receiveShadow = true; parent.add( o ); return o; };
+	const lathe = ( pts, seg = 96 ) => new THREE.LatheGeometry( pts.map( ( [ r, y ] ) => new THREE.Vector2( r, y ) ), seg );
+	const ring = ( r, tube, y, m, parent, seg = 96 ) => mesh( new THREE.TorusGeometry( r, tube, 10, seg ).rotateX( Math.PI / 2 ).translate( 0, y, 0 ), m, parent );
+	const fluted = ( g, n, depth, phase = 0 ) => {		// (the radius of a lathe's surface modulated round it: shallow flutes, or a roof's gores)
+		const p = g.attributes.position;
+		for ( let i = 0; i < p.count; ++ i ) { const x = p.getX( i ), z = p.getZ( i ), a = Math.atan2( z, x ), k = 1 - depth * ( 0.5 + 0.5 * Math.cos( n * a + phase ) ) ** 2; p.setX( i, x * k ); p.setZ( i, z * k ); }
+		g.computeVertexNormals();
+		return g;
+	};
+	const star = ( r, points = 5, depth = 0.002, inner = 0.45 ) => {		// (a gilt star, flat, its face on +z)
+		const sh = new THREE.Shape();
+		for ( let i = 0; i < 2 * points; ++ i ) { const a = Math.PI / 2 + i * Math.PI / points, q = i % 2 ? r * inner : r; i ? sh.lineTo( q * Math.cos( a ), q * Math.sin( a ) ) : sh.moveTo( q * Math.cos( a ), q * Math.sin( a ) ); }
+		return new THREE.ExtrudeGeometry( sh, { depth, bevelEnabled: true, bevelThickness: depth / 3, bevelSize: depth / 4, bevelSegments: 1 } );
+	};
+
+	// the base: a smooth drum, a little swelled, between gilt bands, a gilt star at its front; ball feet
+	mesh( lathe( [ [ 0, 0.008 ], [ 0.112, 0.008 ], [ 0.118, 0.012 ], [ 0.118, 0.018 ] ] ), gilt );
+	mesh( lathe( [ [ 0.112, 0.018 ], [ 0.116, 0.034 ], [ 0.117, 0.05 ], [ 0.115, 0.064 ], [ 0.111, 0.07 ] ], 160 ), ivory );
+	mesh( star( 0.014, 8, 0.0015, 0.38 ).translate( 0, 0, 0 ).translate( 0, 0.045, 0.1172 ), gilt );		// (a compass star at its front, as the sheets')
+	mesh( lathe( [ [ 0.111, 0.07 ], [ 0.12, 0.072 ], [ 0.121, 0.078 ], [ 0.114, 0.082 ], [ 0.098, 0.084 ], [ 0, 0.084 ] ] ), ivory );
+	ring( 0.119, 0.0032, 0.019, gilt, root ); ring( 0.113, 0.0028, 0.069, gilt, root ); ring( 0.12, 0.0026, 0.079, gilt, root );
+	for ( let i = 0; i < 6; ++ i ) { const a = i / 6 * 2 * Math.PI + Math.PI / 6; mesh( new THREE.SphereGeometry( 0.011, 16, 12 ).translate( 0.098 * Math.cos( a ), 0.008, 0.098 * Math.sin( a ) ), gilt ); }
+
+	// the carousel, turning: its platform, the centre column, the poles, the horses, the canopy
+	root.add( turning );
+	mesh( lathe( [ [ 0, 0.086 ], [ 0.104, 0.086 ], [ 0.108, 0.089 ], [ 0.108, 0.095 ], [ 0.102, 0.097 ], [ 0, 0.097 ] ] ), ivory, turning );
+	ring( 0.107, 0.0026, 0.096, gilt, turning );
+	// the centre column: a lantern, warm and lit from within (the sheets'), fluted, gilt rings at its foot and head
+	const glow = phys( { color: '#fff4e2', roughness: 0.35, clearcoat: 0.5, clearcoatRoughness: 0.1, emissive: new THREE.Color( '#ffcf8f' ), emissiveIntensity: 1.1 } );
+	mesh( lathe( [ [ 0.036, 0.097 ], [ 0.036, 0.112 ], [ 0.03, 0.116 ], [ 0, 0.116 ] ] ), ivory, turning );
+	mesh( fluted( lathe( [ [ 0.03, 0.116 ], [ 0.028, 0.13 ], [ 0.028, 0.214 ], [ 0.03, 0.226 ] ], 96 ), 10, 0.1 ), glow, turning, false );
+	mesh( lathe( [ [ 0, 0.226 ], [ 0.034, 0.226 ], [ 0.036, 0.232 ] ] ), ivory, turning );
+	ring( 0.031, 0.0028, 0.117, gilt, turning ); ring( 0.031, 0.0028, 0.225, gilt, turning ); ring( 0.036, 0.0022, 0.104, gilt, turning );
+	const R = 0.074, N = 4, top = 0.244;
+	for ( let i = 0; i < N; ++ i ) {
+
+		const a = i / N * 2 * Math.PI + Math.PI / 4, x = R * Math.cos( a ), z = R * Math.sin( a );
+		mesh( new THREE.CylinderGeometry( 0.0024, 0.0024, top - 0.097, 10 ).translate( x, ( top + 0.097 ) / 2, z ), gilt, turning, false );
+		for ( const ph of [ 0, Math.PI ] ) {		// (two strands twisted round it)
+
+			const pts = [];
+			for ( let k = 0; k <= 48; ++ k ) { const t = k / 48, y = 0.097 + t * ( top - 0.097 ), w = ph + t * 7 * Math.PI; pts.push( new THREE.Vector3( x + 0.0032 * Math.cos( w ), y, z + 0.0032 * Math.sin( w ) ) ); }
+			mesh( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( pts ), 96, 0.0012, 6 ), gilt, turning, false );
+
+		}
+
+	}
+	// the horses: the pack's one, sized and turned to face along its path (the carousel turns anticlockwise from
+	// above), on each pole, rising and falling
+	const holders = [];
+	if ( horse ) {
+
+		const h0 = horse.clone();
+		h0.updateMatrixWorld( true );
+		const box = new THREE.Box3().setFromObject( h0 ), sz = box.getSize( new THREE.Vector3() );
+		const k = 0.078 / sz.y;		// (0.078 m high, mane to hooves)
+		// its head: the end of its longer horizontal axis that is higher (a raised head and front legs)
+		const along = sz.x >= sz.z ? 'x' : 'z', mid = ( box.min[ along ] + box.max[ along ] ) / 2;
+		let hiPos = - Infinity, hiNeg = - Infinity;
+		h0.traverse( o => { if ( ! o.isMesh ) return; const p = o.geometry.attributes.position, v = new THREE.Vector3(); for ( let j = 0; j < p.count; j += 7 ) { v.fromBufferAttribute( p, j ).applyMatrix4( o.matrixWorld ); if ( v[ along ] > mid ) hiPos = Math.max( hiPos, v.y ); else hiNeg = Math.max( hiNeg, v.y ); } } );
+		const facing = ( along === 'x' ? 0 : Math.PI / 2 ) + ( hiPos >= hiNeg ? 0 : Math.PI );		// (the turn round y that puts its head on +x: +z to +x is +90°)
+		const centre = box.getCenter( new THREE.Vector3() );
+		for ( let i = 0; i < N; ++ i ) {
+
+			const a = i / N * 2 * Math.PI + Math.PI / 4, holder = new THREE.Group();
+			const h = h0.clone();
+			h.position.set( - centre.x, - box.min.y, - centre.z );		// (its feet's middle on the pole, its hooves at 0)
+			const turnH = new THREE.Group(); turnH.rotation.y = facing; turnH.add( h );
+			const sized = new THREE.Group(); sized.scale.setScalar( k ); sized.add( turnH );
+			holder.add( sized );
+			// on the pole at angle a, its head (on +x) along its motion there: the turning group's rotation.y goes negative
+			// (anticlockwise from above), the horse at ( cos a, 0, sin a ) moves along ( -sin a, 0, cos a ); +x turned by
+			// a y-rotation θ is ( cos θ, 0, -sin θ ): θ = -π/2 - a (measured: head·motion +1 for all four)
+			holder.position.set( R * Math.cos( a ), 0.128, R * Math.sin( a ) );
+			holder.rotation.y = - Math.PI / 2 - a;
+			holder.userData.phase = i * Math.PI / 2;
+			h.traverse( o => { if ( o.isMesh ) { o.castShadow = false; o.receiveShadow = true; } } );		// (turning: a shadow map drawn once would freeze them)
+			turning.add( holder ); holders.push( holder );
+
+		}
+
+	}
+	// the canopy: under it a ceiling, an ivory band with a gilt staff, medallions and notes and a scalloped hem (a
+	// canvas: colour and alpha, a second its metalness and roughness), bulbs under the band, an ivory tent roof (gores
+	// between gilt ribs, gilt stars), a finial with a tilted ring and a star
+	const bandR = 0.118, bandY0 = 0.232, bandY1 = 0.266;
+	mesh( new THREE.CircleGeometry( bandR - 0.002, 64 ).rotateX( Math.PI / 2 ).translate( 0, bandY1 - 0.002, 0 ), phys( { color: '#f4efe6', roughness: 0.4, side: THREE.DoubleSide } ), turning );
+	{
+
+		const W = 1024, H = 128, cv = document.createElement( 'canvas' ), mr = document.createElement( 'canvas' );
+		cv.width = mr.width = W; cv.height = mr.height = H;
+		const g = cv.getContext( '2d' ), q = mr.getContext( '2d' );
+		const gold = '#e2bf7a', scal = 16, hem = 0.24 * H;		// (16 scallops round; the hem's depth)
+		g.fillStyle = '#f2ebde'; g.fillRect( 0, 0, W, H );		// (ivory, as the sheets'; their pale blue is the saddles')
+		q.fillStyle = 'rgb(0,150,0)'; q.fillRect( 0, 0, W, H );		// (g: roughness, b: metalness, as three reads it)
+		const both = fn => { for ( const [ c, col ] of [ [ g, gold ], [ q, 'rgb(0,40,255)' ] ] ) { c.fillStyle = c.strokeStyle = col; fn( c ); } };
+		both( c => { c.fillRect( 0, 0, W, 0.09 * H ); c.fillRect( 0, H - hem - 0.07 * H, W, 0.05 * H ); } );		// (a gilt top edge, a line above the hem)
+		// a gilt staff round the band (five lines), four medallions on it (a ring, a star), notes between
+		both( c => { c.lineWidth = 1.5; for ( let l = 0; l < 5; ++ l ) { const y = ( 0.2 + 0.075 * l ) * H; c.beginPath(); c.moveTo( 0, y ); c.lineTo( W, y ); c.stroke(); } } );
+		for ( let i = 0; i < 4; ++ i ) {
+
+			const x = ( i + 0.5 ) / 4 * W, y = 0.35 * H, r = 0.2 * H;
+			g.fillStyle = '#f2ebde'; g.beginPath(); g.arc( x, y, r, 0, 2 * Math.PI ); g.fill();		// (the staff behind it hidden)
+			q.fillStyle = 'rgb(0,150,0)'; q.beginPath(); q.arc( x, y, r, 0, 2 * Math.PI ); q.fill();
+			both( c => {
+				c.lineWidth = 3; c.beginPath(); c.arc( x, y, r, 0, 2 * Math.PI ); c.stroke();
+				c.beginPath(); for ( let k = 0; k < 16; ++ k ) { const a = - Math.PI / 2 + k * Math.PI / 8, rr = k % 2 ? 0.28 * r : 0.78 * r; k ? c.lineTo( x + rr * Math.cos( a ), y + rr * Math.sin( a ) ) : c.moveTo( x + rr * Math.cos( a ), y + rr * Math.sin( a ) ); } c.closePath(); c.fill();
+			} );
+
+		}
+		for ( let i = 0; i < 12; ++ i ) {
+
+			if ( i % 3 === 1 ) continue;		// (the medallions' places)
+			const x = ( i + 0.5 ) / 12 * W, y = ( i % 3 === 0 ? 0.42 : 0.35 ) * H, r = 0.04 * H;
+			both( c => {
+				c.save(); c.translate( x, y ); c.rotate( - 0.35 ); c.beginPath(); c.ellipse( 0, 0, 1.35 * r, r, 0, 0, 2 * Math.PI ); c.fill(); c.restore();
+				c.lineWidth = 2.5; c.beginPath(); c.moveTo( x + 1.2 * r, y - 0.2 * r ); c.lineTo( x + 1.2 * r, y - 0.26 * H ); c.stroke();
+				if ( i % 2 === 0 ) { c.beginPath(); c.moveTo( x + 1.2 * r, y - 0.26 * H ); c.quadraticCurveTo( x + 3.2 * r, y - 0.16 * H, x + 2.4 * r, y - 0.06 * H ); c.stroke(); }
+			} );
+
+		}
+		// the scallops: the hem's lower edge cut in arcs (alpha), each arc's edge gilt, a gilt bead at each point
+		g.globalCompositeOperation = 'destination-out';
+		for ( let i = 0; i <= scal; ++ i ) { const cx = i / scal * W; g.beginPath(); g.ellipse( cx, H, W / scal / 2, hem * 0.62, 0, 0, 2 * Math.PI ); g.fill(); }
+		g.globalCompositeOperation = 'source-over';
+		both( c => { c.lineWidth = 3; for ( let i = 0; i <= scal; ++ i ) { const cx = i / scal * W; c.beginPath(); c.ellipse( cx, H, W / scal / 2, hem * 0.62, 0, Math.PI, 2 * Math.PI ); c.stroke(); } } );
+		const t = new THREE.CanvasTexture( cv ), m2 = new THREE.CanvasTexture( mr );
+		t.colorSpace = THREE.SRGBColorSpace; m2.colorSpace = THREE.NoColorSpace;
+		for ( const x of [ t, m2 ] ) { x.wrapS = THREE.RepeatWrapping; x.anisotropy = 8; }
+		const band = phys( { color: '#ffffff', map: t, metalnessMap: m2, roughnessMap: m2, metalness: 1, roughness: 1, alphaTest: 0.5, side: THREE.DoubleSide, clearcoat: 0.4, clearcoatRoughness: 0.12 } );
+		mesh( new THREE.CylinderGeometry( bandR, bandR, bandY1 - bandY0, 128, 1, true ).translate( 0, ( bandY0 + bandY1 ) / 2, 0 ), band, turning );
+		ring( bandR + 0.0005, 0.0024, bandY1, gilt, turning );
+		for ( let i = 0; i < scal; ++ i ) { const a = ( i + 0.5 ) / scal * 2 * Math.PI; mesh( new THREE.SphereGeometry( 0.0034, 10, 8 ).translate( bandR * Math.cos( a ), bandY0 + 0.001, bandR * Math.sin( a ) ), gilt, turning ); }
+		// warm bulbs under the band's inside
+		for ( let i = 0; i < 12; ++ i ) { const a = i / 12 * 2 * Math.PI; mesh( new THREE.SphereGeometry( 0.0042, 12, 8 ).translate( ( bandR - 0.012 ) * Math.cos( a ), bandY1 - 0.008, ( bandR - 0.012 ) * Math.sin( a ) ), bulb, turning, false ); }
+
+	}
+	// the roof: a tent (concave, rising from a flared eave wider than the band to a peak), its cloth sagging in gores
+	// between eight gilt ribs, a gilt star on each gore, a finial: a ball, a tilted ring round it, a star on top
+	const eave = 0.132, roofH = 0.072, roof = [ [ eave - 0.004, bandY1 - 0.004 ], [ eave, bandY1 ] ];
+	for ( let k = 1; k <= 24; ++ k ) { const t = k / 24; roof.push( [ Math.max( 0.008, eave * ( 1 - t ) ** 1.9 ), bandY1 + roofH * t ** 0.9 ] ); }
+	const roofMat = phys( { color: '#efe6d6', roughness: 0.45, clearcoat: 0.2, clearcoatRoughness: 0.25, side: THREE.DoubleSide } );		// (satin: a glossier one took the lit wall behind and read as glass)
+	mesh( fluted( lathe( roof, 128 ), 8, 0.035, Math.PI ), roofMat, turning );		// (phase π: the ribs at the gores' high lines)
+	for ( let i = 0; i < 8; ++ i ) {
+
+		const a = i / 8 * 2 * Math.PI, pts = roof.slice( 1 ).filter( ( _, k ) => k % 2 === 0 ).map( ( [ r, y ] ) => new THREE.Vector3( ( r + 0.0015 ) * Math.cos( a ), y + 0.0008, ( r + 0.0015 ) * Math.sin( a ) ) );
+		mesh( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( pts ), 48, 0.002, 6 ), gilt, turning );
+		mesh( new THREE.SphereGeometry( 0.0045, 12, 8 ).translate( ( eave + 0.002 ) * Math.cos( a ), bandY1 + 0.001, ( eave + 0.002 ) * Math.sin( a ) ), gilt, turning );
+		// a star on the gore after this rib, about halfway up, facing out along the roof's slope
+		const b = a + Math.PI / 8, t = 0.42, rr = eave * ( 1 - t ) ** 1.9 * ( 1 - 0.035 * 0.0 ) + 0.0008, yy = bandY1 + roofH * t ** 0.9;
+		const o = new THREE.Object3D(); o.position.set( rr * Math.cos( b ), yy, rr * Math.sin( b ) ); o.lookAt( 2 * rr * Math.cos( b ), yy + 0.6 * rr, 2 * rr * Math.sin( b ) ); o.updateMatrix();
+		mesh( star( 0.006, 5, 0.0012 ).applyMatrix4( o.matrix ), gilt, turning );
+
+	}
+	const fy = bandY1 + roofH;
+	mesh( lathe( [ [ 0.012, fy - 0.004 ], [ 0.006, fy + 0.004 ], [ 0.0045, fy + 0.012 ], [ 0.0001, fy + 0.014 ] ], 48 ), gilt, turning );
+	mesh( new THREE.SphereGeometry( 0.0105, 24, 16 ).translate( 0, fy + 0.023, 0 ), gilt, turning );
+	mesh( new THREE.TorusGeometry( 0.024, 0.0016, 8, 72 ).rotateX( Math.PI / 2 - 0.45 ).rotateZ( 0.25 ).translate( 0, fy + 0.023, 0 ), gilt, turning );
+	mesh( star( 0.0075, 5, 0.0018 ).translate( 0, fy + 0.042, - 0.0009 ), gilt, turning );		// (on top, upright)
+
+	// turning: one turn in 24 s (a music box's slow pace), anticlockwise from above; the horses up and down twice a turn
+	root.userData.turn = t => {
+
+		const a = 2 * Math.PI * ( t / 24 );
+		turning.rotation.y = - a;		// (three's +y rotation is clockwise from above)
+		for ( const h of holders ) h.position.y = 0.128 + 0.009 * Math.sin( 2 * a + h.userData.phase );
+
+	};
+	root.userData.turn( 0 );
+	return root;
 
 }
 
@@ -1065,24 +1265,13 @@ export class Luminara {
 		this.tableTops = [];		// [ frame, the top's y, its radius, what stands on it ] (the ornaments: _build)
 		for ( const [ deg, r, kind, items ] of TABLES ) {
 
-			const F = frameAt( deg * Math.PI / 180, r ), v = ( a, b ) => new THREE.Vector2( a, b );
-			if ( kind === 'round' ) {
-
-				add( new THREE.CylinderGeometry( 0.27, 0.27, 0.025, 72 ).translate( 0, 0.6375, 0 ).applyMatrix4( F ), M.floor );
-				add( new THREE.CylinderGeometry( 0.275, 0.275, 0.01, 72 ).translate( 0, 0.62, 0 ).applyMatrix4( F ), M.brass );
-				add( new THREE.CylinderGeometry( 0.018, 0.026, 0.6, 20 ).translate( 0, 0.31, 0 ).applyMatrix4( F ), M.brass );
-				add( new THREE.CylinderGeometry( 0.17, 0.18, 0.018, 48 ).translate( 0, 0.009, 0 ).applyMatrix4( F ), M.brass );
-				this.tableTops.push( [ F, 0.65, 0.27, items ] );
-				continue;
-
-			}
-			this.tableTops.push( [ F, 0.43, 0.5, items ] );
-			const body = [ v( 0.33, 0.012 ) ];
-			for ( let i = 0; i <= 12; ++ i ) { const t = i / 12; body.push( v( 0.33 + 0.13 * Math.sin( 0.5 * Math.PI * t ) ** 1.6, 0.012 + 0.36 * t ) ); }
-			add( new THREE.LatheGeometry( body, 96 ).applyMatrix4( F ), M.lacquer );
-			add( new THREE.LatheGeometry( [ v( 0.345, 0 ), v( 0.35, 0.006 ), v( 0.35, 0.016 ), v( 0.33, 0.018 ) ], 96 ).applyMatrix4( F ), M.brass );
-			add( new THREE.LatheGeometry( [ v( 0.455, 0.37 ), v( 0.505, 0.374 ), v( 0.51, 0.392 ), v( 0.5, 0.395 ) ], 96 ).applyMatrix4( F ), M.brass );
-			add( new THREE.CylinderGeometry( 0.5, 0.5, 0.035, 96 ).translate( 0, 0.4125, 0 ).applyMatrix4( F ), M.floor );
+			const F = frameAt( deg * Math.PI / 180, r );
+			if ( kind !== 'round' ) continue;
+			add( new THREE.CylinderGeometry( 0.27, 0.27, 0.025, 72 ).translate( 0, 0.6375, 0 ).applyMatrix4( F ), M.floor );
+			add( new THREE.CylinderGeometry( 0.275, 0.275, 0.01, 72 ).translate( 0, 0.62, 0 ).applyMatrix4( F ), M.brass );
+			add( new THREE.CylinderGeometry( 0.018, 0.026, 0.6, 20 ).translate( 0, 0.31, 0 ).applyMatrix4( F ), M.brass );
+			add( new THREE.CylinderGeometry( 0.17, 0.18, 0.018, 48 ).translate( 0, 0.009, 0 ).applyMatrix4( F ), M.brass );
+			this.tableTops.push( [ F, 0.65, 0.27, items ] );
 
 		}
 
@@ -1595,7 +1784,13 @@ export class Luminara {
 		M.sky.color.setScalar( this.pack ? L.sky : 0.25 * L.sky );
 		for ( const { raster, pt } of this._ptTwins?.values() ?? [] ) {		// (path tracing's emitting twins: setMode)
 
-			pt.emissive.copy( raster.color ); pt.emissiveMap = raster.map ?? null; pt.emissiveIntensity = 1; pt.needsUpdate = true;
+			pt.emissive.copy( raster.color ); pt.emissiveMap = raster.map ?? null; pt.emissiveIntensity = 1;
+			// an additive raster material (the staff: white lines on black, added to the riser behind it): its map as
+			// the twin's alpha too, so its black lets the riser show through (the path tracer: a stochastic pass-through),
+			// not an opaque black band
+			const additive = raster.blending === THREE.AdditiveBlending;
+			pt.alphaMap = additive ? raster.map ?? null : null; pt.transparent = additive; pt.depthWrite = ! additive;
+			pt.needsUpdate = true;
 
 		}
 		const size = this.highQuality ? 4096 : 2048, key = this.domeSpots[ 0 ];
@@ -1742,6 +1937,7 @@ export class Luminara {
 		const S = this.skyU;
 		S.uTime.value = ( window.__pianistPaused ? S.uTime.value : clock.now() / 1000 + ( this.skyTimeShift ?? 0 ) );		// (the render clock offline: a render's sky the same each time)		// (skyTimeShift: to look at another moment)
 		if ( this.sun.visible && ! S.uSun.value ) this.sun.intensity = this.sun.userData.intensity * ( 1 - this.moonCloud() );
+		this.carousel?.userData.turn( clock.now() / 1000 );		// (the music box's carousel: on the render clock, as the sky)
 		if ( this.mode === 'pathtrace' ) return;
 		this.mirror.update( renderer, this.scene, camera, [ this.floorMeshes ].flat(), this.mirrorScale ?? ( this.highQuality ? 0.5 : 0.35 ) );		// (mirrorScale: an offline render's, main.js)
 
@@ -1870,6 +2066,20 @@ export class Luminara {
 			const p = {
 				brass: () => phys( { color: '#d6a95c', metalness: 1, roughness: 0.28 } ),
 				brassPolished: () => phys( { color: '#e2b46a', metalness: 1, roughness: 0.1, clearcoat: 0.4, clearcoatRoughness: 0.05 } ),		// (the sofa's plinth: a clear metal sheen)
+				// the sofa group's set (its sheets): an ivory leather shell (a satin coat, a fine grain), beige boucle (its loops: a
+				// coarse bump, a soft sheen; the decoder's shading as its colour), dusty blue velvet pillows (a strong sheen at the
+				// edges), a polished champagne-gold inlay and floor ring, a satin champagne pedestal, the table's polished marble
+				leatherShell: () => leather( phys( { color: '#efe7da', roughness: 0.42, clearcoat: 0.45, clearcoatRoughness: 0.22, sheen: 0.15, sheenColor: new THREE.Color( '#fff6ea' ), sheenRoughness: 0.5 } ) ),
+				boucleFabric: () => leather( phys( { color: new THREE.Color( 1.28, 1.24, 1.2 ), vertexColors: true, roughness: 0.97, sheen: 0.6, sheenColor: new THREE.Color( '#f6e8d6' ), sheenRoughness: 0.6 } ), { scale: 95, amount: 0.22, coat: 0 } ),
+				velvetCream: () => phys( { color: '#ece3d4', roughness: 0.82, sheen: 1, sheenColor: new THREE.Color( '#fff8ee' ), sheenRoughness: 0.35 } ),		// (the sofa's middle pillow)
+				velvetBlue: () => phys( { color: '#8295b4', roughness: 0.82, sheen: 1, sheenColor: new THREE.Color( '#d4e0ee' ), sheenRoughness: 0.35 } ),		// (the sheets' dusty blue: lighter than it renders flat)
+				goldInlay: () => phys( { color: '#e3c58c', metalness: 1, roughness: 0.14, clearcoat: 0.3, clearcoatRoughness: 0.06 } ),
+				champagne: () => phys( { color: '#c4a986', metalness: 1, roughness: 0.3 } ),		// (the sheets' light satin champagne)
+				tableMarble: () => phys( { color: '#f4f1ec', map: marble, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.03 } ),
+				// the carousel music box's horse (carouselBox: the box's own parts in the same three)
+				porcelain: () => phys( { color: '#f4efe6', roughness: 0.22, clearcoat: 0.7, clearcoatRoughness: 0.08 } ),
+				enamelBlue: () => phys( { color: '#b9cfe4', roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.1 } ),
+				gilt: () => phys( { color: '#e2bf7a', metalness: 1, roughness: 0.16, clearcoat: 0.25, clearcoatRoughness: 0.08 } ),
 				lacquer: () => phys( { color: '#f3f1ed', roughness: 0.35, clearcoat: 0.45, clearcoatRoughness: 0.15 } ),		// (more: the shell mirrors the room and reads as glass)
 				boucle: () => leather( phys( { color: '#e8dfd0', roughness: 0.55, sheen: 0.25, sheenColor: new THREE.Color( '#fff4e6' ), sheenRoughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.28 } ) ),		// (cream leather: its coat's highlight, a fine grain)
 				marble: () => phys( { color: '#f1efec', map: marble, roughness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.05 } ),
@@ -1918,7 +2128,13 @@ export class Luminara {
 
 			}
 
-			const built = { 'gold-disc': () => goldRecord( this.segUPack ), 'vinyl': () => goldRecord( this.segUPack, true ), 'picture': () => mapOf( 'painting-3' ) && framedPicture( mapOf( 'painting-3' ), 0.34, 0.26, 0.1 ) }[ name ];
+			const built = { 'gold-disc': () => goldRecord( this.segUPack ), 'vinyl': () => goldRecord( this.segUPack, true ), 'picture': () => mapOf( 'painting-3' ) && framedPicture( mapOf( 'painting-3' ), 0.34, 0.26, 0.1 ),
+				// the carousel music box: built here round the pack's horse (its looks finished), turning (beforeRender)
+				'carousel': () => {
+					const h = nodes[ 'carousel-horse' ]?.clone();
+					h?.traverse( c => { if ( c.isMesh ) c.material = finish( c.material ); } );
+					return ( this.carousel = carouselBox( h ) );
+				} }[ name ];
 			if ( ! nodes[ name ] && ! built ) return;
 			const holder = new THREE.Group();
 			holder.matrixAutoUpdate = false;
@@ -1926,7 +2142,7 @@ export class Luminara {
 			if ( mirror ) holder.matrix.multiply( new THREE.Matrix4().makeScale( - 1, 1, 1 ) );
 			if ( built ) {		// (ours: the records, a picture)
 
-				const g = name === 'picture' ? built() : ( ( record ??= {} )[ name ] ??= built() ).clone();
+				const g = name === 'picture' || name === 'carousel' ? built() : ( ( record ??= {} )[ name ] ??= built() ).clone();		// (the carousel: itself, not a clone: it turns)
 				if ( g ) { holder.add( g ); pack.add( holder ); }
 				return;
 
@@ -1963,6 +2179,13 @@ export class Luminara {
 
 			}
 			place( name, F );
+			if ( SEAT_PILLOWS[ name ] ) {		// (its pillows: their backs on its back cushion, their feet on its seat)
+
+				const S = SEAT_PILLOWS[ name ];
+				for ( const [ item, x, dz, yaw, lean ] of S.pillows ) { const d = size( item )[ 2 ]; place( item, F.clone().multiply( new THREE.Matrix4().makeTranslation( x, S.y, S.z + d / 2 + dz ) ).multiply( turn( yaw ) ).multiply( new THREE.Matrix4().makeRotationX( - lean * Math.PI / 180 ) ) ); }
+
+			}
+			if ( name === 'coffee-table' ) { const top = nodes[ name ]?.userData.top ?? size( name )[ 1 ]; for ( const [ item, x, z, tt ] of ON_COFFEE_TABLE ) place( item, F.clone().multiply( new THREE.Matrix4().makeTranslation( x, top, z ) ).multiply( turn( tt ) ) ); }
 			if ( name === 'small-cabinet' ) { const [ cw, ch ] = size( name ); for ( const [ item, x, z, tt ] of ON_SMALL_CABINET ) place( item, F.clone().multiply( new THREE.Matrix4().makeTranslation( x * cw / 2, ch, z ) ).multiply( turn( tt ) ) ); }
 			if ( name === 'sideboard' ) {
 

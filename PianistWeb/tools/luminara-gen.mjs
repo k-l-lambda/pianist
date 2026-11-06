@@ -6,6 +6,13 @@
 //   kind 'relief': a frontal photo of a wall relief, for MoGe-2 (a relief: tools/bust-depth.py,
 //                  tools/bust-relief.py)
 //   kind 'texture': a texture (the sky outside the round windows, the floor's marble)
+//   `crop: { file, box: [ x, y, w, h ] }` (any kind): no generation, the image cut from a reference
+//                  (a product sheet's own views: Footages.local/Luminara/<sheet>.png), resized to 2048 on
+//                  its longer side; `views`: more such crops, saved as <slug>-view1-raw.jpg, ... (TRELLIS's
+//                  multi-view conditioning: tools/luminara-3d.py); a crop's `yaw` (deg, about the piece's up, its
+//                  front 0): roughly where it was seen from (tools/luminara-parts.py searches near it)
+//   `of: '<slug>'`: image to image of each of that asset's views (its -raw.jpg and -view<k>-raw.jpg), the one
+//                  prompt for all, their crops' yaws kept: the same piece changed alike in every view
 //
 //   node tools/luminara-gen.mjs --generated <dir> [--only a,b] [--force]
 // An existing image is kept (a paid call; --force for a new one). POSTs 3 s apart.
@@ -14,6 +21,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generate } from './bust-gen.mjs';
+import sharp from 'sharp';
 
 const PRODUCT = 'Studio product photograph of a single piece of furniture, the whole object in frame filling 80% of the image, ' +
 	'a three-quarter view from the front-left, camera slightly above, centred, plain pure white seamless background, soft even studio light, ' +
@@ -29,6 +37,29 @@ export const ASSETS = {
 		'a plush cream-white boucle seat cushion inside, standing on a short polished brass pedestal base with a round disc foot. ' + PRODUCT },
 	'sofa': { kind: 'object', prompt: 'A curved modular lounge sofa, a gentle arc, low and deep, upholstered in cream-white boucle fabric, rounded soft arms and a low rounded back, ' +
 		'two plush round cushions, a thin polished brass plinth along its base. ' + PRODUCT },
+	// the sofa group's set, from their product sheets (2x2 views of 627 px: front, three-quarter, side, back): the
+	// curved two-seat sofa (Footages.local/Luminara/e3600454-...) and the swivel chair (ce870b1c-...); their own views
+	// as TRELLIS's input (tools/luminara-3d.py --views), the three-quarter one first
+	'sofa-curve': { kind: 'object', crop: { file: '../Footages.local/Luminara/e3600454-1643-4f81-ae5e-8714ad00cac2.png', box: [ 627, 0, 627, 627 ], yaw: -45 },
+		views: [ { file: '../Footages.local/Luminara/e3600454-1643-4f81-ae5e-8714ad00cac2.png', box: [ 0, 0, 627, 627 ], yaw: 0 }, { file: '../Footages.local/Luminara/e3600454-1643-4f81-ae5e-8714ad00cac2.png', box: [ 0, 627, 627, 627 ], yaw: -90 }, { file: '../Footages.local/Luminara/e3600454-1643-4f81-ae5e-8714ad00cac2.png', box: [ 627, 627, 627, 627 ], yaw: 180 } ] },
+	'swivel-chair': { kind: 'object', crop: { file: '../Footages.local/Luminara/ce870b1c-db50-4bc8-b256-ebc7b550ea68.png', box: [ 627, 0, 627, 627 ], yaw: -45 },
+		views: [ { file: '../Footages.local/Luminara/ce870b1c-db50-4bc8-b256-ebc7b550ea68.png', box: [ 0, 0, 627, 627 ], yaw: 0 }, { file: '../Footages.local/Luminara/ce870b1c-db50-4bc8-b256-ebc7b550ea68.png', box: [ 0, 627, 627, 627 ], yaw: -90 }, { file: '../Footages.local/Luminara/ce870b1c-db50-4bc8-b256-ebc7b550ea68.png', box: [ 627, 627, 627, 627 ], yaw: -135 } ] },
+	// the same two without their pillows (each view changed alike): clean bodies for TRELLIS; the pillows their own
+	// meshes, from photos of one each (placed on the seats: src/luminara.js SEAT_PILLOWS)
+	'sofa-body': { kind: 'object', of: 'sofa-curve', prompt: 'The very same sofa as in the reference image, exactly the same shape, pose, camera angle, framing, size in the image, ' +
+		'lighting and background, every part unchanged, but with all the throw pillows removed: nothing lies on it, the plain beige boucle seat cushion and the boucle back cushion fully visible ' +
+		'where the pillows were, continuing their shape and texture. Photorealistic product photograph.' },
+	'chair-body': { kind: 'object', of: 'swivel-chair', prompt: 'The very same armchair as in the reference image, exactly the same shape, pose, camera angle, framing, size in the image, ' +
+		'lighting and background, every part unchanged, but with the lumbar pillow removed: nothing lies on it, the plain beige boucle seat cushion and the boucle back cushion fully visible ' +
+		'where the pillow was, continuing their shape and texture. Photorealistic product photograph.' },
+	'pillow-blue': { kind: 'object', prompt: 'Studio product photograph of a single square throw pillow, 45 cm, in soft dusty blue-grey velvet with a subtle sheen, plump and soft, ' +
+		'standing upright, slightly leaning back, its corners soft, a fine self piping round its edge, the whole pillow in frame filling 80% of the image, a three-quarter view from the front-left, ' +
+		'camera slightly above, centred, plain pure white seamless background, soft even studio light, soft contact shadow only, nothing else in the image, sharp, high detail, photorealistic' },
+	'pillow-cream': { kind: 'object', prompt: 'Studio product photograph of a single square throw pillow, 45 cm, in soft ivory cream velvet with a subtle sheen, plump and soft, ' +
+		'standing upright, slightly leaning back, its corners soft, a fine self piping round its edge. ' + PRODUCT_GREY.replace( 'a single piece of furniture', 'one pillow' ) },
+	'pillow-lumbar': { kind: 'object', prompt: 'Studio product photograph of a single rectangular lumbar pillow, 50 x 32 cm, in soft dusty blue-grey velvet with a subtle sheen, ' +
+		'a vertical seam down its middle dividing it into two soft halves, plump, standing upright on its long edge, slightly leaning back, the whole pillow in frame filling 80% of the image, ' +
+		'a three-quarter view from the front-left, camera slightly above, centred, plain pure white seamless background, soft even studio light, soft contact shadow only, nothing else in the image, sharp, high detail, photorealistic' },
 	'side-table': { kind: 'object', prompt: 'A small round side table: a white Carrara marble top with soft grey veins, a slim polished brass pedestal, ' +
 		'a tall white ceramic vase with a few dried pampas stems on it. ' + PRODUCT },
 	// after the reference (Footages.local/Luminara/f7a6e53c-...png): the low lounge set, the sideboard
@@ -116,6 +147,11 @@ export const ASSETS = {
 		'at the blue hour just after sunset: a deep calm blue sky fading to a pale warm glow at the horizon, the first stars, warm city lights beginning to glow in the towers\' windows, photorealistic, no text' },
 	'sky-night': { kind: 'texture', size: '3840x1280', ref: 'sky-day', prompt: 'The very same panoramic view of the same futuristic city of white spires over the clouds as in the reference image, unchanged in its layout, ' +
 		'at night: a dark moonless night sky, deep navy to black, with faint stars only, NO moon anywhere, the towers lit from within with warm and cool lights, glowing windows and lines of light, the clouds below dark and faintly lit by the city, photorealistic, no text' },		// (no moon: the photo repeats round the room, one moon would show as several)
+	// the carousel music box's horse (src/luminara.js carouselBox: the box itself built there, this horse four times round
+	// its platform; the sheets Footages.local/Luminara/5d2295d4-..., e50eec08-...): white porcelain, a pale blue saddle, gilt
+	'carousel-horse': { kind: 'object', prompt: 'A single small carousel horse figurine on its own, glossy white porcelain body, a pale powder blue saddle and saddle cloth, ' +
+		'a gold bridle, a gold-trimmed flowing mane and tail, gold hooves, prancing with its front legs raised, seen from the side, slightly from the front-left, ' +
+		'NO pole through it, NO base, NO stand, nothing under its hooves. ' + PRODUCT_GREY },
 	'marble': { kind: 'texture', prompt: 'Seamless tileable texture of polished white Carrara marble seen straight from above, flat and evenly lit, ' +
 		'soft light grey veins flowing diagonally, subtle warm undertone, no tiles, no seams, no reflections, no shadows, high detail, photographic' },
 };
@@ -147,6 +183,33 @@ if ( process.argv[ 1 ] && path.resolve( process.argv[ 1 ] ) === fileURLToPath( i
 			try {
 
 				const t = Date.now();
+				if ( a.of ) {		// (each of another asset's views, changed by the one prompt)
+
+					const src = meta[ a.of ] ?? {}, names = [ '', ...( src.views ?? [] ).map( ( _, k ) => `-view${ k + 1 }` ) ];
+					for ( const sfx of names ) {
+
+						const ref = fs.readFileSync( path.join( opt.generated, `${ a.of }${ sfx }-raw.jpg` ) );
+						fs.writeFileSync( path.join( opt.generated, `${ slug }${ sfx }-raw.jpg` ), await generate( a.prompt, ref, a.size ?? '2048x2048' ) );
+						console.log( `  ${ slug }${ sfx }: from ${ a.of }${ sfx }` );
+						await new Promise( r => setTimeout( r, 3000 ) );
+
+					}
+					meta[ slug ] = { kind: a.kind, of: a.of, prompt: a.prompt, ...( src.crop ? { crop: src.crop } : {} ), ...( src.views ? { views: src.views } : {} ), generated: new Date().toISOString() };
+					console.log( `${ slug }: ${ names.length } views from ${ a.of }, ${ ( ( Date.now() - t ) / 1000 ).toFixed( 0 ) } s` );
+					break;
+
+				}
+				if ( a.crop ) {		// (a reference's own view: cut, not generated)
+
+					const cut = ( c, out ) => sharp( path.resolve( c.file ) ).extract( { left: c.box[ 0 ], top: c.box[ 1 ], width: c.box[ 2 ], height: c.box[ 3 ] } )
+						.resize( 2048, 2048, { fit: 'inside', kernel: 'lanczos3' } ).jpeg( { quality: 95 } ).toFile( out );
+					await cut( a.crop, file );
+					for ( const [ k, v ] of ( a.views ?? [] ).entries() ) await cut( v, path.join( opt.generated, `${ slug }-view${ k + 1 }-raw.jpg` ) );
+					meta[ slug ] = { kind: a.kind, crop: a.crop, ...( a.views ? { views: a.views } : {} ), generated: new Date().toISOString() };
+					console.log( `${ slug }: cut from ${ path.basename( a.crop.file ) }${ a.views ? ` (+${ a.views.length } views)` : '' }` );
+					break;
+
+				}
 				const ref = a.ref ? fs.readFileSync( path.join( opt.generated, `${ a.ref }-raw.jpg` ) ) : null;		// (generated first: ASSETS' order)
 				fs.writeFileSync( file, await generate( a.prompt, ref, a.size ?? '2048x2048' ) );
 				meta[ slug ] = { kind: a.kind, prompt: a.prompt, ...( a.ref ? { ref: a.ref } : {} ), size: a.size ?? '2048x2048', generated: new Date().toISOString() };
