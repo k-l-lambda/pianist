@@ -7,11 +7,12 @@
 //                    room's surfaces are not wound one way)
 //   direct           spots (the dome's, the Recital's: as three lights them) and the line
 //                    lights (the sconces' frosted tubes, the shelves' strips: src/luminara.js's
-//                    segments), each sample with a shadow ray. The spots stay real-time (their direct
-//                    light not stored, only their bounce); the line lights' is stored (soft shadows)
+//                    segments), and the sun or the moon (through the windows), each sample with a shadow
+//                    ray. The spots and the sun stay real-time (their direct light not stored, only their
+//                    bounce); the line lights' is stored (soft shadows)
 //   gather × 4       cosine-weighted rays from each texel: what they hit sends back its emission (the
 //                    coves, the dome, the lines of light, the niches, the neon, the shades), the sky
-//                    (the windows: the sky cylinder, analytically, its photo as drawn) and its albedo
+//                    (the windows: the sky by direction, its photo as drawn) and its albedo
 //                    × the light on it (the previous bounce's map; off the shell: the room's mean)
 //   denoise, dilate  an edge-aware à-trous blur within each chart, the charts' borders run on
 //
@@ -134,7 +135,7 @@ export class LuminaraBaker {
 			if ( ! o.isMesh || o.isInstancedMesh ) return;
 			for ( let p = o; p; p = p.parent ) if ( ! p.visible ) return;
 			const mat = Array.isArray( o.material ) ? o.material[ 0 ] : o.material;
-			if ( ! mat || mat.blending === THREE.AdditiveBlending || o === L.sky || mat.isMeshBasicMaterial || ( mat.transparent && mat.opacity < 0.5 ) ) return;
+			if ( ! mat || mat.blending === THREE.AdditiveBlending || o === L.sky || mat.isMeshBasicMaterial || ( mat.transparent && mat.opacity < 0.5 ) || mat.userData?.clear ) return;		// (clear things: not occluders)
 			const g0 = o.geometry, n = g0.index ? g0.index.count : g0.attributes.position.count;
 			if ( ! n ) return;
 			const g = g0.index ? g0.toNonIndexed() : g0.clone();
@@ -332,6 +333,11 @@ export class LuminaraBaker {
 			sp.cone.push( new THREE.Vector2( Math.cos( s.angle ), Math.cos( s.angle * ( 1 - s.penumbra ) ) ) ); sp.range.push( s.distance );
 
 		}
+		// the sun (Blue hour) or the moon (night) through the windows: a directional light, its bounce only (its
+		// direct light real-time, as the spots'); at its full strength (outside: not under bakeInterior), the
+		// moon at its clear-sky light; the disc jittered over its half a degree
+		const sun = L.sun, sunOn = sun.visible && ( sun.userData.intensity ?? sun.intensity ) > 0;
+		const sunDir = sun.position.clone().normalize(), sunCol = sunOn ? sun.color.clone().multiplyScalar( sun.userData.intensity ?? sun.intensity ) : new THREE.Color( 0 );
 		while ( sp.pos.length < MAXS ) { sp.pos.push( new THREE.Vector3() ); sp.dir.push( new THREE.Vector3( 0, - 1, 0 ) ); sp.col.push( new THREE.Color( 0 ) ); sp.cone.push( new THREE.Vector2( 1, 1 ) ); sp.range.push( 0 ); }
 		// the line lights (the sconces' tubes, the shelves' strips: src/luminara.js's segments, their intensity per metre as drawn)
 		const G = L.lineLights, gain = L.light.bakeInterior ?? 1, NS = G.length;		// (all of them: the sideboard's strip too)
@@ -340,7 +346,7 @@ export class LuminaraBaker {
 		const direct = target( n, 2 );		// [ 0 ]: all direct (the bounce's source), [ 1 ]: the line lights' (stored)
 		const dp = this._pass( /* glsl */`
 			uniform vec3 spPos[ ${ MAXS } ], spDir[ ${ MAXS } ], spCol[ ${ MAXS } ]; uniform vec2 spCone[ ${ MAXS } ]; uniform float spRange[ ${ MAXS } ];
-			uniform vec3 sgA[ ${ NS } ], sgB[ ${ NS } ], sgCol[ ${ NS } ]; uniform vec4 sgN[ ${ NS } ]; uniform float spp;
+			uniform vec3 sgA[ ${ NS } ], sgB[ ${ NS } ], sgCol[ ${ NS } ]; uniform vec4 sgN[ ${ NS } ]; uniform float spp; uniform vec3 sunDir, sunCol;
 			layout( location = 0 ) out vec4 oAll; layout( location = 1 ) out vec4 oSconce;
 			void main() {
 				seedRng();
@@ -356,6 +362,12 @@ export class LuminaraBaker {
 					float w = spRange[ i ] > 0.0 ? pow( clamp( 1.0 - pow( d / spRange[ i ], 4.0 ), 0.0, 1.0 ), 2.0 ) : 1.0;
 					if ( ! occluded( x, l, d - 0.02 ) ) Ed += spCol[ i ] * sa * w * c / ( d * d );
 				}
+				// the sun: one shadow ray towards it (out through a window, else the shell stops it)
+				if ( sunCol.r + sunCol.g + sunCol.b > 0.0 ) {
+					vec3 l = normalize( sunDir + 0.0045 * ( vec3( rnd(), rnd(), rnd() ) - 0.5 ) );
+					float c = dot( N.xyz, l );
+					if ( c > 0.0 && ! occluded( x, l, 60.0 ) ) Ed += sunCol * c;
+				}
 				// the line lights: a point along each (a tube's: on its side towards x; a strip's: its face), one
 				// shadow ray (stopping short of the emitter's own glass or box); intensity per metre × cosines / d² × its length
 				for ( int i = 0; i < ${ NS }; ++ i ) {
@@ -368,7 +380,7 @@ export class LuminaraBaker {
 					if ( ! occluded( x, l, d - 0.01 ) ) Es += sgCol[ i ] * cr * ce / ( d * d ) * h;
 				}
 				oAll = vec4( ( Ed + Es ) / spp, 1.0 ); oSconce = vec4( Es / spp, 1.0 );
-			}`, { spPos: { value: sp.pos }, spDir: { value: sp.dir }, spCol: { value: sp.col }, spCone: { value: sp.cone }, spRange: { value: sp.range }, sgA: { value: U.uSegA.value }, sgB: { value: U.uSegB.value }, sgCol: { value: U.uSegCol.value }, sgN: { value: U.uSegN.value }, spp: { value: SAMPLES.direct } }, direct, { blend: true } );
+			}`, { spPos: { value: sp.pos }, spDir: { value: sp.dir }, spCol: { value: sp.col }, spCone: { value: sp.cone }, spRange: { value: sp.range }, sgA: { value: U.uSegA.value }, sgB: { value: U.uSegB.value }, sgCol: { value: U.uSegCol.value }, sgN: { value: U.uSegN.value }, spp: { value: SAMPLES.direct }, sunDir: { value: sunDir }, sunCol: { value: sunCol } }, direct, { blend: true } );
 		await dp.run( SAMPLES.direct );
 		// the sky: as drawn (src/luminara.js's cylinder and its map's transform)
 		const sky = L.materials.sky, skyMap = sky.map, cyl = L.sky.geometry.parameters;
@@ -376,7 +388,7 @@ export class LuminaraBaker {
 		const yb = L.sky.geometry.boundingBox.min.y, yt = L.sky.geometry.boundingBox.max.y;
 		skyMap?.updateMatrix();
 		const gather = ( first ) => this._pass( /* glsl */`
-			uniform sampler2D prev; uniform vec3 mean, skyCol; uniform sampler2D skyMap; uniform mat3 skyUv; uniform float skyR, skyY0, skyH, hasSky, spp, first;
+			uniform sampler2D prev; uniform vec3 mean, skyCol; uniform sampler2D skyMap; uniform mat3 skyUv; uniform float skyR, skyY0, skyH, skyEye, hasSky, spp, first;
 			out vec4 o;
 			void main() {
 				seedRng();
@@ -392,17 +404,16 @@ export class LuminaraBaker {
 						L += alb / 3.14159265 * Ein;
 						if ( first > 0.5 ) L += textureSampleBarycoord( vEmit, bc, fi.xyz ).rgb;
 					} else if ( first > 0.5 && hasSky > 0.5 ) {
-						// the sky cylinder (radius skyR about the y axis): where the ray leaves through it
-						float a = dot( d.xz, d.xz ), b = dot( x.xz, d.xz ), c = dot( x.xz, x.xz ) - skyR * skyR, s = ( - b + sqrt( max( 0.0, b * b - a * c ) ) ) / max( a, 1e-6 );
-						vec3 h = x + d * s; float th = atan( h.x, h.z ); if ( th < 0.0 ) th += 6.2831853;
-						vec2 uv = vec2( th / 6.2831853, ( h.y - skyY0 ) / skyH );
+						// the sky by direction (at infinity, as src/luminara.js draws it: the cylinder's mapping seen from skyEye on its axis)
+						float th = atan( d.x, d.z ); if ( th < 0.0 ) th += 6.2831853;
+						vec2 uv = vec2( th / 6.2831853, ( skyEye + skyR * d.y / max( length( d.xz ), 1e-3 ) - skyY0 ) / skyH );
 						vec2 st = ( skyUv * vec3( uv, 1.0 ) ).xy;
 						L += skyCol * textureLod( skyMap, st, 0.0 ).rgb;
 					}
 				}
 				o = vec4( 3.14159265 * L / 8.0 / spp, 1.0 );
 			}`, { prev: { value: null }, mean: { value: new THREE.Vector3() }, skyCol: { value: sky.color.clone() }, skyMap: { value: skyMap ?? null }, skyUv: { value: skyMap ? skyMap.matrix : new THREE.Matrix3() },
-			skyR: { value: cyl.radiusTop }, skyY0: { value: yb }, skyH: { value: yt - yb }, hasSky: { value: skyMap ? 1 : 0 }, spp: { value: 1 }, first: { value: first ? 1 : 0 } }, null, { blend: true } );
+			skyR: { value: cyl.radiusTop }, skyY0: { value: yb }, skyEye: { value: L.skyU.uSkyEye.value }, skyH: { value: yt - yb }, hasSky: { value: skyMap ? 1 : 0 }, spp: { value: 1 }, first: { value: first ? 1 : 0 } }, null, { blend: true } );
 		// bounces: E1 from the emitters, the sky and the direct light on what the rays hit; E2.. from the one before
 		const mean = async tex => {
 
@@ -449,7 +460,7 @@ export class LuminaraBaker {
 			for ( let c = 0; c < 3; ++ c ) data[ d + c ] = Math.min( 255, Math.max( 0, Math.round( 255 * enc( buf[ s + c ] ) + dither ) ) );
 
 		}
-		const stats = { triangles: this.triangles, spots: spots.length, sconces: NS, sources: this.sources.length, mean: sum.map( v => +v.length().toFixed( 4 ) ), scale: +scale.toFixed( 4 ) };
+		const stats = { triangles: this.triangles, spots: spots.length, sun: +( sunOn ? sun.userData.intensity ?? sun.intensity : 0 ).toFixed( 2 ), sconces: NS, sources: this.sources.length, mean: sum.map( v => +v.length().toFixed( 4 ) ), scale: +scale.toFixed( 4 ) };
 		direct.dispose();
 		for ( const rt of this._keep ?? [] ) rt.dispose();
 		this._keep = [];

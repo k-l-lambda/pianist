@@ -129,12 +129,12 @@ const SHELVING = {
 // Neutral white (about 4000 K) by day and at the blue hour, warm (2700-3000 K) at night. Bloom faint (a bright room: more reads overexposed). ACES keeps the contrast.
 // The windows lead: their sky bright, the room's own light in the bake scaled by `bakeInterior` (the day's most).
 export const LUMINARA_PRESETS = {
-	'Afternoon': { baked: true, bakeInterior: 0.55, shelf: 1.0, outside: 'day', sky: 1.8, cove: 1.6, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 5, sconceColor: '#fff0dc', niche: 1.0, nicheColor: '#ffe4c2', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.56, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Golden hour': { baked: true, bakeInterior: 0.6, shelf: 1.1, outside: 'sunset', sky: 1.6, cove: 1.8, coveColor: '#ffdcb0', dome: 120, downColor: '#ffe2c2', sconce: 5.5, sconceColor: '#ffe4c4', niche: 1.1, nicheColor: '#ffd6a8', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffdcb2', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Blue hour': { baked: true, bakeInterior: 0.75, shelf: 1.2, outside: 'dusk', sky: 1.2, cove: 2.0, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 6, sconceColor: '#fff0dc', niche: 1.2, nicheColor: '#ffe4c2', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.6, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
-	'Night': { baked: true, bakeInterior: 0.85, shelf: 1.3, outside: 'night', sky: 0.5, cove: 2.2, coveColor: '#ffc283', dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.62, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Afternoon': { sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.55, shelf: 1.0, outside: 'day', sky: 1.8, cove: 1.6, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 5, sconceColor: '#fff0dc', niche: 1.0, nicheColor: '#ffe4c2', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.56, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Golden hour': { sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.6, shelf: 1.1, outside: 'sunset', sky: 1.6, cove: 1.8, coveColor: '#ffdcb0', dome: 120, downColor: '#ffe2c2', sconce: 5.5, sconceColor: '#ffe4c4', niche: 1.1, nicheColor: '#ffd6a8', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffdcb2', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Blue hour': { moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.75, shelf: 1.2, outside: 'dusk', sky: 1.2, sun: 16, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, cove: 2.0, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 6, sconceColor: '#fff0dc', niche: 1.2, nicheColor: '#ffe4c2', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.6, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Night': { sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.85, shelf: 1.3, outside: 'night', sky: 0.5, moon: 1, moonLight: 0.7, stars: 1, clouds: 0.55, cove: 2.2, coveColor: '#ffc283', dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.62, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
 	// the house down, the piano under a single spot from the dome's crown
-	'Recital': { baked: true, bakeInterior: 0.9, shelf: 0.45, outside: 'night', sky: 0.32, cove: 0.5, coveColor: '#ffc283', dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
+	'Recital': { sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.9, shelf: 0.45, outside: 'night', sky: 0.32, moon: 0.8, moonLight: 0.35, stars: 0.8, clouds: 0.55, cove: 0.5, coveColor: '#ffc283', dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
 };
 export const LUMINARA_OUTSIDE = [ 'day', 'sunset', 'dusk', 'night' ];
 
@@ -339,6 +339,150 @@ function fibreNormalMap() {
 
 /** Outward (f) and the viewer's right (x) at φ, from the centre. */
 const outward = phi => new THREE.Vector3( Math.sin( phi ), 0, Math.cos( phi ) );
+
+// The moon: where window M (180°) shows it, from the piano's view and from 30° round (az 194°, 6° up:
+// the dark sky of the photo behind it, inside the window's ring from both)
+const MOON = { az: 194, el: 6.0 };
+// the sky photo by direction (at infinity, as the moon and the stars: no parallax as the eye moves): the
+// cylinder's own mapping as seen from SKY_EYE high on its axis
+const SKY_EYE = 1.5;
+/** A direction (unit) by azimuth (as φ: outward's) and elevation, in degrees. */
+const dirOf = ( az, el ) => { const a = THREE.MathUtils.degToRad( az ), e = THREE.MathUtils.degToRad( el ); return new THREE.Vector3( Math.sin( a ) * Math.cos( e ), Math.sin( e ), Math.cos( a ) * Math.cos( e ) ); };
+
+// thin clouds: periodic value noise (fbm), 256² tileable, the same on the CPU (the moon's light under
+// them) and in the sky's shader (a DataTexture of it)
+const CLOUD_N = 256;
+const cloudNoise = ( () => {
+
+	const N = CLOUD_N, out = new Float32Array( N * N );
+	let seed = 7; const rnd = () => ( seed = ( seed * 16807 ) % 2147483647 ) / 2147483647;
+	for ( const [ cells, amp ] of [ [ 4, 0.5 ], [ 8, 0.26 ], [ 16, 0.14 ], [ 32, 0.07 ], [ 64, 0.03 ] ] ) {
+
+		const g = Float32Array.from( { length: cells * cells }, rnd ), at = ( i, j ) => g[ ( ( j % cells ) * cells ) + ( i % cells ) ];
+		for ( let y = 0; y < N; y ++ ) for ( let x = 0; x < N; x ++ ) {
+
+			const fx = x / N * cells, fy = y / N * cells, i = Math.floor( fx ), j = Math.floor( fy ), u = fx - i, v = fy - j, su = u * u * ( 3 - 2 * u ), sv = v * v * ( 3 - 2 * v );
+			out[ y * N + x ] += amp * ( ( at( i, j ) * ( 1 - su ) + at( i + 1, j ) * su ) * ( 1 - sv ) + ( at( i, j + 1 ) * ( 1 - su ) + at( i + 1, j + 1 ) * su ) * sv );
+
+		}
+
+	}
+	return out;
+
+} )();
+/** The noise at (u, v), tiled, bilinear (as the texture's sampler). */
+const cloudAt = ( u, v ) => {
+
+	const N = CLOUD_N, x = ( ( u % 1 + 1 ) % 1 ) * N - 0.5, y = ( ( v % 1 + 1 ) % 1 ) * N - 0.5, i = Math.floor( x ), j = Math.floor( y ), fx = x - i, fy = y - j;
+	const at = ( a, b ) => cloudNoise[ ( ( b + N ) % N ) * N + ( ( a + N ) % N ) ];
+	return ( at( i, j ) * ( 1 - fx ) + at( i + 1, j ) * fx ) * ( 1 - fy ) + ( at( i, j + 1 ) * ( 1 - fx ) + at( i + 1, j + 1 ) * fx ) * fy;
+
+};
+// the clouds' layer: u round the cylinder (CLOUD_TILES times), v by height; drifting along u; density
+// from the noise (two layers, the second faster) over a threshold set by the cover
+const CLOUD = { tiles: 7, vScale: 0.11, drift: [ 0.0021, 0.0034 ] };
+const cloudDensity = ( phi, y, t, cover ) => {
+
+	const u = phi / ( 2 * Math.PI ) * CLOUD.tiles, v = y * CLOUD.vScale;
+	const n = 0.65 * cloudAt( u + CLOUD.drift[ 0 ] * t, v ) + 0.35 * cloudAt( 1.7 * u + CLOUD.drift[ 1 ] * t + 0.31, 1.9 * v + 0.43 );
+	const th = 0.57 - 0.3 * cover, d = Math.min( 1, Math.max( 0, ( n - th ) / 0.22 ) );
+	return 0.85 * d * d * ( 3 - 2 * d ) * Math.min( 1, Math.max( 0, ( y - 2.0 ) / 0.5 ) );
+
+};
+
+/**
+ * The sky's extras on the city's photo, by the view's direction (at infinity: the floor's mirror and each
+ * window see them where they should be): stars, the moon (its disc, its halo, hazier under cloud), thin
+ * clouds drifting over it (lit by it), the low sun (its disc and its glow). The photo's own brightness
+ * masks them (its lit city before them).
+ */
+function addNightSky( material, U ) {
+
+	material.onBeforeCompile = shader => {
+
+		Object.assign( shader.uniforms, U );
+		shader.vertexShader = shader.vertexShader
+			.replace( '#include <common>', '#include <common>\nvarying vec3 vSkyWorld;' )
+			.replace( '#include <worldpos_vertex>', '#include <worldpos_vertex>\nvSkyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;' );
+		if ( ! shader.vertexShader.includes( 'vSkyWorld = ' ) ) shader.vertexShader = shader.vertexShader.replace( '#include <project_vertex>', '#include <project_vertex>\nvSkyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;' );
+		shader.fragmentShader = shader.fragmentShader
+			.replace( '#include <common>', `#include <common>
+			varying vec3 vSkyWorld;
+			uniform sampler2D uCloud;
+			uniform vec3 uMoonDir, uSunDir, uSunColor;
+			uniform float uMoon, uStars, uClouds, uSun, uTime, uCloudTiles, uCloudV;
+			uniform vec2 uDrift;
+			uniform float uSkyEye, uSkyR, uSkyY0, uSkyH;
+			#ifdef USE_MAP
+				uniform mat3 mapTransform;
+			#endif
+			float skyHash( vec2 p ) { p = fract( p * vec2( 123.34, 456.21 ) ); p += dot( p, p + 45.32 ); return fract( p.x * p.y ); }
+			float cloudDens( float phi, float y ) {
+				float u = phi / 6.28318 * uCloudTiles, v = y * uCloudV;
+				float n = 0.65 * texture2D( uCloud, vec2( u + uDrift.x * uTime, v ) ).r + 0.35 * texture2D( uCloud, vec2( 1.7 * u + uDrift.y * uTime + 0.31, 1.9 * v + 0.43 ) ).r;
+				return 0.85 * smoothstep( 0.57 - 0.3 * uClouds, 0.79 - 0.3 * uClouds, n ) * clamp( ( y - 2.0 ) / 0.5, 0.0, 1.0 );
+			}` )
+			// the photo by direction: its azimuth, and the height on the cylinder seen from the eye on its axis
+			// (its wrap at 0°: the doors, no window)
+			.replace( '#include <map_fragment>', `
+				vec3 skyD = normalize( vSkyWorld - cameraPosition );
+				float skyPhi = atan( skyD.x, skyD.z );
+				if ( skyPhi < 0.0 ) skyPhi += 6.28318;
+				float skyY = uSkyEye + uSkyR * skyD.y / max( length( skyD.xz ), 1e-3 );
+				#ifdef USE_MAP
+					diffuseColor *= texture2D( map, ( mapTransform * vec3( skyPhi / 6.28318, ( skyY - uSkyY0 ) / uSkyH, 1.0 ) ).xy );
+				#endif` )
+			.replace( '#include <opaque_fragment>', `{
+				vec3 d = skyD;
+				float phi = skyPhi;
+				vec3 p = vec3( 0.0, skyY, 0.0 );
+				float lum = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+				float open = 1.0 - smoothstep( 0.03, 0.09, lum );		// (the dark sky; not the lit city)
+				// clouds (only where it is night: uClouds 0 else)
+				float cd = uClouds > 0.0 ? cloudDens( phi, p.y ) * open : 0.0;
+				float toMoon = max( dot( d, uMoonDir ), 0.0 );
+				vec3 cloudCol = vec3( 0.020, 0.024, 0.034 ) + vec3( 0.55, 0.6, 0.7 ) * uMoon * ( 0.008 + 0.35 * pow( toMoon, 3000.0 ) + 0.05 * pow( toMoon, 300.0 ) );		// (lit by the moon close round it only: its silver edge)
+				outgoingLight = mix( outgoingLight, cloudCol, 0.8 * cd );
+				// stars: a grid by direction, one in some cells, most faint
+				if ( uStars > 0.0 && d.y > 0.07 ) {
+					vec2 sp = vec2( atan( - d.x, - d.z ), asin( d.y ) ) * 95.0;		// (its azimuth's wrap at the doors' (0°), not the windows')
+					vec2 cell = floor( sp ), f = fract( sp );
+					float h = skyHash( cell ), h2 = skyHash( cell + 17.1 ), h3 = skyHash( cell + 3.7 );
+					vec2 c = vec2( 0.2 + 0.6 * h2, 0.2 + 0.6 * h3 );
+					float px = length( fwidth( sp ) ) + 1e-4;
+					float r = length( f - c ) / px;		// (in pixels)
+					float mag = h < 0.12 ? pow( skyHash( cell + 9.2 ), 5.0 ) : 0.0;
+					float tw = 0.75 + 0.25 * sin( uTime * ( 1.5 + 3.0 * h2 ) + 40.0 * h3 );
+					vec3 sc = mix( vec3( 0.75, 0.85, 1.0 ), vec3( 1.0, 0.92, 0.8 ), h3 );
+					outgoingLight += step( h, 0.12 ) * sc * uStars * ( 0.2 + 9.0 * mag ) * tw * exp( - r * r * 1.2 ) * open * ( 1.0 - cd ) * smoothstep( 0.07, 0.2, d.y );
+				}
+				// the moon: its disc (mottled, its limb darker), a halo, hazier and wider under cloud
+				if ( uMoon > 0.0 ) {
+					float ang = length( cross( d, uMoonDir ) ), R = 0.011;
+					float aa = fwidth( ang ) + 1e-5;
+					float disc = ( 1.0 - smoothstep( R - aa, R + aa, ang ) ) * step( 0.0, dot( d, uMoonDir ) );
+					vec3 t1 = normalize( cross( uMoonDir, vec3( 0.0, 1.0, 0.0 ) ) ), t2 = cross( t1, uMoonDir );
+					vec2 q = vec2( dot( d, t1 ), dot( d, t2 ) ) / R;
+					float maria = texture2D( uCloud, q * 0.22 + 0.5 ).r;
+					float limb = sqrt( max( 0.0, 1.0 - dot( q, q ) ) );
+					vec3 moonCol = vec3( 1.0, 0.97, 0.9 ) * ( 0.72 + 0.28 * limb ) * ( 1.18 - 0.55 * smoothstep( 0.45, 0.75, maria ) );
+					float halo = 0.06 * exp( - ang / 0.018 ) + 0.015 * exp( - ang / 0.08 );
+					float haze = cd * ( 0.35 * exp( - ang / 0.03 ) + 0.06 * exp( - ang / 0.1 ) );		// (thin cloud before it: the light spread out)
+					outgoingLight += uMoon * open * ( moonCol * 4.0 * disc * ( 1.0 - 0.92 * cd ) + vec3( 0.75, 0.8, 0.9 ) * ( halo * ( 1.0 - 0.5 * cd ) + haze ) );
+				}
+				// the low sun: its disc and its glow
+				if ( uSun > 0.0 ) {
+					float ang = length( cross( d, uSunDir ) ) * step( 0.0, dot( d, uSunDir ) ) + ( 1.0 - step( 0.0, dot( d, uSunDir ) ) ) * 2.0;
+					float aa = fwidth( ang ) + 1e-5;
+					float disc = 1.0 - smoothstep( 0.0085 - aa, 0.0085 + aa, ang );
+					outgoingLight += uSun * uSunColor * ( 60.0 * disc + 1.6 * exp( - ang / 0.03 ) + 0.35 * exp( - ang / 0.16 ) );
+				}
+			}
+			#include <opaque_fragment>` );
+
+	};
+
+}
 const rightOf = phi => new THREE.Vector3( - Math.cos( phi ), 0, Math.sin( phi ) );
 /** A frame at φ, r out: x the viewer's right, y up, z towards the centre. */
 export function frameAt( phi, r, y = 0 ) {
@@ -671,6 +815,17 @@ export class Luminara {
 			// the city outside (the pack's sky; plain until then)
 			sky: new THREE.MeshBasicMaterial( { color: '#33476e', side: THREE.BackSide, fog: false } ),
 		};
+		{
+
+			const tex = new THREE.DataTexture( Uint8Array.from( cloudNoise, v => Math.round( 255 * Math.min( 1, Math.max( 0, v ) ) ) ), CLOUD_N, CLOUD_N, THREE.RedFormat );
+			tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
+			this.skyU = { uCloud: { value: tex }, uMoonDir: { value: dirOf( MOON.az, MOON.el ) }, uSunDir: { value: new THREE.Vector3( 0, 1, 0 ) }, uSunColor: { value: new THREE.Color() },
+				uMoon: { value: 0 }, uStars: { value: 0 }, uClouds: { value: 0 }, uSun: { value: 0 }, uTime: { value: 0 },
+				uSkyEye: { value: SKY_EYE }, uSkyR: { value: 11 }, uSkyY0: { value: - 4 }, uSkyH: { value: 14 },
+				uCloudTiles: { value: CLOUD.tiles }, uCloudV: { value: CLOUD.vScale }, uDrift: { value: new THREE.Vector2( ...CLOUD.drift ) } };
+			addNightSky( this.materials.sky, this.skyU );
+
+		}
 
 		this.materials.ledWall = this.materials.led.clone();
 		this.materials.ledFloor = this.materials.led.clone();
@@ -756,6 +911,8 @@ export class Luminara {
 			[ 'led', 0, 40, 0.1, 'Ceiling lines' ], [ 'ledWall', 0, 20, 0.1, 'Wall lines' ], [ 'ledFloor', 0, 10, 0.1, 'Floor lines' ], [ 'ledColor', 'color', 'Line color' ],
 			[ 'top', 0, 2000, 10, 'Recital spot' ], [ 'topColor', 'color', 'Recital spot color' ], [ 'topAngle', 5, 40, 0.5, 'Recital spot cone (°)' ],
 			[ 'env', 0, 1.5, 0.01, 'Ambient (probe)' ],
+			[ 'sun', 0, 30, 0.1, 'Sun (through a window)' ], [ 'sunColor', 'color', 'Sun color' ], [ 'sunAz', 0, 360, 0.5, 'Sun azimuth (°)' ], [ 'sunEl', 2, 60, 0.1, 'Sun elevation (°)' ],
+			[ 'moon', 0, 2, 0.01, 'Moon' ], [ 'moonLight', 0, 4, 0.01, 'Moonlight' ], [ 'stars', 0, 3, 0.01, 'Stars' ], [ 'clouds', 0, 1, 0.01, 'Clouds' ],
 		];
 
 	}
@@ -925,6 +1082,7 @@ export class Luminara {
 			this.sky.userData.noAO = true;
 			this.group.add( this.sky );
 			this.skyReps = reps;
+			this.skyU.uSkyR.value = rs; this.skyU.uSkyY0.value = yb; this.skyU.uSkyH.value = ext;		// (the photo by direction: this cylinder's mapping)
 			// the photo between top - h and top: v' = 1 - ( yb + ext v - ( top - h ) ) / h (flipped: glTF's)
 			this.skyV = { repeat: - ext / h, offset: 1 - ( yb - top + h ) / h };
 
@@ -1321,6 +1479,15 @@ export class Luminara {
 		} );
 		// a warm light in each niche (on its shelves and reliefs)
 		this.nicheLights = [];
+		// the low sun through a window (Blue hour), or the moon (night): a directional light, its shadow over
+		// the room (the walls round the windows cast it), soft
+		this.sun = new THREE.DirectionalLight( '#ffffff', 0 );
+		this.sun.castShadow = true;
+		this.sun.shadow.mapSize.set( 4096, 4096 );
+		Object.assign( this.sun.shadow.camera, { left: - 9, right: 9, top: 9, bottom: - 9, near: 1, far: 40 } );
+		this.sun.shadow.bias = - 0.0002; this.sun.shadow.normalBias = 0.02; this.sun.shadow.radius = 4;
+		this.sun.target.position.set( 0, 0, 0 );
+		this.lights.add( this.sun, this.sun.target );
 
 	}
 
@@ -1336,6 +1503,16 @@ export class Luminara {
 			s.intensity = L.dome; s.color.set( L.downColor ); s.visible = L.dome > 0;
 
 		}
+		// the sun (its disc in the sky, its light through a window) or the moon (the night's: its disc, stars, clouds)
+		const S = this.skyU, sunOn = ( L.sun ?? 0 ) > 0, moonOn = ( L.moon ?? 0 ) > 0;
+		S.uSunDir.value.copy( dirOf( L.sunAz ?? 249, L.sunEl ?? 15 ) ); S.uSunColor.value.set( L.sunColor ?? '#ffc890' ); S.uSun.value = sunOn ? Math.sqrt( L.sun / 16 ) : 0;		// (its disc and glow: the preset's at 1)
+		S.uMoon.value = L.moon ?? 0; S.uStars.value = L.stars ?? 0; S.uClouds.value = moonOn ? L.clouds ?? 0 : 0;
+		const sunDir = sunOn ? S.uSunDir.value : S.uMoonDir.value;
+		this.sun.position.copy( sunDir ).multiplyScalar( 20 );
+		this.sun.color.set( sunOn ? L.sunColor ?? '#ffc890' : '#b8c8e8' );
+		this.sun.userData.intensity = sunOn ? L.sun : moonOn ? L.moonLight ?? 0 : 0;
+		this.sun.intensity = this.sun.userData.intensity * ( sunOn ? 1 : 1 - this.moonCloud() );
+		this.sun.visible = this.sun.userData.intensity > 0;
 		this.lights.updateMatrixWorld( true );
 		M.sconce.emissive.set( L.sconceColor ); M.sconce.emissiveIntensity = L.sconce;
 		for ( const m of [ M.neon, ...Object.values( this.neons ?? {} ) ] ) { m.emissive.set( L.ledColor ).lerp( new THREE.Color( '#ffffff' ), 0.35 ); m.emissiveIntensity = 0.9 * L.ledWall; }		// (its middle about 2.5, its edges under 1: below saturation, its gradient reads)
@@ -1392,7 +1569,25 @@ export class Luminara {
 
 	}
 
-	setQuality( hq ) { this.highQuality = hq; this.updateLights(); }
+	setQuality( hq ) { this.highQuality = hq; this.setClear(); this.updateLights(); }
+
+	/** The clear things (crystal, glass) refracting when transmission is drawn (GI, the path tracer), else alpha glass with brighter reflections. */
+	setClear() {
+
+		const on = this.highQuality || this.mode === 'pathtrace';
+		for ( const m of this.clear ?? [] ) {
+
+			if ( ( m.transmission > 0 ) === on && m.userData.clearSet ) continue;
+			m.userData.clearSet = true;
+			m.transmission = on ? 1 : 0;
+			m.transparent = ! on; m.depthWrite = on; m.side = on ? THREE.FrontSide : THREE.DoubleSide;		// (three draws a two-sided transmissive thing's back into its own transmission first: TRELLIS's mixed winding refracted it into itself, milky)
+			// (off: premultiplied by hand in its shader, the reflection added, the back dimmed by its alpha)
+			Object.assign( m, on ? { blending: THREE.NormalBlending } : { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor } );
+			m.needsUpdate = true;
+
+		}
+
+	}
 
 	/** Every line light: the shell's (sconces, shelves) and the pack's (the sideboard's strip). */
 	get lineLights() { return [ ...this.segments, ...( this.packSegments ?? [] ) ]; }
@@ -1467,9 +1662,24 @@ export class Luminara {
 	}
 
 	/** Before the frame is drawn (main.js): the floor's reflection, from `camera`. */
+	/** The clouds before the moon now (0 clear .. 0.85), seen from the room's middle: its light dims under them. */
+	moonCloud() {
+
+		const S = this.skyU, d = S.uMoonDir.value;
+		if ( ! S.uClouds.value ) return 0;
+		const y = SKY_EYE + S.uSkyR.value * d.y / Math.hypot( d.x, d.z );		// (by direction, as the shader's)
+		return cloudDensity( Math.atan2( d.x, d.z ) + ( Math.atan2( d.x, d.z ) < 0 ? 2 * Math.PI : 0 ), y, S.uTime.value, S.uClouds.value );
+
+	}
+
 	beforeRender( renderer, camera ) {
 
-		if ( ! this.active || this.mode === 'pathtrace' ) return;
+		if ( ! this.active ) return;
+		// the sky's time (its clouds drift, its stars twinkle), the moon's light under the clouds
+		const S = this.skyU;
+		S.uTime.value = ( window.__pianistPaused ? S.uTime.value : performance.now() / 1000 + ( this.skyTimeShift ?? 0 ) );		// (skyTimeShift: to look at another moment)
+		if ( this.sun.visible && ! S.uSun.value ) this.sun.intensity = this.sun.userData.intensity * ( 1 - this.moonCloud() );
+		if ( this.mode === 'pathtrace' ) return;
 		this.mirror.update( renderer, this.scene, camera, [ this.floorMeshes ].flat(), this.highQuality ? 0.5 : 0.35 );
 
 	}
@@ -1477,7 +1687,7 @@ export class Luminara {
 	/** Around a capture by a cube camera (the probe, a mirror): the floor's reflection off (it is the main view's). */
 	set capturing( on ) { this.mirror.enabled = ! on; }
 
-	setMode( mode ) { this.mode = mode; this.updateLights(); }
+	setMode( mode ) { this.mode = mode; this.setClear(); this.updateLights(); }
 
 	// ---------------------------------------------------------------------
 	/** Load the pack (once): the furniture, the reliefs, the sky and the floor's marble. */
@@ -1511,7 +1721,7 @@ export class Luminara {
 			const sky = mapOf( name );
 			if ( ! sky || this.skies[ hour ] ) continue;
 			// (glTF images are not flipped: v down; the cylinder's v is up)
-			sky.colorSpace = THREE.SRGBColorSpace; sky.wrapS = THREE.MirroredRepeatWrapping; sky.wrapT = THREE.ClampToEdgeWrapping; sky.repeat.set( this.skyReps, this.skyV.repeat ); sky.offset.set( 0, this.skyV.offset ); sky.needsUpdate = true;
+			sky.colorSpace = THREE.SRGBColorSpace; sky.wrapS = THREE.MirroredRepeatWrapping; sky.wrapT = THREE.ClampToEdgeWrapping; sky.repeat.set( this.skyReps, this.skyV.repeat ); sky.offset.set( 0.5, this.skyV.offset ); sky.needsUpdate = true;		// (half a photo round: its mirrored joins at 45° + k 90°, between the windows, not in window M)
 			this.skies[ hour ] = sky;
 
 		}
@@ -1523,6 +1733,39 @@ export class Luminara {
 			M.border.color.set( '#b9b2a6' );
 
 		}
+		// clear things: refracting (transmission) under GI and the path tracer, as the piano's glass, alpha
+		// glass else (setClear); cut crystal faceted (flat shading: each facet its own sparkle), a crystal's
+		// index and dispersion (its rainbow edges); smooth glass as glass. No shadow (place())
+		this.clear = [];
+		const clear = cut => {
+
+			const ior = cut ? 2.0 : 1.5;
+			const m = phys( { color: '#ffffff', metalness: 0, roughness: cut ? 0.0 : 0.02, ior, thickness: cut ? 0.06 : 0.02, dispersion: cut ? 4 : 1,
+				attenuationColor: new THREE.Color( cut ? '#f4f8ff' : '#f6fbfb' ), attenuationDistance: 0.6, specularIntensity: 1,
+				flatShading: cut, side: THREE.DoubleSide } );
+			m.userData.clear = true;
+			// Fresnel for the alpha fallback (transmission has its own: three's refraction is weighted by 1 - F): what is
+			// seen through is dimmed by 1 - F, the reflection (its specular, F already in it) added in full, not faded
+			// with the body; a little haze (the body's diffuse) so it does not vanish face on
+			const U = { uClearF0: { value: ( ( ior - 1 ) / ( ior + 1 ) ) ** 2 }, uClearHaze: { value: cut ? 0.08 : 0.1 } };
+			chainCompile( m, shader => {
+
+				Object.assign( shader.uniforms, U );
+				shader.fragmentShader = shader.fragmentShader
+					.replace( '#include <common>', '#include <common>\nuniform float uClearF0, uClearHaze;' )
+					.replace( '#include <opaque_fragment>', `#ifdef USE_TRANSMISSION
+						#include <opaque_fragment>
+					#else
+						float clearF = uClearF0 + ( 1.0 - uClearF0 ) * pow( 1.0 - saturate( abs( dot( normal, geometryViewDir ) ) ), 5.0 );
+						float clearHaze = uClearHaze * ( 1.0 - clearF );
+						gl_FragColor = vec4( totalSpecular + ( outgoingLight - totalSpecular ) * clearHaze, clearF + clearHaze );
+					#endif` );
+
+			}, 'clearFresnel' );
+			this.clear.push( m );
+			return m;
+
+		};
 		// our materials for the pack's (by extras.look)
 		const ours = new Map();
 		const finish = m => {
@@ -1543,9 +1786,9 @@ export class Luminara {
 				fabric: () => phys( { color: '#ffffff', vertexColors: true, roughness: 0.95, sheen: 0.8, sheenColor: new THREE.Color( '#fff4e4' ), sheenRoughness: 0.55 } ),		// (the cushions)
 				shade: () => phys( { color: '#f6efe2', roughness: 0.9, emissive: new THREE.Color( '#ffdcb0' ), emissiveIntensity: 2.5 } ),		// (a lamp's shade: lit through)
 				stone: () => phys( { color: '#09090a', roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 } ),
-				glass: () => phys( { color: '#eef5f8', roughness: 0.03, transparent: true, opacity: 0.45, depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, ior: 1.5 } ),		// (see-through; no shadow: place())
+				glass: () => clear( false ),		// (smooth glass: a ball, a dome, a vase)
 				silver: () => phys( { color: '#d9dbe0', metalness: 1, roughness: 0.2 } ),
-				crystal: () => phys( { color: '#eef4f8', roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, ior: 1.6 } ),
+				crystal: () => clear( true ),		// (cut crystal: faceted, more dispersion)
 				relief: () => phys( { color: m.emissiveMap ? '#9c8f80' : '#ffffff', map: m.map, ...( m.name === 'relief-curtain' ? { roughness: 0.9, sheen: 0.7, sheenColor: new THREE.Color( '#fff6ea' ), sheenRoughness: 0.5 } : {} ),		// (a self-lit relief's panel darker: its lines read; the curtain: cloth)
 					 normalMap: m.normalMap, normalMapType: THREE.ObjectSpaceNormalMap, roughness: 0.55, side: THREE.DoubleSide,
 					...( m.emissiveMap ? { emissiveMap: m.emissiveMap, emissive: new THREE.Color( '#ffd9a6' ) } : {} ) } ),		// (the clef's gold: a line of light)
@@ -1595,7 +1838,7 @@ export class Luminara {
 			}
 			const o = nodes[ name ].clone();
 			if ( ORNAMENTS.has( name ) && ! /^books/.test( name ) ) o.scale.multiplyScalar( 1.15 );		// (as the close-ups': about three quarters of a shelf's height)
-			o.traverse( c => { if ( c.isMesh ) { c.material = finish( c.material ); c.castShadow = ! c.material.transparent; c.receiveShadow = true; } } );		// (glass: no shadow)
+			o.traverse( c => { if ( c.isMesh ) { c.material = finish( c.material ); c.castShadow = ! c.material.transparent && ! c.material.userData.clear; c.receiveShadow = true; } } );		// (glass: no shadow)
 			if ( name === 'plant' ) {
 
 				o.traverse( c => { if ( c.isMesh && [ 'foliage', 'natural' ].includes( c.material.userData.look ?? c.material.name ) ) c.visible = false; } );
@@ -1690,6 +1933,7 @@ export class Luminara {
 
 		}
 		this.pack = pack;
+		this.setClear();
 		this.group.add( pack );
 
 	}
