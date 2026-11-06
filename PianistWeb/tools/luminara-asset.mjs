@@ -25,11 +25,25 @@ import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 
 const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..' );
 const TRIS = { 'sofa-low': 26000, 'tub-chair': 20000, 'side-table': 9000, 'plant': 12000, 'sideboard': 6000, 'table-lamp': 6000, 'roses': 16000,
-	'gold-disc': 4000, 'clef-statue': 6000, 'gold-ribbon': 6000, 'books': 8000, 'crystal': 4000 };
+	'gold-disc': 4000, 'clef-statue': 6000, 'gold-ribbon': 6000, 'books': 8000, 'crystal': 4000,
+	// the close-ups' ornaments, a cabinet, the banquette, a planter
+	'pothos': 9000, 'armillary': 6000, 'figurine': 6000, 'crystal-gem': 3000, 'gramophone': 6000, 'hourglass': 4000, 'white-flowers': 9000, 'cloche': 4000,
+	'astronaut': 6000, 'crystal-note': 3000, 'loop-sculpture': 4000, 'headphones': 5000, 'diffuser': 4000, 'metronome': 4000, 'whale-tail': 4000, 'radio': 5000,
+	'coral-tree': 7000, 'mushroom-lamp': 4000, 'crystal-ball': 5000, 'small-cabinet': 4000, 'lily-planter': 10000,
+	// more ornaments (each once), the bench's cushions
+	'books-grey': 6000, 'books-gold': 6000, 'books-flat': 3000, 'perfume': 4000, 'shell': 5000, 'gold-star': 4000, 'brass-globe': 6000, 'jewelry-box': 4000,
+	'clock': 4000, 'ceramic-vase': 3000, 'candles': 4000, 'olive-vase': 7000, 'cushion-square': 6000, 'cushion-lumbar': 6000, 'cushion-velvet': 6000 };		// (the banquette: built in its place, src/luminara.js BENCH)
 // [ the axis sized ('y': height, 'x': length), m ]
-const SIZE = { 'sofa-low': [ 'x', 2.3 ], 'tub-chair': [ 'x', 0.95 ], 'side-table': [ 'y', 1.05 ], 'plant': [ 'y', 1.6 ], 'sideboard': [ 'x', 2.2 ], 'table-lamp': [ 'y', 0.62 ],
-	'roses': [ 'y', 0.32 ], 'gold-disc': [ 'y', 0.36 ], 'clef-statue': [ 'y', 0.34 ], 'gold-ribbon': [ 'y', 0.3 ], 'books': [ 'x', 0.42 ], 'crystal': [ 'y', 0.22 ] };
-const RELIEF = {};		// (none now: the clef is a light, src/luminara.js; the shelves hold real ornaments)
+const SIZE = { 'sofa-low': [ 'x', 2.3 ], 'tub-chair': [ 'x', 0.95 ], 'side-table': [ 'y', 1.05 ], 'plant': [ 'y', 1.6 ], 'sideboard': [ 'x', 1.7 ], 'table-lamp': [ 'y', 0.62 ],
+	'roses': [ 'y', 0.32 ], 'gold-disc': [ 'y', 0.36 ], 'clef-statue': [ 'y', 0.34 ], 'gold-ribbon': [ 'y', 0.3 ], 'books': [ 'x', 0.42 ], 'crystal': [ 'y', 0.22 ],
+	'pothos': [ 'x', 0.34 ], 'armillary': [ 'y', 0.32 ], 'figurine': [ 'y', 0.24 ], 'crystal-gem': [ 'y', 0.2 ], 'gramophone': [ 'y', 0.42 ], 'hourglass': [ 'y', 0.28 ],
+	'white-flowers': [ 'y', 0.34 ], 'cloche': [ 'y', 0.3 ], 'astronaut': [ 'y', 0.26 ], 'crystal-note': [ 'y', 0.24 ], 'loop-sculpture': [ 'y', 0.28 ], 'headphones': [ 'y', 0.3 ],
+	'diffuser': [ 'y', 0.26 ], 'metronome': [ 'y', 0.24 ], 'whale-tail': [ 'y', 0.26 ], 'radio': [ 'x', 0.34 ], 'coral-tree': [ 'x', 0.38 ], 'mushroom-lamp': [ 'y', 0.32 ],
+	'crystal-ball': [ 'y', 0.26 ], 'small-cabinet': [ 'y', 1.0 ], 'banquette': [ 'x', 1.3 ], 'lily-planter': [ 'y', 1.05 ],
+	'books-grey': [ 'x', 0.4 ], 'books-gold': [ 'x', 0.32 ], 'books-flat': [ 'x', 0.34 ], 'perfume': [ 'y', 0.18 ], 'shell': [ 'y', 0.24 ], 'gold-star': [ 'y', 0.3 ],
+	'brass-globe': [ 'y', 0.3 ], 'jewelry-box': [ 'x', 0.24 ], 'clock': [ 'y', 0.2 ], 'ceramic-vase': [ 'y', 0.4 ], 'candles': [ 'x', 0.36 ], 'olive-vase': [ 'x', 0.42 ],
+	'cushion-square': [ 'x', 0.46 ], 'cushion-lumbar': [ 'x', 0.56 ], 'cushion-velvet': [ 'x', 0.44 ] };
+const RELIEF = { curtain: 2.9 };		// (the curtain of light's pleated curtain; the clef is a light, src/luminara.js; the shelves hold real ornaments)
 
 // materials (glTF PBR; extras.look: src/luminara.js's finish) and which vertices take each:
 // `test( r, g, b )` (0..1), first match; `vertexColor`: keep the decoder's colour
@@ -43,10 +57,15 @@ const MAT = {
 	foliage: { color: [ 1, 1, 1 ], roughness: 0.7, look: 'foliage', vertexColor: true },
 	natural: { color: [ 1, 1, 1 ], roughness: 0.8, look: 'natural', vertexColor: true },		// (pampas, the trunk, roses)
 	books: { color: [ 1, 1, 1 ], roughness: 0.6, look: 'books', vertexColor: true },
+	fabric: { color: [ 1, 1, 1 ], roughness: 0.92, look: 'fabric', vertexColor: true },		// (cushions: their own beige)
 	stone: { color: [ 0.03, 0.03, 0.035 ], roughness: 0.15, look: 'stone' },		// (black marble)
 	shade: { color: [ 0.95, 0.92, 0.86 ], roughness: 0.9, look: 'shade' },		// (a lamp's shade, lit through)
 	crystal: { color: [ 0.93, 0.95, 0.97 ], roughness: 0.04, look: 'crystal' },
+	glass: { color: [ 0.95, 0.97, 0.98 ], roughness: 0.03, look: 'glass' },		// (clear: src/luminara.js makes it see-through)
+	silver: { color: [ 0.85, 0.86, 0.88 ], metallic: 1, roughness: 0.2, look: 'silver' },
 };
+// triangles dropped (by their mean colour) before sizing: what TRELLIS made of the photo's backdrop
+const DROP = { 'crystal-ball': ( r, g, b ) => ( r + g + b ) / 3 < 0.1 };
 // a base made more of (BASE[ slug ]): the brass band at the foot `scale`× as high (the rest raised on
 // it), its surface smoothed (TRELLIS's is lumpy: no clean reflection), its material `mat`
 const BASE = { 'sofa-low': { scale: 2, mat: 'brassPolished', smooth: 6 } };
@@ -67,6 +86,42 @@ const CLASSES = {
 	'gold-ribbon': [ [ 'stone', ( r, g, b, y ) => y < 0.08 ], [ 'ceramic', ( r, g, b ) => r - b < 0.08 && ( r + g + b ) / 3 > 0.5 ], [ 'brass', () => true ] ],
 	'books': [ [ 'brass', ( r, g, b ) => r - b > 0.3 && g > 0.5 ], [ 'books', () => true ] ],
 	'crystal': [ [ 'crystal', () => true ] ],
+	// the close-ups' (tests by colour: warm = brass, green = leaves, bright and grey = glass or silver; by height for the parts)
+	'pothos': [ [ 'ceramic', ( r, g, b, y ) => y < 0.42 && g - r < 0.04 ], [ 'foliage', () => true ] ],
+	'armillary': [ [ 'brass', ( r, g, b ) => r - b > 0.12 ], [ 'glass', () => true ] ],
+	'figurine': [ [ 'ceramic', () => true ] ],
+	'crystal-gem': [ [ 'silver', ( r, g, b, y ) => y < 0.22 ], [ 'glass', () => true ] ],
+	'gramophone': [ [ 'brass', ( r, g, b ) => r - b > 0.12 ], [ 'silver', () => true ] ],
+	'hourglass': [ [ 'brass', ( r, g, b ) => r - b > 0.12 ], [ 'natural', ( r, g, b, y ) => y < 0.45 && r - b > 0.05 ], [ 'glass', () => true ] ],
+	'white-flowers': [ [ 'glass', ( r, g, b, y ) => y < 0.38 ], [ 'foliage', ( r, g, b ) => g > r + 0.04 && g > b ], [ 'ceramic', () => true ] ],
+	'cloche': [ [ 'brass', ( r, g, b ) => r - b > 0.14 ], [ 'glass', () => true ] ],
+	'astronaut': [ [ 'brass', ( r, g, b ) => r - b > 0.15 ], [ 'ceramic', () => true ] ],
+	'crystal-note': [ [ 'glass', () => true ] ],
+	'loop-sculpture': [ [ 'ceramic', () => true ] ],
+	'headphones': [ [ 'brass', ( r, g, b ) => r - b > 0.15 ], [ 'ceramic', () => true ] ],
+	'diffuser': [ [ 'natural', ( r, g, b, y ) => y > 0.5 ], [ 'glass', () => true ] ],
+	'metronome': [ [ 'brass', ( r, g, b ) => r - b > 0.12 ], [ 'glass', () => true ] ],
+	'whale-tail': [ [ 'brass', ( r, g, b ) => r - b > 0.12 ], [ 'ceramic', () => true ] ],		// (its marble block: white)
+	'radio': [ [ 'brass', ( r, g, b ) => r - b > 0.15 ], [ 'ceramic', () => true ] ],
+	'coral-tree': [ [ 'brass', ( r, g, b, y ) => y < 0.15 || r - b > 0.15 ], [ 'silver', () => true ] ],
+	'mushroom-lamp': [ [ 'brass', () => true ] ],
+	'crystal-ball': [ [ 'brass', ( r, g, b ) => r - b > 0.15 ], [ 'ceramic', ( r, g, b, y ) => y < 0.42 ], [ 'glass', () => true ] ],
+	'small-cabinet': [ [ 'brass', ( r, g, b, y ) => y < 0.18 ], [ 'lacquer', () => true ] ],		// (its legs)
+	'banquette': [ [ 'brass', ( r, g, b, y ) => y < 0.08 && r - b > 0.15 ], [ 'lacquer', ( r, g, b, y ) => y < 0.42 ], [ 'boucle', () => true ] ],
+	'lily-planter': [ [ 'ceramic', ( r, g, b, y ) => y < 0.53 ], [ 'brass', ( r, g, b, y ) => y < 0.57 && r - b > 0.08 ], [ 'foliage', ( r, g, b ) => g > r + 0.03 ], [ 'ceramic', () => true ] ],
+	'books-grey': [ [ 'stone', ( r, g, b, y ) => false ], [ 'books', () => true ] ],
+	'books-gold': [ [ 'brass', ( r, g, b ) => r - b > 0.2 && ( r + g + b ) / 3 > 0.45 ], [ 'books', () => true ] ],
+	'books-flat': [ [ 'books', () => true ] ],
+	'perfume': [ [ 'brass', ( r, g, b ) => r - b > 0.15 ], [ 'glass', () => true ] ],
+	'shell': [ [ 'brass', ( r, g, b, y ) => y < 0.35 && r - b > 0.15 ], [ 'ceramic', () => true ] ],
+	'gold-star': [ [ 'brass', () => true ] ],
+	'brass-globe': [ [ 'ceramic', ( r, g, b, y ) => y < 0.12 && r - b < 0.1 ], [ 'brass', () => true ] ],
+	'jewelry-box': [ [ 'brass', ( r, g, b ) => r - b > 0.15 ], [ 'lacquer', () => true ] ],
+	'clock': [ [ 'brass', ( r, g, b ) => r - b > 0.12 ], [ 'ceramic', () => true ] ],
+	'ceramic-vase': [ [ 'ceramic', () => true ] ],
+	'candles': [ [ 'brass', ( r, g, b, y ) => y < 0.15 ], [ 'ceramic', () => true ] ],
+	'olive-vase': [ [ 'ceramic', ( r, g, b, y ) => y < 0.55 && ( r + g + b ) / 3 > 0.55 && Math.abs( g - r ) < 0.05 ], [ 'foliage', () => true ] ],
+	'cushion-square': [ [ 'fabric', () => true ] ], 'cushion-lumbar': [ [ 'fabric', () => true ] ], 'cushion-velvet': [ [ 'fabric', () => true ] ],
 	'plant': [ [ 'brass', ( r, g, b, y ) => y > 0.35 && y < 0.41 && warm( r, g, b ) ], [ 'ceramic', ( r, g, b, y ) => y < 0.4 ], [ 'natural', ( r, g, b, y, rad ) => y < 0.56 || rad < 0.015 && y < 0.62 ], [ 'foliage', () => true ] ],
 };
 
@@ -123,12 +178,27 @@ for ( const slug of Object.keys( TRIS ) ) {
 	const n0 = p0.getIndices().getCount() / 3;
 	weldPrimitive( p0, { overwrite: false } );
 	simplifyPrimitive( p0, { simplifier: MeshoptSimplifier, ratio: Math.min( 1, TRIS[ slug ] / n0 ), error: 0.004, lockBorder: false } );
-	const P = p0.getAttribute( 'POSITION' ).getArray(), C = p0.getAttribute( 'COLOR_0' ), I = p0.getIndices().getArray();
+	const P = p0.getAttribute( 'POSITION' ).getArray(), C = p0.getAttribute( 'COLOR_0' );
+	let I = p0.getIndices().getArray();
 	const nv = P.length / 3, col = new Float32Array( nv * 3 );
 	for ( let i = 0; i < nv; ++ i ) { const e = C.getElement( i, [] ); col[ 3 * i ] = e[ 0 ]; col[ 3 * i + 1 ] = e[ 1 ]; col[ 3 * i + 2 ] = e[ 2 ]; }
-	// sized, its base on y 0, centred in x and z
+	if ( DROP[ slug ] ) {
+
+		const keep = [];
+		for ( let t = 0; t < I.length; t += 3 ) {
+
+			let r = 0, g = 0, b = 0;
+			for ( let j = 0; j < 3; ++ j ) { const v = I[ t + j ]; r += col[ 3 * v ] / 3; g += col[ 3 * v + 1 ] / 3; b += col[ 3 * v + 2 ] / 3; }
+			if ( ! DROP[ slug ]( r, g, b ) ) keep.push( I[ t ], I[ t + 1 ], I[ t + 2 ] );
+
+		}
+		say( `  ${ slug }: ${ ( I.length - keep.length ) / 3 } triangles of backdrop dropped` );
+		I = new Uint32Array( keep );
+
+	}
+	// sized, its base on y 0, centred in x and z (over the vertices its triangles use)
 	const lo = [ Infinity, Infinity, Infinity ], hi = [ - Infinity, - Infinity, - Infinity ];
-	for ( let i = 0; i < P.length; i += 3 ) for ( let d = 0; d < 3; ++ d ) { lo[ d ] = Math.min( lo[ d ], P[ i + d ] ); hi[ d ] = Math.max( hi[ d ], P[ i + d ] ); }
+	for ( const v of I ) for ( let d = 0; d < 3; ++ d ) { lo[ d ] = Math.min( lo[ d ], P[ 3 * v + d ] ); hi[ d ] = Math.max( hi[ d ], P[ 3 * v + d ] ); }
 	const [ axis, metres ] = SIZE[ slug ], k = metres / ( hi[ 'xyz'.indexOf( axis ) ] - lo[ 'xyz'.indexOf( axis ) ] );
 	const pos = new Float32Array( P.length );
 	for ( let i = 0; i < P.length; i += 3 ) { pos[ i ] = ( P[ i ] - ( lo[ 0 ] + hi[ 0 ] ) / 2 ) * k; pos[ i + 1 ] = ( P[ i + 1 ] - lo[ 1 ] ) * k; pos[ i + 2 ] = ( P[ i + 2 ] - ( lo[ 2 ] + hi[ 2 ] ) / 2 ) * k; }
@@ -267,6 +337,13 @@ const swatch = ( slug, mat ) => {
 		say( `${ k }: ${ ( b.length / 1024 ).toFixed( 0 ) } KB` );
 
 	}
+
+}
+for ( const k of [ 'painting-1', 'painting-2', 'painting-3' ] ) if ( fs.existsSync( path.join( G, `${ k }-raw.jpg` ) ) ) {		// (the paintings: whole)
+
+	const b = await sharp( fs.readFileSync( path.join( G, `${ k }-raw.jpg` ) ) ).resize( 1200 ).webp( { quality: 86, effort: 5 } ).toBuffer();
+	swatch( k, doc.createMaterial( k ).setBaseColorTexture( doc.createTexture( k ).setImage( b ).setMimeType( 'image/webp' ) ).setExtras( { look: 'painting' } ) );
+	say( `${ k }: ${ ( b.length / 1024 ).toFixed( 0 ) } KB` );
 
 }
 if ( fs.existsSync( path.join( G, 'rug-raw.jpg' ) ) ) {		// the rug's pattern (a round rug seen from above, filling the square)

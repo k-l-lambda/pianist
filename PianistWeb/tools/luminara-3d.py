@@ -22,6 +22,7 @@ def main():
 	ap.add_argument('--trellis', required=True)
 	ap.add_argument('--seed', type=int, default=1)
 	ap.add_argument('--force', action='store_true')
+	ap.add_argument('--key', action='store_true', help="also keep what differs from the backdrop's colour (rembg drops white or pale parts on a plain backdrop: a marble base, silver-green leaves)")
 	a = ap.parse_args()
 	os.environ.setdefault('TORCH_HOME', os.path.join(a.trellis, 'trellis-weights', 'torch-hub'))
 	os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
@@ -42,6 +43,17 @@ def main():
 		img = Image.open(os.path.join(a.generated, f'{s}-raw.jpg')).convert('RGB')
 		img = img.resize(( 1024, 1024 ), Image.Resampling.LANCZOS)
 		cut = rembg.remove(img, session=session)
+		if a.key:		# rembg's mask, and what is not the backdrop's colour (the border's median), its largest blob, holes filled
+			from scipy import ndimage
+			px = np.asarray(img).astype(np.float32)
+			border = np.concatenate([ px[0], px[-1], px[:, 0], px[:, -1] ])
+			key = np.linalg.norm(px - np.median(border, 0), axis=2) > 34
+			lab, n = ndimage.label(key)
+			if n:
+				key = lab == 1 + np.argmax(ndimage.sum(key, lab, range(1, n + 1)))
+			key = ndimage.binary_fill_holes(ndimage.binary_opening(key, iterations=2))
+			al = np.maximum(np.asarray(cut)[..., 3], ( key * 255 ).astype(np.uint8))
+			cut = Image.fromarray(np.dstack([ np.asarray(img), al ]))
 		cut.save(os.path.join(a.generated, f'{s}-rgba.png'))
 		torch.cuda.reset_peak_memory_stats(); t = time.time()
 		out = pipe.run(cut, seed=a.seed, formats=[ 'mesh' ])

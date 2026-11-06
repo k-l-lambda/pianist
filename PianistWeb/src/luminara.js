@@ -35,13 +35,36 @@ const R = LUMINARA.radius, BAY = 2 * Math.PI / LUMINARA.bays;
 // half width a, y0 to y1, corners rounded rc; `none`: the plain wall), how deep (to the back: a
 // flat panel; a window goes through)
 const OPENINGS = {
-	window: { shape: 'circle', a: 1.5, yc: 1.95, depth: 0.6 },		// (from just above the skirting almost to the cornice; deep: the wall's thickness)
-	shelves: { shape: 'rect', a: 1.36, y0: 0.32, y1: 3.42, rc: 0.4, rcBottom: 0.06, depth: 0.6 },		// (built-in: a cabinet below, shelves above in two columns; its top corners round, its foot's barely)
+	window: { shape: 'circle', a: 1.66, yc: 1.95, depth: 0.6 },		// (as big as its old rolled frame's outer edge: from just above the skirting almost to the cornice, almost to the pilasters; deep: the wall's thickness)
+	shelves: { shape: 'rect', a: 1.36, y0: 0.32, y1: 3.0, rc: 0.4, rcBottom: 0.06, depth: 0.6 },		// (built-in, as the close-ups: a cabinet below, two shelves above in two columns, the arch's space over them; its top corners round, its foot's barely)
 	pipes: { shape: 'arch', a: 0.62, y0: 0.5, yS: 2.3, depth: 0.32 },		// (a row of lit pipes, as an organ's)
 	clef: { shape: 'none' },		// (the clef and its staff: a light on the wall)
+	curtain: { shape: 'arch', a: 1.12, y0: 0.2, yS: 2.25, depth: 0.32 },		// (a curtain of light: a pleated curtain, lit tubes of falling lengths before it)
+	plain: { shape: 'none' },		// (a painting on it)
 	door: { shape: 'arch', a: 0.9, y0: 0, yS: 2.3, depth: 0.18 },
 };
-const BAYS = [ 'door', 'window', 'shelves', 'window', 'pipes', 'window', 'clef', 'window', 'pipes', 'window', 'shelves', 'window' ];
+// (the player at +z, φ 0 behind them: φ 180 across the piano; the viewer's right towards φ 90): left to right behind the
+// piano, window L (252), shelving 1 (225), the clef over its sideboard (204), window M (180), the curtain (158), shelving 2
+// (137), window R (108); in front, the doors (0) between pipes (74, 286) and paintings (37, 323). Three windows, 72° apart
+// Each [ kind, its width (deg), its opening's own parameters over OPENINGS' ]: the curtain narrow, the
+// shelving beside it wide (its room given to the shelving); from the doors' (centred on φ 0) round
+const BAYS = [
+	[ 'door', 37.2 ], [ 'plain', 37.2 ], [ 'pipes', 37.2 ], [ 'window', 30 ],		// (window R at 108)
+	[ 'shelves', 28, { a: 1.51, cols: [ 0.5 ], heights: [ [ 0.48, 1.0 ], [ 0.54, 1.06 ] ] } ],
+	[ 'curtain', 14, { a: 0.65 } ], [ 'window', 30 ], [ 'clef', 18 ],		// (window M at 180)
+	[ 'shelves', 24, { a: 1.27, cols: [ 0.5 ], heights: [ [ 0.52, 1.04 ], [ 0.46, 0.98 ] ] } ],
+	[ 'window', 30 ], [ 'pipes', 37.2 ], [ 'plain', 37.2 ],		// (window L at 252: the three windows 72° apart)
+];
+/** Each bay's centre and its edges (rad), from BAYS' widths. */
+function bayLayout() {
+
+	const out = [];
+	let at = - BAYS[ 0 ][ 1 ] / 2;
+	for ( const [ kind, w, over ] of BAYS ) { out.push( { kind, o: { ...OPENINGS[ kind ], ...over }, c: ( at + w / 2 ) * Math.PI / 180, e0: at * Math.PI / 180, e1: ( at + w ) * Math.PI / 180 } ); at += w; }
+	return out;
+
+}
+const SCONCES_AT = [ 165, 195 ];		// φ (deg) of the pilasters with a sconce: either side of window M
 
 // the ceiling: soffits stepping in and up to the dome; each step's edge a line of light (LED), the
 // riser behind it washed from its foot: [ r of the lip, y of the soffit ]
@@ -50,28 +73,53 @@ const DOME = { y: 5.8, rise: 1.05 };		// from the last riser's top, to its crown
 const LIP = 0.06, GAP = 0.07;
 const DOME_SPOTS = [ 35, - 35, 145, - 145 ];		// φ (deg) of the dome's spots: the first the keys' shadow
 
-// the furniture: [ the pack's node, φ (deg), r (null: its back on the wall), turn (deg, about its own up) ]
+// the furniture: [ the pack's node, φ (deg), r (null: its back on the wall), turn (deg, about its own up), face (optional:
+// [ φ, r ], the point it faces, in place of the room's middle) ]
 const FURNITURE = [
-	[ 'sofa-low', 90, 6.05, 0 ], [ 'sofa-low', - 90, 6.05, 0 ],
-	[ 'tub-chair', 45, 5.8, 0 ], [ 'tub-chair', 135, 5.8, 0 ], [ 'tub-chair', - 45, 5.8, 0 ], [ 'tub-chair', - 135, 5.8, 0 ],
-	[ 'side-table', 63, 6.35, 0 ], [ 'side-table', 117, 6.35, 0 ], [ 'side-table', - 63, 6.35, 0 ], [ 'side-table', - 117, 6.35, 0 ],
-	[ 'plant', 159, 6.25, 0 ], [ 'plant', - 159, 6.25, 40 ], [ 'plant', 22, 6.25, 80 ], [ 'plant', - 22, 6.25, 120 ],
-	[ 'sideboard', 180, null, 0 ],
+	// by window L (252): a sofa under it, a drum table, two tub chairs facing it, a side table at the sofa's end
+	[ 'sofa-low', 252, 6.05, 0 ], [ 'tub-chair', 229, 4.95, 0, [ 252, 4.75 ] ], [ 'tub-chair', 274, 4.9, 0, [ 252, 4.75 ] ], [ 'side-table', 267, 6.35, 0 ],
+	[ 'plant', 235, 6.3, 30 ],
+	// the clef's sideboard (204); a lily planter by window M (the bench under the curtain: BENCH)
+	[ 'sideboard', 204, null, 0 ], [ 'lily-planter', 167, 6.35, 0 ],
+	// shelving 2 (137): a small cabinet and a small round table before it; by window R (108) a chair alone
+	[ 'small-cabinet', 129, 6.2, 0 ], [ 'plant', 121, 6.35, 70 ], [ 'tub-chair', 106, 5.7, 0 ],
+	// the front: plants by the doors, side tables and chairs by the paintings (37, 323)
+	[ 'plant', 18, 6.3, 110 ], [ 'plant', - 18, 6.3, 150 ], [ 'side-table', 41, 6.3, 0 ], [ 'side-table', - 41, 6.3, 0 ],
+	[ 'tub-chair', 52, 5.7, 0 ], [ 'tub-chair', - 52, 5.7, 0 ],
 ];
+// on the small standing cabinet (before shelving 2): [ node, x (fraction of its half width), z (m, from its middle), turn ]
+const ON_SMALL_CABINET = [ [ 'gramophone', 0, - 0.02, 25 ] ];		// (the big-horned gramophone on the cabinet)
+// tables built here: [ φ, r, kind ('drum': the coffee table; 'round': a small one), what stands on it ]
+const TABLES = [ [ 252, 4.75, 'drum', [ [ 'white-flowers', - 0.18, 0, 0 ], [ 'books-flat', 0.22, 0.05, 25 ] ] ], [ 142, 5.55, 'round', [ [ 'clef-statue', 0, 0, 0 ] ] ] ];
+// a bench from under the curtain to under shelving 2, between the lily planter and the small round table: as the
+// sideboard (white lacquer, rounded ends, flush drawers, a slim brass plinth on short brass legs); beige fabric
+// cushions on it, here and there. φ from, to (deg), its back's distance from the middle (m)
+const BENCH = { from: 145.5, to: 163.5, back: 6.75, depth: 0.45, height: 0.44 };
+// rugs: [ φ, r, radius ] (the piano's in the middle: radius 2.42)
+const RUGS = [ [ 0, 0, 2.42 ], [ 251, 5.0, 1.5 ], [ 106, 5.6, 0.85 ] ];
 // on the sideboard: [ node, x along it (fraction of its half length), turn (deg) ]
-const ON_SIDEBOARD = [ [ 'table-lamp', 0.74, 0 ], [ 'roses', - 0.66, 0 ], [ 'gold-disc', 0.18, - 12 ], [ 'books', - 0.18, 0 ] ];		// (the lamp clear of the clef, on the left)
-// in the shelving: per surface (src: _shelving's: the cabinet's top in the narrow column, in the wide one,
-// the narrow column's shelves, the wide one's, bottom up): ornaments [ node, x in it (-1..1), turn ]
-const SHELVING = [
-	[ [ 'roses', - 0.3, 0 ], [ 'books', 0.45, 0 ] ],
-	[ [ 'clef-statue', - 0.55, 0 ], [ 'gold-disc', 0.05, - 12 ], [ 'crystal', 0.6, 0 ] ],
-	[ [ 'gold-ribbon', - 0.3, 20 ], [ 'crystal', 0.4, 0 ] ],
-	[ [ 'books', 0, 0 ] ],
-	[ [ 'books', - 0.45, 0 ], [ 'gold-ribbon', 0.45, - 25 ] ],
-	[ [ 'roses', - 0.45, 0 ], [ 'clef-statue', 0.45, 0 ] ],
-];
-const COFFEE = [ [ 90, 4.8 ], [ - 90, 4.8 ] ];		// drum coffee tables before the sofas (built here)
-
+const ON_SIDEBOARD = [ [ 'table-lamp', 0.74, 0 ], [ 'ceramic-vase', - 0.66, 0 ], [ 'gold-disc', 0.2, - 12 ], [ 'candles', - 0.22, 0 ] ];		// (the lamp clear of the clef, on the left)
+// in the shelving, as the close-ups: per surface (_shelving's, left to right: the cabinet's top in each column, then
+// each column's shelves, bottom up): ornaments [ node, x in it (-1..1), turn ]. Every ornament model once in the room
+// (here, the sideboard, the tables: _build warns of a second use and leaves it out)
+const SHELVING = {
+	1: [		// (shelving 1, by window L)
+		[ [ 'crystal-ball', - 0.45, 0 ], [ 'hourglass', 0.45, 0 ] ],
+		[ [ 'books-grey', - 0.4, 0 ], [ 'perfume', 0.3, - 15 ], [ 'crystal-gem', 0.75, 0 ] ],
+		[ [ 'pothos', - 0.6, 0 ], [ 'armillary', 0.05, 0 ], [ 'figurine', 0.62, - 20 ] ],
+		[ [ 'picture', - 0.5, 0 ], [ 'loop-sculpture', 0.15, 0 ], [ 'shell', 0.65, 20 ] ],
+		[ [ 'books', - 0.35, 0 ], [ 'gold-star', 0.55, 0 ] ],
+		[ [ 'brass-globe', - 0.4, 0 ], [ 'jewelry-box', 0.45, 10 ] ],
+	],
+	2: [		// (shelving 2, by window R)
+		[ [ 'radio', - 0.55, 0 ], [ 'coral-tree', 0.1, 0 ], [ 'mushroom-lamp', 0.65, 0 ] ],
+		[ [ 'books-gold', - 0.45, 0 ], [ 'astronaut', 0.25, 20 ], [ 'clock', 0.72, - 10 ] ],
+		[ [ 'vinyl', - 0.55, 12 ], [ 'headphones', 0.05, 15 ], [ 'diffuser', 0.65, 0 ] ],
+		[ [ 'roses', - 0.55, 0 ], [ 'cloche', 0.1, 0 ], [ 'metronome', 0.65, 0 ] ],
+		[ [ 'crystal-note', - 0.45, 0 ], [ 'gold-ribbon', 0.4, - 20 ] ],
+		[ [ 'whale-tail', - 0.4, 20 ], [ 'olive-vase', 0.45, 0 ] ],
+	],
+};
 // Lit as such a room would be, by its own fixtures (no stage spots but in Recital): the coves and the
 // dome (emissive: their light reaches the room through the probe, `env`), four spots in the dome's rim on the piano
 // (`dome`, cd; the first, from the player's right, casts the keys' shadows), a sconce on each pilaster
@@ -480,7 +528,7 @@ function gradientU( f ) {
  * gaps between them), a matt label, the hole; leaning back a little in a slotted base with a prop
  * behind. Its base on y 0, its face +z (as the pack's nodes); 0.36 m high.
  */
-function goldRecord( segU ) {
+function goldRecord( segU, dark = false ) {		// (dark: a black vinyl one, its label gold)
 
 	const Rr = 0.15, r0 = 0.05, th = 0.003, NA = 128, NR = 36, P = [], UV = [], I = [];
 	for ( const side of [ 1, - 1 ] ) {
@@ -506,8 +554,9 @@ function goldRecord( segU ) {
 	const AN = 256, ad = new Uint8Array( 4 * AN );
 	for ( let j = 0; j < AN; ++ j ) { const v = j / ( AN - 1 ), band = Math.abs( Math.sin( v * Math.PI * 6 ) ); ad.set( [ 255, 128, Math.round( 255 * ( 0.35 + 0.65 * Math.min( 1, band * 1.6 ) ) ), 255 ], 4 * j ); }
 	const am = new THREE.DataTexture( ad, 1, AN ); am.wrapS = THREE.RepeatWrapping; am.magFilter = am.minFilter = THREE.LinearFilter; am.needsUpdate = true;
-	const gold = new THREE.MeshPhysicalMaterial( { color: '#e3b864', metalness: 1, roughness: 0.22, anisotropy: 1, anisotropyRotation: 0, anisotropyMap: am, side: THREE.DoubleSide } );
-	const label = new THREE.MeshPhysicalMaterial( { color: '#c9a25a', metalness: 0.85, roughness: 0.55 } );
+	const gold = dark ? new THREE.MeshPhysicalMaterial( { color: '#0a0a0b', metalness: 0, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.12, anisotropy: 1, anisotropyRotation: 0, anisotropyMap: am, side: THREE.DoubleSide } )
+		: new THREE.MeshPhysicalMaterial( { color: '#e3b864', metalness: 1, roughness: 0.22, anisotropy: 1, anisotropyRotation: 0, anisotropyMap: am, side: THREE.DoubleSide } );
+	const label = new THREE.MeshPhysicalMaterial( dark ? { color: '#d6a95c', metalness: 1, roughness: 0.35 } : { color: '#c9a25a', metalness: 0.85, roughness: 0.55 } );
 	const brass = new THREE.MeshPhysicalMaterial( { color: '#d6a95c', metalness: 1, roughness: 0.3 } );
 	for ( const m of [ gold, label, brass ] ) addSegmentGlow( m, segU );
 	const rec = new THREE.Group(), mesh = ( g, m ) => { const o = new THREE.Mesh( g, m ); o.castShadow = o.receiveShadow = true; rec.add( o ); return o; };
@@ -521,6 +570,26 @@ function goldRecord( segU ) {
 	stand( new RoundedBoxGeometry( 0.16, base, 0.07, 2, 0.006 ), 0, base / 2, - 0.01 );
 	stand( new THREE.CylinderGeometry( 0.004, 0.004, 0.2, 8 ).rotateX( 0.45 ), 0, base + 0.08, - 0.075 );
 	return group;
+
+}
+
+/**
+ * A framed picture: a painting (`tex`: the pack's, whole) in a thin brass frame with a white mat, `w` × `h` m;
+ * on a wall (lean 0) or leaning back on a shelf (`lean` rad, its foot on y 0). Its face +z.
+ */
+function framedPicture( tex, w, h, lean = 0 ) {
+
+	const t = tex.clone();
+	t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.repeat.set( 1, - 1 ); t.offset.set( 0, 1 ); t.needsUpdate = true;		// (glTF images not flipped)
+	const g = new THREE.Group(), mat = 0.06 * Math.min( w, h ), fr = 0.018 * Math.max( 1, w );
+	const brass = new THREE.MeshPhysicalMaterial( { color: '#d6a95c', metalness: 1, roughness: 0.3 } );
+	const pic = new THREE.Mesh( new THREE.PlaneGeometry( w - 2 * mat, h - 2 * mat ).translate( 0, 0, 0.012 ), new THREE.MeshPhysicalMaterial( { map: t, roughness: 0.6 } ) );
+	const card = new THREE.Mesh( new THREE.BoxGeometry( w, h, 0.01 ).translate( 0, 0, 0.006 ), new THREE.MeshPhysicalMaterial( { color: '#f2ece2', roughness: 0.9 } ) );
+	g.add( pic, card );
+	for ( const [ x, y, sw, sh ] of [ [ 0, h / 2, w + 2 * fr, fr ], [ 0, - h / 2, w + 2 * fr, fr ], [ w / 2, 0, fr, h ], [ - w / 2, 0, fr, h ] ] ) g.add( new THREE.Mesh( new THREE.BoxGeometry( sw, sh, 0.025 ).translate( x, y, 0.0125 ), brass ) );
+	g.traverse( o => { if ( o.isMesh ) o.castShadow = o.receiveShadow = true; } );
+	if ( lean ) { g.position.y = h / 2 + fr; g.position.z = - 0.04; g.rotation.x = - lean; const out = new THREE.Group(); out.add( g ); return out; }
+	return g;
 
 }
 
@@ -575,6 +644,7 @@ export class Luminara {
 			// the sconces' frosted tubes: lit through, brightest in the middle
 			sconce: phys( { color: '#fbf4ea', roughness: 0.35, clearcoat: 0.6, emissive: new THREE.Color( '#ffdcb0' ), emissiveMap: gradient( v => 0.72 + 0.28 * Math.sin( Math.PI * v ) ) } ),
 			brass: phys( { color: '#d6a95c', metalness: 1, roughness: 0.3, side: THREE.DoubleSide } ),
+			brightMetal: phys( { color: '#e6c483', metalness: 1, roughness: 0.07, clearcoat: 0.5, clearcoatRoughness: 0.04, side: THREE.DoubleSide } ),		// (the windows' rings: a bright polished edge)
 			// the lines of light (LED strips, the windows' and the arches' rings, the pilasters' bars):
 			// emissive only, a little in front of what they lie on
 			led: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#ffd9a6' ), emissiveIntensity: 14, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
@@ -605,7 +675,8 @@ export class Luminara {
 		this.materials.ledWall = this.materials.led.clone();
 		this.materials.ledFloor = this.materials.led.clone();
 		this.materials.shelfLed = this.materials.led.clone();		// (the shelves' strips: seen dim; their light: the segments')
-		this.materials.stepLed = this.materials.led.clone();		// (the skirting's step lights)
+		this.materials.stepLed = this.materials.led.clone();		// (the sideboard's strip)
+		this.materials.curtainLed = this.materials.led.clone();		// (the curtain's tubes)
 		for ( const m of [ this.materials.wall, this.materials.lacquer ] ) addSegmentGlow( m, this.segU );
 		this.mirror = new PlaneMirror( new THREE.Plane( new THREE.Vector3( 0, 1, 0 ), 0 ) );		// (the floor's: src/mirror.js)
 		for ( const m of [ this.materials.floor, this.materials.border ] ) this.mirror.addTo( m );
@@ -666,9 +737,9 @@ export class Luminara {
 
 		const at = ( phi, r, y ) => outward( phi * Math.PI / 180 ).multiplyScalar( r ).setY( y );
 		return {
-			'From the sofa': { position: at( 90, 4.6, 1.15 ), target: new THREE.Vector3( 0, 1.0, 0 ) },
+			'From the sofa': { position: at( 252, 5.2, 1.15 ), target: new THREE.Vector3( 0, 1.0, 0 ) },
 			'The doors': { position: at( 0, 5.6, 1.65 ), target: new THREE.Vector3( 0, 1.4, 0 ) },
-			'The clef': { position: at( 25, 2.6, 1.6 ), target: at( 180, R, 1.9 ) },
+			'The clef': { position: at( 24, 2.6, 1.6 ), target: at( 204, R, 1.9 ) },
 			'The coves': { position: at( 200, 3.6, 1.4 ), target: new THREE.Vector3( 0, 5.2, 0 ) },
 		};
 
@@ -697,20 +768,20 @@ export class Luminara {
 		const add = ( geo, mat ) => { if ( ! parts.has( mat ) ) parts.set( mat, [] ); parts.get( mat ).push( geo.index ? geo.toNonIndexed() : geo ); };
 		this.nichePoints = [];
 		this._shelvingCount = 0;
+		this.paintings = [];
 		this.segments = [];		// { a, b, n (the strip's facing; null: a tube), clip (a plane, Vector4; null), kind }
 
 		// the bays: a panel of wall round each opening, the opening's reveal and back
-		for ( let k = 0; k < LUMINARA.bays; ++ k ) this._bay( add, k * BAY, OPENINGS[ BAYS[ k ] ], BAYS[ k ] );
+		const layout = bayLayout();
+		for ( const b of layout ) this._bay( add, b.c, b.o, b.kind, R * ( b.e1 - b.e0 ) / 2 );
 
 		// the pilasters between the bays: fluted white lacquer, a base and a brass-banded capital
 		const pil = this._pilaster();
-		for ( let k = 0; k < LUMINARA.bays; ++ k ) {
+		for ( const b of layout ) {		// (one at each bay's far edge)
 
-			const F = frameAt( ( k + 0.5 ) * BAY, R );
+			const F = frameAt( b.e1, R );
 			add( pil.shaft.clone().applyMatrix4( F ), M.lacquer );
-			add( pil.base.clone().applyMatrix4( F ), M.lacquer );
-			add( pil.capital.clone().applyMatrix4( F ), M.lacquer );
-			add( pil.band.clone().applyMatrix4( F ), M.brass );
+			if ( ! SCONCES_AT.some( d => Math.abs( d - b.e1 * 180 / Math.PI ) < 1 ) ) continue;		// (a sconce either side of window M only)
 			for ( const g of pil.sconce.brass ) add( g.clone().applyMatrix4( F ), M.brass );
 			add( pil.sconce.glass.clone().applyMatrix4( F ), M.sconce );
 			this.segments.push( { a: pil.sconce.seg[ 0 ].clone().applyMatrix4( F ), b: pil.sconce.seg[ 1 ].clone().applyMatrix4( F ), n: null, clip: null, kind: 'sconce' } );
@@ -788,21 +859,39 @@ export class Luminara {
 		add( new THREE.TorusGeometry( 2.56, 0.009, 6, 256 ).rotateX( Math.PI / 2 ).scale( 1, 0.6, 1 ), M.ledFloor );
 		{
 
-			// the rug: its pattern's square on the disc (u, v 0..1 across it), its edge a short band
-			const RR = 2.42, top = 0.012, g = new THREE.CircleGeometry( RR, 192 ).rotateX( - Math.PI / 2 ).translate( 0, top, 0 ), p = g.attributes.position, uv = g.attributes.uv;
-			for ( let i = 0; i < p.count; ++ i ) uv.setXY( i, 0.5 + 0.485 * p.getX( i ) / RR, 0.5 - 0.485 * p.getZ( i ) / RR );
-			const rug = new THREE.Mesh( g, M.rug );
-			rug.receiveShadow = true; rug.name = 'luminara:rug';
-			this.group.add( rug );
-			add( new THREE.CylinderGeometry( RR, RR + 0.006, top, 192, 1, true ).translate( 0, top / 2, 0 ), M.rug );
+			// the rugs: each its pattern's square on its disc (u, v 0..1 across it), its edge a short band
+			for ( const [ deg, rr, RR ] of RUGS ) {
+
+				const c = outward( deg * Math.PI / 180 ).multiplyScalar( rr ), top = 0.012;
+				const g = new THREE.CircleGeometry( RR, 192 ).rotateX( - Math.PI / 2 ), p = g.attributes.position, uv = g.attributes.uv;
+				for ( let i = 0; i < p.count; ++ i ) uv.setXY( i, 0.5 + 0.485 * p.getX( i ) / RR, 0.5 - 0.485 * p.getZ( i ) / RR );
+				g.translate( c.x, top, c.z );
+				const rug = new THREE.Mesh( g, M.rug );
+				rug.receiveShadow = true; rug.name = 'luminara:rug';
+				this.group.add( rug );
+				add( new THREE.CylinderGeometry( RR, RR + 0.006, top, 192, 1, true ).translate( c.x, top / 2, c.z ), M.rug );
+
+			}
 
 		}
 
-		// coffee tables before the sofas, as the reference's: a drum, its marble top on a brass rim, its
-		// white lacquered body narrowing in a curve to a brass foot ring
-		for ( const [ deg, r ] of COFFEE ) {
+		// the tables: the drum coffee table (as the reference's: its marble top on a brass rim, its white
+		// lacquered body narrowing in a curve to a brass foot ring), small round ones (marble on a brass stem)
+		this.tableTops = [];		// [ frame, the top's y, its radius, what stands on it ] (the ornaments: _build)
+		for ( const [ deg, r, kind, items ] of TABLES ) {
 
 			const F = frameAt( deg * Math.PI / 180, r ), v = ( a, b ) => new THREE.Vector2( a, b );
+			if ( kind === 'round' ) {
+
+				add( new THREE.CylinderGeometry( 0.27, 0.27, 0.025, 72 ).translate( 0, 0.6375, 0 ).applyMatrix4( F ), M.floor );
+				add( new THREE.CylinderGeometry( 0.275, 0.275, 0.01, 72 ).translate( 0, 0.62, 0 ).applyMatrix4( F ), M.brass );
+				add( new THREE.CylinderGeometry( 0.018, 0.026, 0.6, 20 ).translate( 0, 0.31, 0 ).applyMatrix4( F ), M.brass );
+				add( new THREE.CylinderGeometry( 0.17, 0.18, 0.018, 48 ).translate( 0, 0.009, 0 ).applyMatrix4( F ), M.brass );
+				this.tableTops.push( [ F, 0.65, 0.27, items ] );
+				continue;
+
+			}
+			this.tableTops.push( [ F, 0.43, 0.5, items ] );
 			const body = [ v( 0.33, 0.012 ) ];
 			for ( let i = 0; i <= 12; ++ i ) { const t = i / 12; body.push( v( 0.33 + 0.13 * Math.sin( 0.5 * Math.PI * t ) ** 1.6, 0.012 + 0.36 * t ) ); }
 			add( new THREE.LatheGeometry( body, 96 ).applyMatrix4( F ), M.lacquer );
@@ -812,11 +901,12 @@ export class Luminara {
 
 		}
 
+		this._bench( add );
 		for ( const [ mat, geos ] of parts ) {
 
 			const mesh = new THREE.Mesh( mergeGeometries( geos, false ), mat );
 			geos.forEach( g => g.dispose() );
-			mesh.castShadow = ! [ M.cove, M.dome, M.ceiling, M.led, M.ledWall, M.ledFloor, M.shelfLed, M.stepLed, M.sconce, M.neon ].includes( mat );
+			mesh.castShadow = ! [ M.cove, M.dome, M.ceiling, M.led, M.ledWall, M.ledFloor, M.shelfLed, M.stepLed, M.curtainLed, M.sconce, M.neon ].includes( mat );
 			mesh.receiveShadow = true;
 			mesh.name = `luminara:${ Object.keys( M ).find( k => M[ k ] === mat ) }`;
 			this.group.add( mesh );
@@ -856,9 +946,9 @@ export class Luminara {
 	}
 
 	/** Bay k (centred at φc): its wall panel round the opening, the opening's reveal and back. */
-	_bay( add, phiC, o, kind ) {
+	_bay( add, phiC, o, kind, hw = R * BAY / 2 ) {		// (`hw`: half its width on the wall)
 
-		const M = this.materials, hw = R * BAY / 2, H = LUMINARA.wall;
+		const M = this.materials, H = LUMINARA.wall;
 		if ( o.shape === 'none' ) {		// the plain wall (the clef's: its light on it)
 
 			const rows = [];
@@ -869,7 +959,8 @@ export class Luminara {
 			const g = new THREE.BufferGeometry();
 			g.setAttribute( 'position', new THREE.Float32BufferAttribute( P, 3 ) ); g.setAttribute( 'uv', new THREE.Float32BufferAttribute( UV, 2 ) ); g.setIndex( I ); g.computeVertexNormals();
 			add( g, M.wall );
-			if ( kind === 'clef' ) this._clefLight( add, phiC );
+			if ( kind === 'clef' ) this._clefLight( add, phiC, hw );
+			if ( kind === 'plain' ) ( this.paintings ??= [] ).push( phiC );		// (its painting: _build, the sky's photo in it)
 			return;
 
 		}
@@ -896,11 +987,10 @@ export class Luminara {
 		if ( o.shape === 'circle' ) {
 
 			// a round window: a white frame and a brass ring inside it, on the wall
-			// its rings as tubes along circles on the curved wall (flat tori stood off it in the middle and
-			// sank into it at the sides): a thick rolled frame, a brass ring inside it, one at the reveal's far end
+			// its rings as tubes along circles on the curved wall: no frame standing out of it, a bright
+			// polished metal ring on its edge (where the wall turns into the reveal), a brass one at the reveal's far end
 			const ring = rr => { const pts = []; for ( let i = 0; i < 192; ++ i ) { const t = 2 * Math.PI * i / 192; pts.push( [ rr * Math.cos( t ), o.yc + rr * Math.sin( t ) ] ); } return pts; };
-			add( this._wallTube( phiC, ring( o.a + 0.06 ), 0.1, true, R - 0.02, 20 ), M.lacquer );
-			add( this._wallTube( phiC, ring( o.a + 0.004 ), 0.018, true, R - 0.06, 10 ), M.brass );
+			add( this._wallTube( phiC, ring( o.a + 0.002 ), 0.016, true, R - 0.004, 14 ), M.brightMetal );
 			add( this._wallTube( phiC, ring( o.a - 0.012 ), 0.014, true, R + o.depth - 0.03, 10 ), M.brass );
 			return;
 
@@ -927,20 +1017,21 @@ export class Luminara {
 
 		} else {
 
-			add( backGeo, kind === 'pipes' ? M.lacquer : kind === 'clef' || kind === 'shelves' ? M.wall : M.niche );		// (the clef: its pattern glows; the shelves: lit by their strips, not from behind)
+			add( backGeo, kind === 'pipes' ? M.lacquer : kind === 'clef' || kind === 'shelves' || kind === 'curtain' ? M.wall : M.niche );		// (the clef: its pattern glows; the shelves: lit by their strips, not from behind)
 			const mid = new THREE.Vector3( 0, ( o.y0 + ( o.y1 ?? o.yS ) ) / 2, 0.25 ).applyMatrix4( F );
-			this.nichePoints.push( { kind, F, o, light: mid } );
+			this.nichePoints.push( { kind, F, o, light: mid, deg: Math.round( phiC * 180 / Math.PI ) } );
 			if ( kind === 'shelves' ) this.nichePoints[ this.nichePoints.length - 1 ].surfaces = this._shelving( add, F, o );
 			if ( kind === 'pipes' ) this._pipes( add, F, o );
+			if ( kind === 'curtain' ) this._curtain( add, F, o );
 			if ( kind !== 'shelves' ) add( new THREE.BoxGeometry( 2 * o.a - 0.04, 0.01, 0.012 ).translate( 0, o.y0 + 0.006, 0.02 ).applyMatrix4( F ), M.ledWall );		// (a strip along the back's foot)
 
 		}
-		add( this._archTrim( phiC, o ), kind === 'door' ? M.brass : M.ledWall );
+		add( this._archTrim( phiC, o, kind === 'curtain' ? 0.03 : 0.012 ), kind === 'door' ? M.brass : kind === 'curtain' ? M.lacquer : M.ledWall );		// (the curtain's: a lacquered moulding)
 
 	}
 
 	/** A band round an arch on the wall (its two sides and the semicircle), or round a rounded rect: brass, or a line of light. */
-	_archTrim( phiC, o ) {
+	_archTrim( phiC, o, tube = 0.012 ) {
 
 		if ( o.shape === 'rect' ) {
 
@@ -953,7 +1044,7 @@ export class Luminara {
 		pts.push( [ o.a + 0.03, o.y0 ] );
 		for ( let i = 0; i <= 48; ++ i ) { const t = Math.PI * i / 48; pts.push( [ ( o.a + 0.03 ) * Math.cos( t ), o.yS + ( o.a + 0.03 ) * Math.sin( t ) ] ); }
 		pts.push( [ - o.a - 0.03, o.y0 ] );
-		return this._wallTube( phiC, pts, 0.012, false );
+		return this._wallTube( phiC, pts, tube, false, R - 0.006, tube > 0.02 ? 14 : 8 );
 
 	}
 
@@ -973,8 +1064,8 @@ export class Luminara {
 		// strip of light under each shelf (and the niche's top) along its back edge, by the back wall,
 		// facing down and a little back: each part lit from its top, its back washed below it. Its
 		// light: a line light (addSegmentGlow, the bake's). Surfaces for ornaments: n.surfaces
-		const M = this.materials, t = 0.035, d = o.depth, m = this._shelvingCount = ( this._shelvingCount ?? 0 ) + 1, sx = m % 2 ? 1 : - 1;		// (the other bay's mirrored)
-		const cabTop = o.y0 + 0.62, xDiv = sx * - 0.18, top = o.y1 - 0.02;
+		const M = this.materials, t = 0.035, d = o.depth, m = this._shelvingCount = ( this._shelvingCount ?? 0 ) + 1, sx = 1;
+		const cabTop = o.y0 + 0.83, top = o.y1 - 0.02;		// (the cabinet: as the close-ups', about a third of the niche)
 		const facing = new THREE.Vector3( 0, - 0.85, 0.53 ).normalize();		// (in F: z into the room; back: - z)
 		const strip = ( x0, x1, y ) => {
 
@@ -988,27 +1079,29 @@ export class Luminara {
 		};
 		const board = ( x0, x1, y ) => add( new RoundedBoxGeometry( x1 - x0, t, d - 0.02, 2, 0.008 ).translate( ( x0 + x1 ) / 2, y - t / 2, d / 2 - 0.01 ).applyMatrix4( F ), M.lacquer );
 		// the cabinet: its body, its top, its doors and pulls
-		const cw = 2 * o.a - 0.02;
+		const cw = 2 * o.a - 0.02, doors = Math.max( 3, Math.round( cw / 0.9 ) );
 		add( new RoundedBoxGeometry( cw, cabTop - o.y0 - t, d - 0.03, 2, 0.01 ).translate( 0, o.y0 + ( cabTop - o.y0 - t ) / 2, ( d - 0.03 ) / 2 ).applyMatrix4( F ), M.lacquer );
 		board( - o.a + 0.01, o.a - 0.01, cabTop );
-		for ( let i = 0; i < 3; ++ i ) {
+		for ( let i = 0; i < doors; ++ i ) {
 
-			const x = ( i - 1 ) * cw / 3;
-			add( new RoundedBoxGeometry( cw / 3 - 0.012, cabTop - o.y0 - t - 0.04, 0.018, 2, 0.006 ).translate( x, o.y0 + ( cabTop - o.y0 - t ) / 2, d - 0.03 + 0.009 ).applyMatrix4( F ), M.lacquer );
-			add( new THREE.CylinderGeometry( 0.006, 0.006, 0.16, 12 ).translate( x + ( i === 1 ? 0 : - Math.sign( x ) * ( cw / 6 - 0.06 ) ), o.y0 + ( cabTop - o.y0 ) * 0.62, d - 0.03 + 0.03 ).applyMatrix4( F ), M.brass );
+			const x = ( i - ( doors - 1 ) / 2 ) * cw / doors, pull = i < ( doors - 1 ) / 2 ? 1 : i > ( doors - 1 ) / 2 ? - 1 : 0;		// (the pulls towards the middle)
+			add( new RoundedBoxGeometry( cw / doors - 0.012, cabTop - o.y0 - t - 0.04, 0.018, 2, 0.006 ).translate( x, o.y0 + ( cabTop - o.y0 - t ) / 2, d - 0.03 + 0.009 ).applyMatrix4( F ), M.lacquer );
+			add( new THREE.CylinderGeometry( 0.006, 0.006, 0.16, 12 ).translate( x + pull * ( cw / doors / 2 - 0.06 ), o.y0 + ( cabTop - o.y0 ) * 0.62, d - 0.03 + 0.03 ).applyMatrix4( F ), M.brass );
 
 		}
-		// the upright, and the two columns' shelves (the narrow one's higher)
-		add( new RoundedBoxGeometry( t, top - cabTop, d - 0.02, 2, 0.008 ).translate( xDiv, ( top + cabTop ) / 2, d / 2 - 0.01 ).applyMatrix4( F ), M.lacquer );
-		const L = [ - o.a + 0.01, xDiv - t / 2 ], Rr = [ xDiv + t / 2, o.a - 0.01 ], narrow = sx > 0 ? L : Rr, wide = sx > 0 ? Rr : L;
-		const hNarrow = [ cabTop + 1.31, cabTop + 2.21 ], hWide = [ cabTop + 1.0, cabTop + 1.76 ];
-		for ( const y of hNarrow ) { board( narrow[ 0 ], narrow[ 1 ], y ); strip( narrow[ 0 ] + 0.06, narrow[ 1 ] - 0.06, y - t ); }
-		for ( const y of hWide ) { board( wide[ 0 ], wide[ 1 ], y ); strip( wide[ 0 ] + 0.06, wide[ 1 ] - 0.06, y - t ); }
+		// the uprights between the columns (o.cols: their places, fractions across; the other bay's
+		// mirrored), each column's shelves at its own heights (o.heights: above the cabinet; staggered)
+		const fr = ( o.cols ?? [ 0.434 ] ).map( f => sx > 0 ? f : 1 - f ).sort( ( a, b ) => a - b );
+		const xs = fr.map( f => - o.a + 0.01 + f * ( cw ) ), bounds = [ - o.a + 0.01, ...xs, o.a - 0.01 ];
+		const heights = sx > 0 ? o.heights : [ ...o.heights ].reverse();
+		for ( const x of xs ) add( new RoundedBoxGeometry( t, top - cabTop, d - 0.02, 2, 0.008 ).translate( x, ( top + cabTop ) / 2, d / 2 - 0.01 ).applyMatrix4( F ), M.lacquer );
+		const cols = bounds.slice( 0, - 1 ).map( ( x0, i ) => [ x0 + ( i ? t / 2 : 0 ), bounds[ i + 1 ] - ( i < bounds.length - 2 ? t / 2 : 0 ) ] );
+		cols.forEach( ( c, i ) => { for ( const h of heights[ i ] ) { board( c[ 0 ], c[ 1 ], cabTop + h ); strip( c[ 0 ] + 0.06, c[ 1 ] - 0.06, cabTop + h - t ); } } );
 		strip( - o.a + o.rc + 0.02, o.a - o.rc - 0.02, o.y1 );		// (the niche's top)
-		// where the ornaments stand: [ y, x of its middle, half width ] (the cabinet's top in its two
-		// columns, then each column's shelves); the ornaments' table (SHELVING) by these, in this order
-		const mid = c => ( c[ 0 ] + c[ 1 ] ) / 2, hw = c => ( c[ 1 ] - c[ 0 ] ) / 2 - 0.04;
-		return [ [ cabTop, mid( narrow ), hw( narrow ) ], [ cabTop, mid( wide ), hw( wide ) ], ...hNarrow.map( y => [ y, mid( narrow ), hw( narrow ) ] ), ...hWide.map( y => [ y, mid( wide ), hw( wide ) ] ) ];
+		// where the ornaments stand: [ y, x of its middle, half width ]: the cabinet's top in each column,
+		// then each column's shelves (left to right); SHELVING by these
+		const mid = c => ( c[ 0 ] + c[ 1 ] ) / 2, hw = c => ( c[ 1 ] - c[ 0 ] ) / 2 - 0.04, ord = sx > 0 ? cols : [ ...cols ].reverse();
+		return [ ...ord.map( c => [ cabTop, mid( c ), hw( c ) ] ), ...ord.flatMap( ( c, i ) => o.heights[ i ].map( h => [ cabTop + h, mid( c ), hw( c ) ] ) ) ];
 
 	}
 
@@ -1018,7 +1111,7 @@ export class Luminara {
 	 * wall (tubes, waving, fanning a little), a few notes on them. Each piece on its own place on the
 	 * curved wall, a little off it.
 	 */
-	_clefLight( add, phiC ) {
+	_clefLight( add, phiC, hw = 1.7 ) {		// (`hw`: its bay's half width: the staff across it)
 
 		const M = this.materials, off = 0.035;
 		this.neons ??= {};		// per glyph: its own glow and relief maps (glyphMaps); the staff's
@@ -1042,12 +1135,13 @@ export class Luminara {
 			add( g.applyMatrix4( frameAt( phiC - s / R, R - off, y ) ), this.neons[ name ] );
 
 		};
-		glyph( 'clef', - 1.05, 1.22, 2.05 );
+		const ks = Math.min( 1, ( hw - 0.25 ) / 1.45 );		// (in a narrow bay, smaller)
+		glyph( 'clef', - 1.05 * ks, 1.22 + 0.2 * ( 1 - ks ), 2.05 * ( 0.75 + 0.25 * ks ) );
 		// the staff: five lines from behind the clef across to the right, rising and waving, brighter in the middle
 		this.neons.staff ??= Object.assign( M.neon.clone(), { emissiveMap: gradientU( u => 0.55 + 0.45 * Math.sin( Math.PI * u ) ** 0.7 ) } );
 		const line = ( k, t ) => {
 
-			const sx = - 1.4 + 3.0 * t, y = 1.88 + 0.12 * k * ( 1 + 0.35 * t ) + 0.36 * t + 0.14 * Math.sin( Math.PI * ( 1.6 * t + 0.15 ) );
+			const sx = ( - 1.4 + 3.0 * t ) * ks, y = 1.88 + 0.12 * k * ( 1 + 0.35 * t ) + 0.36 * t + 0.14 * Math.sin( Math.PI * ( 1.6 * t + 0.15 ) );
 			return [ sx, y ];
 
 		};
@@ -1064,6 +1158,53 @@ export class Luminara {
 
 			const [ sx, y ] = line( k, t );
 			glyph( name, sx, y - 0.06, h );
+
+		}
+
+	}
+
+	/** The bench (BENCH): its body baked with the lacquer, its plinth brass (its cushions: the pack's, _build). */
+	_bench( add ) {
+
+		const M = this.materials, B = BENCH, phi = ( B.from + B.to ) / 2 * Math.PI / 180;
+		const w = 2 * B.back * Math.sin( ( B.to - B.from ) / 2 * Math.PI / 180 ), d = B.depth, rc = 0.16, y0 = 0.11, y1 = B.height;
+		const F = frameAt( phi, B.back - d / 2 );		// (its front, +z, to the room)
+		// the body: its plan a rounded rect (round ends, as the sideboard's), up from the plinth, its edges softened
+		const plan = new THREE.Shape(), hx = w / 2, hz = d / 2;
+		plan.moveTo( - hx + rc, - hz ); plan.lineTo( hx - rc, - hz ); plan.absarc( hx - rc, - hz + rc, rc, - Math.PI / 2, 0, false ); plan.lineTo( hx, hz - rc );
+		plan.absarc( hx - rc, hz - rc, rc, 0, Math.PI / 2, false ); plan.lineTo( - hx + rc, hz ); plan.absarc( - hx + rc, hz - rc, rc, Math.PI / 2, Math.PI, false );
+		plan.lineTo( - hx, - hz + rc ); plan.absarc( - hx + rc, - hz + rc, rc, Math.PI, 1.5 * Math.PI, false );
+		const body = new THREE.ExtrudeGeometry( plan, { depth: y1 - y0 - 0.02, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 3, curveSegments: 12 } ).rotateX( - Math.PI / 2 ).translate( 0, y0 + 0.01, 0 );
+		body.deleteAttribute( 'uv' ); body.setAttribute( 'uv', new THREE.Float32BufferAttribute( new Float32Array( body.attributes.position.count * 2 ), 2 ) );		// (as the other lacquer's)
+		add( body.applyMatrix4( F ), M.lacquer );
+		// its drawers, flush (a hair proud, thin gaps), along its flat front
+		const n = 3, pw = ( w - 2 * rc ) / n;
+		for ( let i = 0; i < n; ++ i ) add( new RoundedBoxGeometry( pw - 0.008, y1 - y0 - 0.06, 0.01, 2, 0.003 ).translate( - hx + rc + ( i + 0.5 ) * pw, ( y0 + y1 ) / 2, hz + 0.004 ).applyMatrix4( F ), M.lacquer );
+		// the plinth and its legs
+		add( new RoundedBoxGeometry( w - 0.1, 0.02, d - 0.08, 2, 0.006 ).translate( 0, y0 - 0.01, 0 ).applyMatrix4( F ), M.brass );
+		for ( const x of [ - ( hx - 0.12 ), 0, hx - 0.12 ] ) for ( const z of [ - ( hz - 0.07 ), hz - 0.07 ] ) add( new THREE.CylinderGeometry( 0.012, 0.009, y0 - 0.02, 12 ).translate( x, ( y0 - 0.02 ) / 2, z ).applyMatrix4( F ), M.brass );
+		// its seat, for the cushions (the pack's, TRELLIS: _build)
+		this.benchSeat = { F, y: y1, back: - hz, w };
+
+	}
+
+	/**
+	 * A curtain of light in an arched niche (frame F: its back), as the reference's: a pleated curtain
+	 * at its back (the pack's: _build), and before it thin lit tubes falling from the arch, longest in the
+	 * middle, a little shorter each way. The tubes: line lights (their glow on the curtain; the bake's).
+	 */
+	_curtain( add, F, o ) {
+
+		// the curtain itself: the pack's (a relief of a generated photo, MoGe-2), hung at the niche's back (_build)
+		const M = this.materials, n = Math.max( 5, Math.round( 2 * ( o.a - 0.12 ) / 0.198 ) ), sp = 2 * ( o.a - 0.12 ) / n, zt = 0.22;		// (the tubes before its folds)
+		this.curtainAt = { F, o };
+		for ( let i = 0; i < n; ++ i ) {		// the tubes
+
+			const x = - o.a + 0.12 + ( i + 0.5 ) * sp, u = x / o.a, top = o.yS + Math.sqrt( Math.max( 0, o.a * o.a - x * x ) ) - 0.14;
+			const len = 0.75 + 1.1 * ( 1 - u * u ) * ( 0.85 + 0.15 * Math.cos( 7 * i ) ), bottom = top - len;
+			add( new THREE.CylinderGeometry( 0.016, 0.016, len, 14 ).translate( x, ( top + bottom ) / 2, zt ).applyMatrix4( F ), M.curtainLed );
+			add( new THREE.CylinderGeometry( 0.02, 0.02, 0.024, 14 ).translate( x, top + 0.012, zt ).applyMatrix4( F ), M.brass );
+			this.segments.push( { a: new THREE.Vector3( x, bottom, zt ).applyMatrix4( F ), b: new THREE.Vector3( x, top, zt ).applyMatrix4( F ), n: null, clip: null, kind: 'curtain' } );
 
 		}
 
@@ -1113,23 +1254,11 @@ export class Luminara {
 	/** A pilaster's parts in its own frame (x across, y up, z towards the centre; its back in the wall). */
 	_pilaster() {
 
-		const w = LUMINARA.pilaster, d = 0.12, H = LUMINARA.wall, flutes = 5, fr = 0.02, s = new THREE.Shape();
-		s.moveTo( - w / 2, - 0.06 ); s.lineTo( - w / 2, d );
-		const span = w - 0.08, step = span / flutes;
-		for ( let i = 0; i < flutes; ++ i ) {
-
-			const cx = - span / 2 + step * ( i + 0.5 );
-			s.lineTo( cx - fr, d );
-			for ( let j = 1; j < 12; ++ j ) { const u = Math.PI * j / 12; s.lineTo( cx - fr * Math.cos( u ), d - 0.6 * fr * Math.sin( u ) ); }
-			s.lineTo( cx + fr, d );
-
-		}
-		s.lineTo( w / 2, d ); s.lineTo( w / 2, - 0.06 ); s.closePath();
-		const shaft = new THREE.ExtrudeGeometry( s, { depth: H - 0.62, bevelEnabled: false, curveSegments: 4 } ).rotateX( Math.PI / 2 ).translate( 0, H - 0.3, 0 );
-		const base = new THREE.BoxGeometry( w + 0.06, 0.32, d + 0.1 ).translate( 0, 0.16, ( d + 0.1 ) / 2 - 0.06 );
-		const capital = new THREE.BoxGeometry( w + 0.06, 0.24, d + 0.1 ).translate( 0, H - 0.12, ( d + 0.1 ) / 2 - 0.06 );
-		const band = new THREE.BoxGeometry( w + 0.065, 0.025, d + 0.105 ).translate( 0, H - 0.27, ( d + 0.1 ) / 2 - 0.06 );
-		return { shaft, base, capital, band, sconce: this._sconce( d ) };
+		// plain: a flat lacquered upright from the floor to the cornice, its edges softly rounded (no
+		// flutes, no band, no base or capital)
+		const w = LUMINARA.pilaster, d = 0.12, H = LUMINARA.wall;
+		const shaft = new RoundedBoxGeometry( w, H + 0.02, d + 0.06, 3, 0.012 ).translate( 0, ( H + 0.02 ) / 2 - 0.01, ( d + 0.06 ) / 2 - 0.06 );
+		return { shaft, sconce: this._sconce( d ) };
 
 	}
 
@@ -1219,11 +1348,13 @@ export class Luminara {
 			if ( ! c ) continue;
 			if ( g.kind === 'sconce' ) c.set( L.sconceColor ).multiplyScalar( 0.9 * L.sconce * 0.056 );
 			else if ( g.kind === 'step' ) c.set( L.ledColor ).multiplyScalar( 2.6 * L.ledFloor );
+			else if ( g.kind === 'curtain' ) c.set( L.ledColor ).multiplyScalar( 0.083 * L.ledWall );		// (a tube: its radiance × its diameter, as a sconce's)
 			else c.set( L.ledColor ).multiplyScalar( L.shelf ?? 1 );
 
 		}
 		M.shelfLed.emissive.set( L.ledColor ); M.shelfLed.emissiveIntensity = L.ledWall;
 		M.stepLed.emissive.set( L.ledColor ); M.stepLed.emissiveIntensity = 3 * L.ledFloor;
+		M.curtainLed.emissive.set( L.ledColor ); M.curtainLed.emissiveIntensity = 2.6 * L.ledWall;		// (the walls' brightest with the clef, below the bloom)
 		for ( const m of [ M.cove, M.dome ] ) { m.emissive.set( L.coveColor ); m.emissiveIntensity = L.cove * ( m === M.dome ? 0.7 : 1 ); }
 		M.niche.emissive.set( L.nicheColor ); M.niche.emissiveIntensity = L.niche;
 		for ( const [ m, v ] of [ [ M.led, L.led ], [ M.ledWall, L.ledWall ], [ M.ledFloor, L.ledFloor ] ] ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = v; }
@@ -1409,10 +1540,13 @@ export class Luminara {
 					 roughness: 0.65, side: THREE.DoubleSide } ),
 				natural: () => phys( { color: '#ffffff', vertexColors: true, roughness: 0.85 } ),
 				books: () => phys( { color: '#ffffff', vertexColors: true, roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.3 } ),
+				fabric: () => phys( { color: '#ffffff', vertexColors: true, roughness: 0.95, sheen: 0.8, sheenColor: new THREE.Color( '#fff4e4' ), sheenRoughness: 0.55 } ),		// (the cushions)
 				shade: () => phys( { color: '#f6efe2', roughness: 0.9, emissive: new THREE.Color( '#ffdcb0' ), emissiveIntensity: 2.5 } ),		// (a lamp's shade: lit through)
 				stone: () => phys( { color: '#09090a', roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 } ),
+				glass: () => phys( { color: '#eef5f8', roughness: 0.03, transparent: true, opacity: 0.45, depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, ior: 1.5 } ),		// (see-through; no shadow: place())
+				silver: () => phys( { color: '#d9dbe0', metalness: 1, roughness: 0.2 } ),
 				crystal: () => phys( { color: '#eef4f8', roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, ior: 1.6 } ),
-				relief: () => phys( { color: m.emissiveMap ? '#9c8f80' : '#ffffff', map: m.map,		// (a self-lit relief's panel darker: its lines read)
+				relief: () => phys( { color: m.emissiveMap ? '#9c8f80' : '#ffffff', map: m.map, ...( m.name === 'relief-curtain' ? { roughness: 0.9, sheen: 0.7, sheenColor: new THREE.Color( '#fff6ea' ), sheenRoughness: 0.5 } : {} ),		// (a self-lit relief's panel darker: its lines read; the curtain: cloth)
 					 normalMap: m.normalMap, normalMapType: THREE.ObjectSpaceNormalMap, roughness: 0.55, side: THREE.DoubleSide,
 					...( m.emissiveMap ? { emissiveMap: m.emissiveMap, emissive: new THREE.Color( '#ffd9a6' ) } : {} ) } ),		// (the clef's gold: a line of light)
 			}[ look ]?.() ?? phys( base );
@@ -1436,16 +1570,32 @@ export class Luminara {
 		const soil = phys( { color: '#2c241e', roughness: 1 } );
 		let record = null;
 		this.packSegments = [];		// (line lights in the pack's things: the sideboard's strip; baked only)
+		const ORNAMENTS = new Set( [ ...Object.values( SHELVING ).flat( 2 ), ...ON_SIDEBOARD, ...ON_SMALL_CABINET, ...TABLES.flatMap( t => t[ 3 ] ) ].map( i => i[ 0 ] ) ), used = new Set();
 		const place = ( name, F, mirror = false ) => {
 
-			if ( ! nodes[ name ] && name !== 'gold-disc' ) return;
+			if ( ORNAMENTS.has( name ) ) {		// (an ornament: once in the room)
+
+				if ( used.has( name ) ) { console.warn( `Luminara: ornament ${ name } placed twice: the second left out` ); return; }
+				used.add( name );
+
+			}
+
+			const built = { 'gold-disc': () => goldRecord( this.segUPack ), 'vinyl': () => goldRecord( this.segUPack, true ), 'picture': () => mapOf( 'painting-3' ) && framedPicture( mapOf( 'painting-3' ), 0.34, 0.26, 0.1 ) }[ name ];
+			if ( ! nodes[ name ] && ! built ) return;
 			const holder = new THREE.Group();
 			holder.matrixAutoUpdate = false;
 			holder.matrix.copy( F );
 			if ( mirror ) holder.matrix.multiply( new THREE.Matrix4().makeScale( - 1, 1, 1 ) );
-			if ( name === 'gold-disc' ) { holder.add( ( record ??= goldRecord( this.segUPack ) ).clone() ); pack.add( holder ); return; }		// (ours: goldRecord)
+			if ( built ) {		// (ours: the records, a picture)
+
+				const g = name === 'picture' ? built() : ( ( record ??= {} )[ name ] ??= built() ).clone();
+				if ( g ) { holder.add( g ); pack.add( holder ); }
+				return;
+
+			}
 			const o = nodes[ name ].clone();
-			o.traverse( c => { if ( c.isMesh ) { c.material = finish( c.material ); c.castShadow = c.receiveShadow = true; } } );
+			if ( ORNAMENTS.has( name ) && ! /^books/.test( name ) ) o.scale.multiplyScalar( 1.15 );		// (as the close-ups': about three quarters of a shelf's height)
+			o.traverse( c => { if ( c.isMesh ) { c.material = finish( c.material ); c.castShadow = ! c.material.transparent; c.receiveShadow = true; } } );		// (glass: no shadow)
 			if ( name === 'plant' ) {
 
 				o.traverse( c => { if ( c.isMesh && [ 'foliage', 'natural' ].includes( c.material.userData.look ?? c.material.name ) ) c.visible = false; } );
@@ -1465,10 +1615,17 @@ export class Luminara {
 		};
 		const size = name => nodes[ name ]?.userData.size ?? [ 0.3, 0.3, 0.3 ];		// (extras: tools/luminara-asset.mjs)
 		const turn = deg => new THREE.Matrix4().makeRotationY( deg * Math.PI / 180 );
-		for ( const [ name, deg, r, t ] of FURNITURE ) {
+		for ( const [ name, deg, r, t, face ] of FURNITURE ) {
 
 			const F = frameAt( deg * Math.PI / 180, r ?? R - 0.12 - size( name )[ 2 ] / 2 ).multiply( turn( t ) );		// (its ends clear of the curved wall)
+			if ( face ) {		// turned to face that point (its front +z)
+
+				const p = outward( face[ 0 ] * Math.PI / 180 ).multiplyScalar( face[ 1 ] ).applyMatrix4( new THREE.Matrix4().copy( F ).invert() );
+				F.multiply( new THREE.Matrix4().makeRotationY( Math.atan2( p.x, p.z ) ) );
+
+			}
 			place( name, F );
+			if ( name === 'small-cabinet' ) { const [ cw, ch ] = size( name ); for ( const [ item, x, z, tt ] of ON_SMALL_CABINET ) place( item, F.clone().multiply( new THREE.Matrix4().makeTranslation( x * cw / 2, ch, z ) ).multiply( turn( tt ) ) ); }
 			if ( name === 'sideboard' ) {
 
 				const [ w, h ] = size( name );
@@ -1492,13 +1649,46 @@ export class Luminara {
 			}
 
 		}
-		// the shelving's ornaments, each on its shelf (the other bay's mirrored)
-		for ( const [ b, n ] of this.nichePoints.filter( n => n.kind === 'shelves' ).entries() ) SHELVING.forEach( ( items, k ) => {
+		// the shelving's ornaments, each on its shelf
+		for ( const n of this.nichePoints.filter( n => n.kind === 'shelves' ) ) ( SHELVING[ n.deg > 180 ? 1 : 2 ] ).forEach( ( items, k ) => {
 
-			const [ y, cx, half ] = n.surfaces[ k ], sg = b ? - 1 : 1;		// (the other bay's mirrored)
-			for ( const [ item, x, tt ] of items ) place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( cx + sg * x * half * 0.7, y, n.o.depth * 0.45 ) ).multiply( turn( sg * tt ) ), b === 1 );
+			if ( ! n.surfaces[ k ] ) return;
+			const [ y, cx, half ] = n.surfaces[ k ];		// (each shelving its own ornaments)
+			for ( const [ item, x, tt ] of items ) place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( cx + x * half * 0.75, y, n.o.depth * 0.45 ) ).multiply( turn( tt ) ) );
 
 		} );
+		// the curtain at the curtain of light's back (its relief: its back on z 0, its middle at x 0; sized to the niche)
+		if ( nodes.curtain && this.curtainAt ) {
+
+			const { F, o } = this.curtainAt, sz = size( 'curtain' ), k = Math.min( ( 2 * o.a - 0.04 ) / sz[ 0 ], ( o.yS + o.a - o.y0 + 0.05 ) / sz[ 1 ] );
+			place( 'curtain', F.clone().multiply( new THREE.Matrix4().makeTranslation( 0, o.y0 - 0.05, 0.005 ) ).multiply( new THREE.Matrix4().makeScale( k, k, Math.min( k, 0.15 / sz[ 2 ] ) ) ) );
+
+		}
+		// the bench's cushions, each one of its own, leaning back on the seat here and there
+		if ( this.benchSeat ) {
+
+			const { F, y, back, w } = this.benchSeat;
+			for ( const [ name, x, lean, yaw ] of [ [ 'cushion-square', - 0.36, 0.3, 0.12 ], [ 'cushion-lumbar', 0.02, 0.22, - 0.06 ], [ 'cushion-velvet', 0.36, 0.28, - 0.15 ] ] ) {
+
+				const d = size( name )[ 2 ];
+				place( name, F.clone().multiply( new THREE.Matrix4().makeTranslation( x * w, y, back + d / 2 + 0.05 ) ).multiply( new THREE.Matrix4().makeRotationY( yaw ) ).multiply( new THREE.Matrix4().makeRotationX( - lean ) ) );
+
+			}
+
+		}
+		// on the tables
+		for ( const [ F, y, rad, items ] of this.tableTops ) for ( const [ item, x, z, tt ] of items ) place( item, F.clone().multiply( new THREE.Matrix4().makeTranslation( x * rad * 2, y, z * rad * 2 ) ).multiply( turn( tt ) ) );
+		// a painting on each plain wall: the city outside (the day's photo, a part of it), framed
+		const painting = k => mapOf( `painting-${ k }` ) ?? null;
+		for ( const [ i, phi ] of this.paintings.entries() ) {
+
+			const t = painting( i + 1 );
+			if ( ! t ) continue;
+			const g = framedPicture( t, 1.25, 0.84 );
+			g.applyMatrix4( frameAt( phi, R - 0.03, 1.55 ) );
+			pack.add( g );
+
+		}
 		this.pack = pack;
 		this.group.add( pack );
 

@@ -69,7 +69,10 @@ shows otherwise.
 (run from the repo root)
 
 - Cut-out: the photo is resized to 1024² and cut out by **rembg** `u2net` (kept as `<slug>-rgba.png`:
-  look at it, a white object on white can lose parts). TRELLIS would call rembg itself on an RGB
+  look at it, a white object on white can lose parts). White or pale things (books, a marble base, a
+  white pot, silver-green leaves): photograph them on **mid-grey** (`PRODUCT_GREY` in
+  `luminara-gen.mjs`), and if rembg still drops pale parts run with `--key`, which adds a mask of what
+  differs from the backdrop's colour (its largest blob, holes filled) to rembg's. TRELLIS would call rembg itself on an RGB
   image; giving it RGBA skips that.
 - TRELLIS is loaded through `<trellis-dir>/trellis_load.py`, which skips the text pipeline (open3d)
   and the renderers' CUDA extensions, and replaces kaolin's `check_tensor` with a no-op (there are
@@ -102,6 +105,9 @@ shows otherwise.
 - A **glow mask** for a raised pattern: fit the panel's plane robustly (refit to the 60 % nearest,
   a few times), take the height in front of it, and smoothstep it. This was done for the old relief
   clef. A colour mask (its gold) gave only about 0.6 % coverage.
+  `<depth-python> -I tools/relief-glow.py <relief prefix> [--low 0.006] [--high 0.016]` writes
+  `<prefix>-glow.png` (the photo's size, the relief's UVs); `luminara-asset.mjs` packs it as the
+  relief's emissive map when it is there.
 
 ## Into the app (`tools/luminara-asset.mjs`)
 
