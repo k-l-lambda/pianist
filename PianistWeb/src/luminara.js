@@ -20,6 +20,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLYPHS } from './luminaraglyphs.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
+import { clock } from './rendermode.js';
 
 export const LUMINARA = {
 	radius: 7.0,		// the wall
@@ -1094,6 +1095,9 @@ export class Luminara {
 			mesh.receiveShadow = true;
 			mesh.name = `luminara:${ Object.keys( M ).find( k => M[ k ] === mat ) }`;
 			this.group.add( mesh );
+			// (the tables' marble tops share the floor's material, its mirror: hidden while it is drawn, else
+			// they sample the target being drawn into, a feedback loop: GL drops the draw and warns)
+			if ( mat === M.floor || mat === M.border ) this.floorMeshes.push( mesh );
 
 		}
 
@@ -1731,10 +1735,10 @@ export class Luminara {
 		if ( ! this.active || ! this._built ) return;
 		// the sky's time (its clouds drift, its stars twinkle), the moon's light under the clouds
 		const S = this.skyU;
-		S.uTime.value = ( window.__pianistPaused ? S.uTime.value : performance.now() / 1000 + ( this.skyTimeShift ?? 0 ) );		// (skyTimeShift: to look at another moment)
+		S.uTime.value = ( window.__pianistPaused ? S.uTime.value : clock.now() / 1000 + ( this.skyTimeShift ?? 0 ) );		// (the render clock offline: a render's sky the same each time)		// (skyTimeShift: to look at another moment)
 		if ( this.sun.visible && ! S.uSun.value ) this.sun.intensity = this.sun.userData.intensity * ( 1 - this.moonCloud() );
 		if ( this.mode === 'pathtrace' ) return;
-		this.mirror.update( renderer, this.scene, camera, [ this.floorMeshes ].flat(), this.highQuality ? 0.5 : 0.35 );
+		this.mirror.update( renderer, this.scene, camera, [ this.floorMeshes ].flat(), this.mirrorScale ?? ( this.highQuality ? 0.5 : 0.35 ) );		// (mirrorScale: an offline render's, main.js)
 
 	}
 

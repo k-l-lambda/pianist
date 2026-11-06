@@ -29,7 +29,10 @@ import { ScriptPlayer } from './script.js';
 import { PianoRoll, excludeFromGTAO } from './pianoroll.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
 import { RENDER, RENDER_OPTS, clock } from './rendermode.js';
+import { OfflineFrame, toBase64, halton2 } from './offline.js';
 import { AudioLog, renderAudio, roomAPI } from './renderaudio.js';
+
+const HQ_OFFLINE = RENDER && RENDER_OPTS.hq;		// the offline quality profile (rendermode.js `hq`): finer mirrors, probe and AO
 
 // start downloading the piano sound right away, in parallel with building the scene
 prefetchSoundfont();
@@ -113,10 +116,11 @@ const baker = new TextureBaker( renderer );
 const room = new Room( scene, baker );
 const hall = new ConcertHall( scene, baker );
 const luminara = new Luminara( scene, baker );
+if ( HQ_OFFLINE ) luminara.mirrorScale = 1;		// (its floor's reflection at the frame's size)
 const venues = { room, hall, luminara };
 let venue = room;
 room.activate();
-const probe = new GIProbe( renderer, scene );
+const probe = new GIProbe( renderer, scene, { size: HQ_OFFLINE ? 512 : 256 } );
 const keyShadow = new KeyShadow( renderer );
 // offline render: false while frames only advance the timeline (render-audio.mjs, the skip to
 // --from): state is updated (script, MIDI, recordings, camera, person, keys, roll), nothing drawn
@@ -167,7 +171,7 @@ function updateScreenMirror() {
 	const R = piano.roll;
 	piano.group.updateMatrixWorld();
 	screenMirror.plane.setFromNormalAndCoplanarPoint( _n.crossVectors( _x, R.up ).normalize(), R.origin ).applyMatrix4( piano.group.matrixWorld );
-	screenMirror.update( renderer, scene, camera, screenHide, settings.gi ? 0.5 : 0.35, cam => {
+	screenMirror.update( renderer, scene, camera, screenHide, HQ_OFFLINE ? 1 : settings.gi ? 0.5 : 0.35, cam => {
 
 		_frustum.setFromProjectionMatrix( _pm.multiplyMatrices( cam.projectionMatrix, cam.matrixWorldInverse ) );
 		return _frustum.intersectsBox( screenBox );
@@ -335,8 +339,8 @@ const _dof = new THREE.Vector3(), _dofDir = new THREE.Vector3();
 function applyAO() {
 
 	gtaoPass.enabled = settings.ao && settings.gi;
-	gtaoPass.updateGtaoMaterial( { radius: settings.aoRadius, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: 16 } );
-	gtaoPass.updatePdMaterial( { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 } );
+	gtaoPass.updateGtaoMaterial( { radius: settings.aoRadius, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: HQ_OFFLINE ? 32 : 16 } );
+	gtaoPass.updatePdMaterial( { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: HQ_OFFLINE ? 32 : 16 } );
 	gtaoPass.blendIntensity = 1.0;
 
 }
@@ -1410,9 +1414,11 @@ function frame() {
 }
 
 // one frame of `dt` s: in real time from frame(), in an offline render from __render.step()
-function frameBody( dt, scripted = false ) {
+let drawnFrom = null;		// (offline render: the linear HDR texture the frame was drawn into)
+function frameBody( dt, scripted = false, jitter = null ) {
 
 	cameraMoving = false;
+	drawnFrom = null;
 	// offline render: restored and updated in sub-steps by startRender() (restoring again here
 	// would put the camera back where it was before the script's move this frame)
 	if ( ! scripted ) {
@@ -1428,6 +1434,20 @@ function frameBody( dt, scripted = false ) {
 	keysMoving = piano.keyboard.update( dt );
 	roll.update( midiPlayer, dt, camera, renderer, venue.mode !== 'pathtrace' );
 	if ( piano.action?.update( dt ) ) keysMoving = true;
+	// an offline sub-frame's jitter: the view shifted by a fraction of a drawn pixel (the projection only:
+	// what moves stays where it is), for this draw
+	if ( jitter && drawFrames ) {
+
+		const b = renderer.getDrawingBufferSize( new THREE.Vector2() );
+		camera.setViewOffset( b.x, b.y, jitter[ 0 ], jitter[ 1 ], b.x, b.y );
+
+	}
+	try { drawFrame(); } finally { if ( jitter && camera.view?.enabled ) camera.clearViewOffset(); }
+
+}
+
+function drawFrame() {
+
 	// re-render shadow maps only when something moved or the lighting changed (offline render:
 	// every frame)
 	if ( ! drawFrames ) return;		// (in render mode shadows and the mirror are redone every drawn frame)
@@ -1449,6 +1469,7 @@ function frameBody( dt, scripted = false ) {
 			venue.beforeRender?.( renderer, camera );		// (Luminara: its floor's reflection)
 			updateScreenMirror();
 			composer.render();
+			drawnFrom = composer.readBuffer.texture;
 			ptDirty = true;
 
 		} else {
@@ -1462,6 +1483,7 @@ function frameBody( dt, scripted = false ) {
 			}
 
 			pathTracer.render();
+			drawnFrom = pathTracer.pt.target.texture;
 
 		}
 
@@ -1472,6 +1494,7 @@ function frameBody( dt, scripted = false ) {
 		venue.beforeRender?.( renderer, camera );		// (Luminara: its floor's reflection)
 		updateScreenMirror();
 		composer.render();
+		drawnFrom = composer.readBuffer.texture;
 		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
 
 	}
@@ -1507,35 +1530,60 @@ function startRender() {
 		textContent: '.lil-gui, #hud, #power, #start, #drop, #loading, #hallbar { display: none !important; }',
 	} ) );
 	let frameNo = 0;		// frames drawn so far (time of the next: frameNo / fps)
-	let out = null;		// 2D canvas for frame()
+	let out = null;		// 2D canvas for frame() (the old capture)
+	// the frame's linear light, accumulated over its sub-frames, resolved and quantised (src/offline.js);
+	// the composer stops before its tone mapping (the output pass: the offline frame's)
+	const offline = new OfflineFrame( renderer, { filter: o.filter } );
+	composer.renderToScreen = false;
+	outputPass.enabled = false;
+	const SUB = o.subframes, shutter = Math.min( 1, Math.max( 0, o.shutter ) );
 	// the watermark on every frame (frame()): WATERMARK, or the render's own (#?wm=…, the driver's
 	// --watermark); px at 1080 lines, scaled for other sizes
 	const wm = o.watermark === 'off' ? null : { ...WATERMARK, ...parseWatermark( o.watermark ) };
 	const mark = new Image();
+	let markTex = null;
 	// The script player runs in sub-steps of at most SCRIPT_STEP s with the clock: it sees time
 	// only when it is updated, so with one update per frame every event (and everything timed off
 	// it with after: / gap:) fired up to a frame late, and the delays added up along the script
 	// (at 1 fps the user's first line came 4.6 s late, at 25 fps still 0.04 s per event). The
 	// rest of the frame (camera shake, roll, keys) is updated once with the frame's dt
 	const SCRIPT_STEP = 0.005;
+	/** The script and the clock on to `end` ms, in sub-steps of at most SCRIPT_STEP. */
+	const advanceTo = end => {
+
+		const n = Math.max( 1, Math.ceil( ( end - clock.now() ) / ( 1000 * SCRIPT_STEP ) - 1e-9 ) );
+		for ( let i = 1; i <= n; ++ i ) {
+
+			const t = i === n ? end : clock.now() + ( end - clock.now() ) / ( n - i + 1 );
+			const sdt = ( t - clock.now() ) / 1000;
+			clock.advance( t - clock.now() );		// no drift: the last sub-step ends on the frame
+			scriptPlayer.update( sdt );
+
+		}
+
+	};
+	// A frame: SUB sub-frames, the last at the frame's time, the others back across the shutter (open
+	// for `shutter` of the frame); each one the scene moved on to its time and drawn, the camera shifted
+	// by a sub-texel (Halton) between them, all added in linear light: the frame's motion blur and its
+	// anti-aliasing. One sub-frame: as before, the scene at the frame's time. Not drawn (draw false):
+	// the same sub-steps, so a render from `from` matches one from the start
+	let jitterNo = 0;
 	const step = () => {
 
-		handheld.restore();		// the script's camera moves work on the intended pose
-		if ( frameNo > 0 ) {
+		const end = 1000 * frameNo * dt, size = renderer.getDrawingBufferSize( new THREE.Vector2() );
+		if ( drawFrames ) offline.begin( size.x, size.y, SUB );
+		for ( let k = 0; k < SUB; ++ k ) {
 
-			const end = 1000 * frameNo * dt;
-			const n = Math.max( 1, Math.ceil( ( end - clock.now() ) / ( 1000 * SCRIPT_STEP ) - 1e-9 ) );
-			for ( let i = 1; i <= n; ++ i ) {
+			handheld.restore();		// the script's camera moves work on the intended pose
+			const t = frameNo > 0 ? end - 1000 * dt * shutter * ( SUB - 1 - k ) / SUB : 0;
+			const before = clock.now();
+			if ( frameNo > 0 ) advanceTo( Math.max( t, clock.now() ) );
+			else if ( k === 0 ) scriptPlayer.update( 0 );
+			// (the first sub-frame also takes the time from the frame before up to the shutter's opening)
+			frameBody( frameNo > 0 ? ( clock.now() - before ) / 1000 : 0, true, SUB > 1 && venue.mode !== 'pathtrace' ? halton2( ++ jitterNo ) : null );
+			if ( drawFrames && drawnFrom ) offline.accumulate( drawnFrom );
 
-				const t = i === n ? end : clock.now() + ( end - clock.now() ) / ( n - i + 1 );
-				const sdt = ( t - clock.now() ) / 1000;
-				clock.advance( t - clock.now() );		// no drift: the last sub-step ends on the frame
-				scriptPlayer.update( sdt );
-
-			}
-
-		} else scriptPlayer.update( 0 );
-		frameBody( frameNo > 0 ? dt : 0, true );
+		}
 		frameNo ++;
 
 	};
@@ -1571,6 +1619,13 @@ function startRender() {
 
 			mark.src = new URL( wm.src, base ).href;
 			await mark.decode().catch( () => console.warn( `watermark ${ wm.src } did not load` ) );
+			if ( mark.naturalWidth ) {
+
+				// (its sRGB values as they are, blended as the 2D canvas did; its first row at v 0; mipmaps: it is drawn small)
+				markTex = new THREE.Texture( mark );
+				Object.assign( markTex, { flipY: false, premultiplyAlpha: false, colorSpace: THREE.NoColorSpace, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true, needsUpdate: true } );
+
+			}
 
 		}
 		scriptPlayer.play();
@@ -1602,12 +1657,23 @@ function startRender() {
 			return { frame: frameNo - 1, time: ( frameNo - 1 ) * dt, ms: performance.now() - t0, state: scriptPlayer.playing };
 
 		},
-		// the frame just drawn, read from the WebGL canvas itself (preserveDrawingBuffer) and scaled
-		// to the output size, as PNG base64. Not a compositor screenshot: that sometimes caught a
-		// frame before the canvas had been composited, and showed the page background (#111)
-		// instead, in blocks or the whole frame
-		frame( width, height ) {
+		// the frame just drawn, at the output size: its linear light resolved and quantised (src/offline.js),
+		// as raw rgb24 (8 bits) or rgb48le (10), base64. `legacy` (the old capture): tone mapped onto the
+		// canvas at the drawing size, scaled by the 2D canvas's drawImage, PNG
+		async frame( width, height ) {
 
+			if ( ! o.legacy ) {
+
+				const k = height / 1080, h = wm ? wm.height * k : 0, w = wm && mark.naturalHeight ? h * mark.naturalWidth / mark.naturalHeight : 0;
+				const markOn = wm && mark.complete && mark.naturalWidth && markTex;
+				const rect = markOn ? [ wm.x !== undefined ? width * wm.x - w / 2 : width - wm.right * k - w, height - wm.bottom * k - h, w, h ] : null;
+				const px = offline.read( width, height, { bits: o.bits, dither: o.dither, seed: frameNo, mark: markOn ? { texture: markTex, rect, opacity: wm.opacity } : null } );
+				return toBase64( px );
+
+			}
+			offline.toCanvas();
+			// (from the WebGL canvas itself, preserveDrawingBuffer: a compositor screenshot sometimes caught
+			// a frame before the canvas had been composited, the page background instead)
 			const src = renderer.domElement;
 			out ??= document.createElement( 'canvas' );
 			if ( out.width !== width || out.height !== height ) Object.assign( out, { width, height } );

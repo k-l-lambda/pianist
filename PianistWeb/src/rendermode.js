@@ -19,6 +19,14 @@ export const RENDER_OPTS = RENDER ? {
 	to: get( 'to' ) !== null ? Number( get( 'to' ) ) : Infinity,
 	pixelRatio: Number( get( 'ss' ) ?? 2 ),		// render scale (supersampling), downscaled by the capture
 	watermark: get( 'wm' ),		// "off" or "opacity=0.12,right=60,bottom=60,height=96" (main.js: WATERMARK)
+	// the frame's path to the encoder (src/offline.js): its linear light resolved, then quantised
+	subframes: Math.max( 1, Math.round( Number( get( 'sub' ) ?? 1 ) ) ),		// renders a frame, across the shutter, the camera jittered between them
+	shutter: Number( get( 'shutter' ) ?? 0.5 ),		// open for this part of the frame (0.5: a 180° shutter)
+	bits: Number( get( 'bits' ) ?? 8 ),		// 8 (rgb24) or 10 (rgb48le)
+	dither: get( 'dither' ) !== '0',
+	filter: Number( get( 'filter' ) ?? 1.25 ),		// the resolve's window radius (output px)
+	legacy: get( 'legacy' ) === '1',		// the old capture: tone mapped on the canvas, drawImage to the size, PNG
+	hq: get( 'hq' ) === '1',		// the offline quality profile: the mirrors at full size, a finer probe, more AO samples
 } : null;
 
 // a render is reproducible: Math.random (wood grain offsets in geometry.js, ...) seeded

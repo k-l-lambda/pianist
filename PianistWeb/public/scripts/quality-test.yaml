@@ -1,0 +1,20 @@
+# Offline render quality test (tools/render-video.mjs): Luminara (style=grand-white, preset Night: the
+# dome's and walls' smooth gradients, the lines of light, the moon) held still for a second, then a
+# quick pan across the room while the etude plays (motion: the keys, the camera). Render with
+#   node tools/render-video.mjs quality-test.yaml --query "style=grand-white&preset=Night" --to 3
+title: Offline quality test, Luminara at night
+
+midi:
+  etude: beyer05.mid
+
+timeline:
+  - at: 0
+    camera: { position: [ 2.6, 1.5, 3.4 ], target: [ -1.5, 1.0, -2.5 ], fov: 50 }
+    midi: { play: etude, from: 0, tempo: 1 }
+  - at: 1
+    camera:
+      duration: 2
+      ease: inOutSine
+      path:
+        - { position: [ 0.6, 1.45, 3.6 ], target: [ 0.0, 1.1, -2.6 ] }
+        - { position: [ -1.4, 1.4, 3.1 ], target: [ 1.6, 1.2, -2.4 ] }
