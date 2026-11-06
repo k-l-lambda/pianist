@@ -1657,10 +1657,10 @@ export class Luminara {
 			for ( const [ item, x, tt ] of items ) place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( cx + x * half * 0.75, y, n.o.depth * 0.45 ) ).multiply( turn( tt ) ) );
 
 		} );
-		// the curtain at the curtain of light's back (its relief: its back on z 0, its middle at x 0; sized to the niche)
+		// the curtain at the curtain of light's back (its relief: its back on z 0, its middle at x 0; as wide as the niche)
 		if ( nodes.curtain && this.curtainAt ) {
 
-			const { F, o } = this.curtainAt, sz = size( 'curtain' ), k = Math.min( ( 2 * o.a - 0.04 ) / sz[ 0 ], ( o.yS + o.a - o.y0 + 0.05 ) / sz[ 1 ] );
+			const { F, o } = this.curtainAt, sz = size( 'curtain' ), k = ( 2 * o.a + 0.08 ) / sz[ 0 ];		// (the niche's full width, a little over: its sides and top hidden behind the reveal)
 			place( 'curtain', F.clone().multiply( new THREE.Matrix4().makeTranslation( 0, o.y0 - 0.05, 0.005 ) ).multiply( new THREE.Matrix4().makeScale( k, k, Math.min( k, 0.15 / sz[ 2 ] ) ) ) );
 
 		}
