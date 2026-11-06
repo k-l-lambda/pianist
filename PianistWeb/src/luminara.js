@@ -136,6 +136,7 @@ export const LUMINARA_PRESETS = {
 	// the house down, the piano under a single spot from the dome's crown
 	'Recital': { sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.9, shelf: 0.45, outside: 'night', sky: 0.32, moon: 0.8, moonLight: 0.35, stars: 0.8, clouds: 0.55, cove: 0.5, coveColor: '#ffc283', dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
 };
+export const LUMINARA_DEFAULT = 'Afternoon';
 export const LUMINARA_OUTSIDE = [ 'day', 'sunset', 'dusk', 'night' ];
 
 const phys = p => new THREE.MeshPhysicalMaterial( p );
@@ -757,7 +758,7 @@ export class Luminara {
 		this.baker = baker;
 		this.highQuality = true;
 		this.presets = LUMINARA_PRESETS;
-		this.preset = 'Afternoon';
+		this.preset = LUMINARA_DEFAULT;
 		this.light = { ...LUMINARA_PRESETS[ this.preset ] };
 		this.group = new THREE.Group();
 		this.group.name = 'luminara';
@@ -837,16 +838,42 @@ export class Luminara {
 		for ( const m of [ this.materials.floor, this.materials.border ] ) this.mirror.addTo( m );
 		for ( const m of [ this.materials.wall, this.materials.ceiling, this.materials.lacquer, this.materials.floor, this.materials.border, this.materials.rug ] ) addBake( m, this.bakeU );
 		this._buildLights();
-		this.rebuild();
+		this._built = false;		// (the shell: built when Luminara first shows, _buildShell; not at the page's start)
+		this.precompile = null;		// async ( object ): compile its shaders as the frame will draw it (main.js)
 
 	}
 
 	activate() {
 
 		this.active = true;
-		this.scene.add( this.group, this.lights );
+		this.scene.add( this.lights );
+		if ( this._built ) this.scene.add( this.group );
+		else this.building ??= this._buildShell();
 		if ( ! this._loadTried ) this.load();
 		this.updateLights();
+
+	}
+
+	/** The room's shell, a frame after it was asked for (the bar drawn first), then its shaders compiled before it shows. */
+	async _buildShell() {
+
+		const S = luminaraStatus;
+		S.shell = 'build';
+		await nextFrame();
+		// the clef's glyph maps first, one a frame (each a few hundred ms of canvas work), then the shell
+		this._glyphMaps = {};
+		for ( const name of Object.keys( GLYPHS ) ) { this._glyphMaps[ name ] = glyphMaps( GLYPHS[ name ] ); await nextFrame(); }
+		this.rebuild();
+		this._built = true;
+		this.updateLights();
+		S.shell = 'compile';
+		await nextFrame();
+		// (its own shaders, and the scene's again: its lights now in it change every lit material's program)
+		await this.precompile?.( this.group );
+		await this.precompile?.( this.scene );
+		S.shell = 'ready';
+		if ( this.active ) this.scene.add( this.group );
+		this.onBake?.();		// (the probe again: the room in it)
 
 	}
 
@@ -1284,7 +1311,7 @@ export class Luminara {
 			g.translate( - ( b.min.x + b.max.x ) / 2, - b.min.y, 0.05 ).scale( k, k, kz );
 			if ( ! this.neons[ name ] ) {
 
-				const maps = glyphMaps( G ), m = M.neon.clone();
+				const maps = this._glyphMaps?.[ name ] ?? glyphMaps( G ), m = M.neon.clone();		// (_buildShell made them a frame each)
 				m.color.set( '#8c8378' );		// (acrylic lit from within: its own light leads, the room's on it less)
 				m.emissiveMap = maps.glow; m.normalMap = maps.normal; m.normalScale = new THREE.Vector2( 1.4, 1.4 ); m.clearcoatNormalMap = maps.normal;
 				this.neons[ name ] = m;
@@ -1493,6 +1520,7 @@ export class Luminara {
 
 	updateLights() {
 
+		if ( ! this._built ) return;		// (no shell yet: _buildShell calls it)
 		const L = this.light, M = this.materials;
 		this.topSpot.intensity = L.top; this.topSpot.color.set( L.topColor ); this.topSpot.visible = L.top > 0;
 		this.topSpot.angle = THREE.MathUtils.degToRad( L.topAngle ?? 15 );
@@ -1551,9 +1579,13 @@ export class Luminara {
 
 		}
 		for ( const l of this.nicheLights ) { l.color.set( L.nicheColor ); l.intensity = 1.2 * L.niche; l.visible = L.niche > 0; }
-		const bake = L.baked !== false && this.bakes?.[ this.preset ];
-		this.bakeU.uBakeOn.value = bake ? 1 : 0;
-		if ( bake ) { this.bakeU.uBake.value = bake.map; this.bakeU.uBakeScale.value = bake.scale; }
+		// the preset's lightmap once it has come (_needBake); until then the one shown before (closer than none)
+		const want = L.baked !== false ? this.bakes?.[ this.preset ] : null;
+		if ( want && ! want.map ) this._needBake( this.preset );
+		const bake = want?.map ? want : want ? this._bakeShown : null;
+		if ( bake?.map ) this._bakeShown = bake;
+		this.bakeU.uBakeOn.value = bake?.map ? 1 : 0;
+		if ( bake?.map ) { this.bakeU.uBake.value = bake.map; this.bakeU.uBakeScale.value = bake.scale; }
 		const sky = this.skies[ L.outside ] ?? Object.values( this.skies )[ 0 ];
 		if ( sky && M.sky.map !== sky ) { M.sky.map = sky; M.sky.needsUpdate = ! M.sky.map; }
 		M.sky.color.setScalar( this.pack ? L.sky : 0.25 * L.sky );
@@ -1649,15 +1681,37 @@ export class Luminara {
 			m.geometry = g;
 
 		}
+		// each preset's lightmap: fetched when it is shown (_needBake), the first with the pack (prefetchLuminara)
 		this.bakes = {};
 		for ( const [ name, p ] of Object.entries( meta.presets ?? {} ) ) {
 
-			const t = mapOf( `bake-${ p.slug }` );
-			if ( ! t || ! Number.isFinite( p.scale ) ) continue;		// (a failed bake: the probe's light)
-			t.colorSpace = THREE.SRGBColorSpace; t.minFilter = t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
-			this.bakes[ name ] = { map: t, scale: p.scale };
+			if ( ! p.file || ! Number.isFinite( p.scale ) ) continue;		// (a failed bake, or an old pack: the probe's light)
+			this.bakes[ name ] = { file: p.file, scale: p.scale, map: null, loading: null };
 
 		}
+
+	}
+
+	/** The lightmap for `name` (resolves once it is on its bake; null when there is none). The others fetched later, while idle. */
+	_needBake( name ) {
+
+		const b = this.bakes?.[ name ];
+		if ( ! b ) return Promise.resolve( null );
+		b.loading ??= lightmapTexture( b.file ).then( t => {
+
+			b.map = t;
+			if ( this.preset === name ) { this.updateLights(); this.onBake?.(); }
+			return b;
+
+		} ).catch( e => { console.warn( `Luminara: ${ e.message ?? e } (the preset's light from the probe)` ); delete this.bakes[ name ]; this.updateLights(); return null; } );
+		return b.loading;
+
+	}
+
+	/** Fetch the other presets' lightmaps' bytes in the background (decoded when shown). */
+	_prefetchBakes() {
+
+		for ( const b of Object.values( this.bakes ?? {} ) ) lightmapBytes( b.file ).catch( () => {} );
 
 	}
 
@@ -1674,7 +1728,7 @@ export class Luminara {
 
 	beforeRender( renderer, camera ) {
 
-		if ( ! this.active ) return;
+		if ( ! this.active || ! this._built ) return;
 		// the sky's time (its clouds drift, its stars twinkle), the moon's light under the clouds
 		const S = this.skyU;
 		S.uTime.value = ( window.__pianistPaused ? S.uTime.value : performance.now() / 1000 + ( this.skyTimeShift ?? 0 ) );		// (skyTimeShift: to look at another moment)
@@ -1694,14 +1748,30 @@ export class Luminara {
 	load() {
 
 		this._loadTried = true;
-		const url = new URL( 'luminara/luminara.glb', new URL( import.meta.env.BASE_URL, location.href ) );
-		this.loading = prefetchLuminara().then( buf => new GLTFLoader().setMeshoptDecoder( MeshoptDecoder ).parseAsync( buf, url.href ) ).then( gltf => {
+		const S = luminaraStatus, url = new URL( 'luminara.glb', packDir() );
+		S.pack = 'waiting';
+		this.loading = ( async () => {
 
-			this._build( gltf );
+			const [ buf ] = await Promise.all( [ prefetchLuminara(), this.building ] );		// (the pack's pieces go where the shell says)
+			S.pack = 'build';
+			await nextFrame();
+			const gltf = await new GLTFLoader().setMeshoptDecoder( MeshoptDecoder ).parseAsync( buf, url.href );
+			await nextFrame();
+			const pack = this._build( gltf );
+			await this._needBake( this.preset );		// (its light from the start: the probe then sees the room lit as it will be)
+			// its shaders before it shows (a long freeze at its first frame else); its lamp's light in the scene: every lit program again
+			S.pack = 'compile';
+			await nextFrame();
+			await this.precompile?.( pack );
+			await this.precompile?.( this.scene );
+			this.group.add( pack );
+			this.pack = pack;
+			S.pack = 'ready';
 			this.updateLights();
 			this.onLoad?.();
+			setTimeout( () => this._prefetchBakes(), 4000 );
 
-		} ).catch( e => console.warn( `Luminara: ${ e.message ?? e } (the pack: tools/luminara-asset.mjs)` ) );
+		} )().catch( e => { S.failed = true; console.warn( `Luminara: ${ e.message ?? e } (the pack: tools/luminara-asset.mjs)` ); } );
 		return this.loading;
 
 	}
@@ -1932,21 +2002,132 @@ export class Luminara {
 			pack.add( g );
 
 		}
-		this.pack = pack;
 		this.setClear();
-		this.group.add( pack );
+		return pack;		// (load(): compiled, then into the group)
+
+	}
+
+}
+
+// ---- loading, for the progress bar (main.js, as the Berlin hall's): the pack and the first preset's
+// lightmap downloaded (streamed: their bytes so far), the room's shell built and its shaders compiled
+// (shown when Luminara first shows), then the pack's built and compiled; the page drawing in between ----
+
+/** shell, pack: pending | build | compile | ready; downloading while the bytes come; failed: the pack's. */
+export const luminaraStatus = { received: 0, total: 0, downloading: false, shell: 'pending', pack: 'pending', failed: false };
+
+/** What is being done now: idle | download | build | compile | ready | failed. */
+export function luminaraPhase() {
+
+	const s = luminaraStatus;
+	if ( s.failed ) return 'failed';
+	if ( s.shell === 'build' || s.pack === 'build' ) return 'build';
+	if ( s.shell === 'compile' || s.pack === 'compile' ) return 'compile';
+	if ( s.downloading || s.pack === 'waiting' ) return 'download';
+	return s.shell === 'ready' && s.pack === 'ready' ? 'ready' : 'idle';
+
+}
+
+/** 0..1 through the loading (the download most of it: what takes long on a real connection). */
+export function luminaraProgress() {
+
+	const s = luminaraStatus, step = { pending: 0, waiting: 0, build: 0.3, compile: 0.6, ready: 1 };
+	const dl = s.downloading ? ( s.total ? Math.min( 1, s.received / s.total ) : 0 ) : 1;
+	return 0.78 * dl + 0.1 * step[ s.shell ] + 0.12 * step[ s.pack ];
+
+}
+
+/** A short line for the progress bar. */
+export function luminaraStatusText() {
+
+	const s = luminaraStatus, mb = b => ( b / 1048576 ).toFixed( 1 );
+	switch ( luminaraPhase() ) {
+
+		case 'download': return s.total ? `Loading Luminara · ${ mb( s.received ) } / ${ mb( s.total ) } MB` : `Loading Luminara · ${ mb( s.received ) } MB`;
+		case 'build': return s.shell === 'build' ? 'Building the room' : 'Furnishing the room';
+		case 'compile': return 'Preparing materials';
+		case 'failed': return 'Luminara failed to load';
+		default: return '';
 
 	}
 
 }
 
 let prefetch = null;
-/** Start fetching the pack (safe to call repeatedly); resolves to its bytes. */
+const packDir = () => new URL( 'luminara/', new URL( import.meta.env.BASE_URL, location.href ) );
+
+/** Fetch `url` streamed, its bytes counted into luminaraStatus (slot `i` of `n`: the total once all have said their size). */
+const tracked = { got: [], size: [], n: 0 };
+async function fetchTracked( url, i, opts ) {
+
+	const res = await fetch( url, opts ), s = luminaraStatus, T = tracked, sum = a => a.reduce( ( x, y ) => x + ( y ?? 0 ), 0 );
+	if ( ! res.ok ) throw new Error( `${ url.pathname.split( '/' ).pop() }: HTTP ${ res.status }` );
+	// (a compressed response's length is not the body's: then no total, only the bytes so far)
+	T.size[ i ] = res.headers.get( 'content-encoding' ) ? 0 : Number( res.headers.get( 'content-length' ) ) || 0;
+	if ( T.size.filter( v => v !== undefined ).length === T.n && T.size.every( v => v ) ) s.total = sum( T.size );
+	if ( ! res.body ) return res.arrayBuffer();
+	const reader = res.body.getReader(), chunks = [];
+	T.got[ i ] = 0;
+	for ( ;; ) {
+
+		const { done, value } = await reader.read();
+		if ( done ) break;
+		chunks.push( value );
+		T.got[ i ] += value.length;
+		s.received = sum( T.got );
+
+	}
+	const out = new Uint8Array( T.got[ i ] );
+	let o = 0;
+	for ( const c of chunks ) { out.set( c, o ); o += c.length; }
+	return out.buffer;
+
+}
+
+/** Start fetching the pack (safe to call repeatedly); resolves to its bytes. The first preset's lightmap with it. */
 export function prefetchLuminara() {
 
 	if ( prefetch ) return prefetch;
-	const url = new URL( 'luminara/luminara.glb', new URL( import.meta.env.BASE_URL, location.href ) );
-	prefetch = fetch( url, { priority: 'high' } ).then( r => { if ( ! r.ok ) throw new Error( `luminara.glb: HTTP ${ r.status }` ); return r.arrayBuffer(); } );
+	const s = luminaraStatus;
+	// (the preset shown first: main.js's ?preset=, else the venue's default; its file named as tools/luminara-asset.mjs names it)
+	const first = new URLSearchParams( location.search ).get( 'preset' ) ?? LUMINARA_DEFAULT;
+	const firstMap = ! NOBAKE && LUMINARA_PRESETS[ first ] ? `lightmaps/${ first.toLowerCase().replace( /[^a-z0-9]+/g, '-' ) }.webp` : null;
+	tracked.n = firstMap ? 2 : 1;
+	s.downloading = true;
+	prefetch = fetchTracked( new URL( 'luminara.glb', packDir() ), 0, { priority: 'high' } );
+	const all = [ prefetch ];
+	if ( firstMap ) {
+
+		const map = fetchTracked( new URL( firstMap, packDir() ), 1 ).then( b => new Blob( [ b ], { type: 'image/webp' } ) );
+		lightmapFetches.set( firstMap, map );
+		all.push( map.catch( () => {} ) );		// (no lightmap: the probe's light, not a failed load)
+
+	}
+	Promise.all( all ).then( () => { s.downloading = false; }, () => { s.downloading = false; s.failed = true; } );
 	return prefetch;
+
+}
+
+// the lightmaps (one per preset, beside the pack): their bytes fetched once each, when a preset needs one
+const lightmapFetches = new Map();
+function lightmapBytes( file ) {
+
+	if ( ! lightmapFetches.has( file ) ) lightmapFetches.set( file, fetch( new URL( file, packDir() ) ).then( r => { if ( ! r.ok ) throw new Error( `${ file }: HTTP ${ r.status }` ); return r.blob(); } ) );
+	return lightmapFetches.get( file );
+
+}
+
+/** Let a frame be drawn (or, in a hidden tab, where frames wait, go on after a moment). */
+const nextFrame = () => new Promise( r => { const t = setTimeout( r, 100 ); requestAnimationFrame( () => { clearTimeout( t ); setTimeout( r, 0 ); } ); } );
+/** A lightmap as a texture: as GLTFLoader would make it (its image not flipped: v 0 its first row). */
+async function lightmapTexture( file ) {
+
+	const blob = await lightmapBytes( file );
+	const image = typeof createImageBitmap === 'function'
+		? await createImageBitmap( blob, { imageOrientation: 'none', premultiplyAlpha: 'none', colorSpaceConversion: 'none' } )
+		: await new Promise( ( ok, no ) => { const im = new Image(); im.onload = () => ok( im ); im.onerror = no; im.src = URL.createObjectURL( blob ); } );
+	const t = new THREE.Texture( image );
+	t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.minFilter = t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
+	return t;
 
 }

@@ -363,8 +363,9 @@ if ( fs.existsSync( path.join( G, 'marble-raw.jpg' ) ) ) {
 
 // ---- the baked light (tools/luminara-bake.mjs): the static shell as baked (its meshes with their
 // lightmap UVs, TEXCOORD_1; node shell-<i>, in src/luminara.js's bakeTargets() order) and a lightmap
-// per preset (bake-<slug>, sRGB-encoded under its scale); bake-meta's extras: the shell's hash, each
-// preset's scale. src/luminara.js uses them while its procedural shell still hashes the same.
+// per preset, beside the pack (lightmaps/<slug>.webp, sRGB-encoded under its scale: fetched when its preset
+// is shown, not with the pack); bake-meta's extras: the shell's hash, each preset's slug, scale and file.
+// src/luminara.js uses them while its procedural shell still hashes the same.
 {
 
 	const B = path.join( G, 'bake' ), metaFile = path.join( B, 'bake.json' ), shellFile = path.join( B, 'shell.json' );
@@ -383,19 +384,20 @@ if ( fs.existsSync( path.join( G, 'marble-raw.jpg' ) ) ) {
 			scene.addChild( doc.createNode( `shell-${ m.i }` ).setMesh( doc.createMesh( `shell-${ m.i }` ).addPrimitive( prim ) ).setExtras( { kind: 'shell', of: m.name } ) );
 
 		}
-		const presets = {};
+		const presets = {}, dir = path.join( path.dirname( opt.out ), 'lightmaps' );
 		let bytes = 0;
+		fs.rmSync( dir, { recursive: true, force: true } ); fs.mkdirSync( dir, { recursive: true } );
 		for ( const [ name, p ] of Object.entries( meta.presets ) ) {
 
 			if ( ! Number.isFinite( p.scale ) ) { say( `  ${ name }: its bake failed (scale ${ p.scale }): left out` ); continue; }
 			const slug = path.basename( p.file, '.png' ), b = await sharp( fs.readFileSync( path.join( B, p.file ) ) ).webp( { quality: 94, smartSubsample: true, effort: 6 } ).toBuffer();
-			swatch( `bake-${ slug }`, doc.createMaterial( `bake-${ slug }` ).setBaseColorTexture( doc.createTexture( `bake-${ slug }` ).setImage( b ).setMimeType( 'image/webp' ) ).setExtras( { look: 'bake' } ) );
-			presets[ name ] = { slug, scale: p.scale };
+			fs.writeFileSync( path.join( dir, `${ slug }.webp` ), b );
+			presets[ name ] = { slug, scale: p.scale, file: `lightmaps/${ slug }.webp` };
 			bytes += b.length;
 
 		}
 		scene.addChild( doc.createNode( 'bake-meta' ).setExtras( { kind: 'bake', hash: meta.hash, size: meta.size, texels: meta.texels, presets } ) );
-		say( `baked: the shell (${ shell.meshes.length } meshes, ${ tris } triangles) and ${ Object.keys( presets ).length } lightmaps of ${ meta.size } (${ ( bytes / 1024 ).toFixed( 0 ) } KB), hash ${ meta.hash }` );
+		say( `baked: the shell (${ shell.meshes.length } meshes, ${ tris } triangles) and ${ Object.keys( presets ).length } lightmaps of ${ meta.size } (${ ( bytes / 1024 ).toFixed( 0 ) } KB, in ${ path.relative( root, dir ) }/), hash ${ meta.hash }` );
 
 	}
 

@@ -15,7 +15,7 @@ import { buildUpright } from './upright.js';
 import { buildGrand } from './grand.js';
 import { Room } from './room.js';
 import { ConcertHall } from './hall.js';
-import { Luminara, prefetchLuminara } from './luminara.js';
+import { Luminara, prefetchLuminara, luminaraStatus, luminaraPhase, luminaraProgress, luminaraStatusText } from './luminara.js';
 import { berlinProgress, berlinStatus, berlinStatusText, prefetchBerlinHall } from './berlinhall.js';
 import { GIProbe } from './gi.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
@@ -867,6 +867,7 @@ hall.precompile = async object => {
 	await ready;
 
 };
+luminara.precompile = hall.precompile;		// (its shell and its pack compiled before they show)
 hall.onModel = () => {		// the shell shown changed (or Berlin finished loading): its presets and lights
 
 	if ( venue === hall ) buildLightFolder();
@@ -906,6 +907,7 @@ luminara.onLoad = () => {
 	ptDirty = true;
 
 };
+luminara.onBake = luminara.onLoad;		// (a preset's lightmap come: the probe again, lit by it)
 
 /** The venue for the piano's type: its geometry and lights in the scene, its lighting controls. */
 function switchVenue( v ) {
@@ -1368,22 +1370,27 @@ function resize() {
 
 window.addEventListener( 'resize', resize );
 
-// the hall's loading bar (its packs: download, build, textures, shaders), over the loading screen
-// or the scene; its own frames, so it moves while the loading screen hides the render loop's
+// the venues' loading bar (the Berlin hall's packs: download, build, textures, shaders; Luminara's:
+// download, its room built, its shaders, its furniture), over the loading screen or the scene; its own
+// frames, so it moves while the loading screen hides the render loop's
 const hallBar = document.getElementById( 'hallbar' ), hallBarFill = hallBar.querySelector( 'i' ), hallBarText = hallBar.querySelector( 'span' );
 ( function updateHallBar() {
 
-	const on = [ 'download', 'build', 'upload', 'compile' ].includes( berlinStatus.phase ) || berlinStatus.phase === 'failed' && hall.model === 'berlin' && venue === hall;
+	const berlinOn = [ 'download', 'build', 'upload', 'compile' ].includes( berlinStatus.phase ) || berlinStatus.phase === 'failed' && hall.model === 'berlin' && venue === hall;
+	const lp = luminaraPhase(), luminaraOn = venue === luminara && [ 'download', 'build', 'compile', 'failed' ].includes( lp );
+	const on = berlinOn || luminaraOn;
 	hallBar.classList.toggle( 'show', on );
 	if ( on ) {
 
-		const f = berlinProgress();
+		const f = berlinOn ? berlinProgress() : luminaraProgress();
 		hallBarFill.style.transform = `scaleX(${ f.toFixed( 4 ) })`;
 		hallBar.setAttribute( 'aria-valuenow', String( Math.round( 100 * f ) ) );
-		hallBarText.textContent = berlinStatusText();
+		hallBar.setAttribute( 'aria-label', berlinOn ? 'Loading the concert hall' : 'Loading Luminara' );
+		hallBarText.textContent = berlinOn ? berlinStatusText() : luminaraStatusText();
 
 	}
-	if ( berlinStatus.phase !== 'ready' ) requestAnimationFrame( updateHallBar );
+	// (on until both are done with: the Berlin hall's packs, and Luminara's when it is the venue)
+	if ( berlinStatus.phase !== 'ready' || luminaraStatus.pack !== 'ready' && ! luminaraStatus.failed ) requestAnimationFrame( updateHallBar );
 	else hallBar.classList.remove( 'show' );
 
 } )();
