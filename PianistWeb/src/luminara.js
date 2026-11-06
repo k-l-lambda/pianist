@@ -1593,6 +1593,11 @@ export class Luminara {
 		const sky = this.skies[ L.outside ] ?? Object.values( this.skies )[ 0 ];
 		if ( sky && M.sky.map !== sky ) { M.sky.map = sky; M.sky.needsUpdate = ! M.sky.map; }
 		M.sky.color.setScalar( this.pack ? L.sky : 0.25 * L.sky );
+		for ( const { raster, pt } of this._ptTwins?.values() ?? [] ) {		// (path tracing's emitting twins: setMode)
+
+			pt.emissive.copy( raster.color ); pt.emissiveMap = raster.map ?? null; pt.emissiveIntensity = 1; pt.needsUpdate = true;
+
+		}
 		const size = this.highQuality ? 4096 : 2048, key = this.domeSpots[ 0 ];
 		if ( key.shadow.mapSize.x !== size ) {
 
@@ -1745,7 +1750,23 @@ export class Luminara {
 	/** Around a capture by a cube camera (the probe, a mirror): the floor's reflection off (it is the main view's). */
 	set capturing( on ) { this.mirror.enabled = ! on; }
 
-	setMode( mode ) { this.mode = mode; this.setClear(); this.updateLights(); }
+	setMode( mode ) {
+
+		this.mode = mode;
+		this.setClear();
+		// path tracing: what only the raster shows as light (MeshBasicMaterial: no emission to the path
+		// tracer, it reads it as a dark surface) as an emitter: the sky (the windows' daylight), the staff
+		this._ptTwins ??= new Map();
+		for ( const o of [ this.sky, ...this.group.children.filter( c => c.name === 'luminara:staff' ) ] ) {
+
+			if ( ! o ) continue;
+			if ( ! this._ptTwins.has( o ) ) this._ptTwins.set( o, { raster: o.material, pt: new THREE.MeshStandardMaterial( { color: 0x000000, roughness: 1, metalness: 0, side: o.material.side } ) } );
+			o.material = mode === 'pathtrace' ? this._ptTwins.get( o ).pt : this._ptTwins.get( o ).raster;
+
+		}
+		this.updateLights();
+
+	}
 
 	// ---------------------------------------------------------------------
 	/** Load the pack (once): the furniture, the reliefs, the sky and the floor's marble. */
@@ -2007,6 +2028,23 @@ export class Luminara {
 
 		}
 		this.setClear();
+		// the pack's quantised attributes (meshopt: normalized Int16 positions, Int8 normals, Uint8 colours)
+		// as floats, the same values: three-gpu-pathtracer copies an attribute into one of its own type and
+		// writes world-space metres into it (positions clamped to ±32767, normals and colours unscaled: the
+		// furniture became sheets 65 km across); the raster draw is unchanged
+		pack.traverse( o => {
+
+			if ( ! o.isMesh ) return;
+			for ( const [ k, a ] of Object.entries( o.geometry.attributes ) ) {
+
+				if ( ! a.normalized && ! a.isInterleavedBufferAttribute && a.array instanceof Float32Array ) continue;
+				const f = new Float32Array( a.count * a.itemSize );
+				for ( let i = 0; i < a.count; ++ i ) for ( let c = 0; c < a.itemSize; ++ c ) f[ i * a.itemSize + c ] = a.getComponent( i, c );
+				o.geometry.setAttribute( k, new THREE.BufferAttribute( f, a.itemSize ) );
+
+			}
+
+		} );
 		return pack;		// (load(): compiled, then into the group)
 
 	}

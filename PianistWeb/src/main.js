@@ -20,6 +20,7 @@ import { berlinProgress, berlinStatus, berlinStatusText, prefetchBerlinHall } fr
 import { GIProbe } from './gi.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
 import { PathTracer } from './pathtracer.js';
+import { PTSnapshot } from './ptsnapshot.js';
 import { KeyShadow } from './keyshadow.js';
 import { HandheldMode } from './handheldmode.js';
 import { Synth } from './synth.js';
@@ -70,6 +71,7 @@ const settings = {
 	bloom: 0.12,
 	giBounces: 2,
 	ptBounces: 8,
+	ptSamples: 128,		// a path-traced snapshot's samples per pixel (ptsnapshot.js)
 	lidAngle: 34,
 	volume: 0.5,
 };
@@ -346,6 +348,16 @@ function applyAO() {
 }
 
 pathTracer.rasterCallback = () => composer.render();
+// the path-traced snapshot (the GUI's button): the view at the click, path traced in a corner window while
+// the page goes on in real time; the venues in their path-tracing state only while its scene is built
+const ptSnapshot = new PTSnapshot( renderer, pathTracer, scene, camera, {
+	enterPT: () => { setLightingMode( 'pathtrace' ); roll.group.visible = false; },
+	leavePT: () => { setLightingMode( 'raster' ); scene.environment = probeEnv; },		// (the roll shows again at its next update)
+	isLive: () => settings.mode === 'pathtrace',
+	samples: () => settings.ptSamples,
+	bounces: () => settings.ptBounces,
+	changed: () => { ptDirty = true; },
+} );
 
 // ---------------------------------------------------------------------------
 // piano
@@ -807,7 +819,8 @@ fHand.add( handheld, 'drift', 0, 2, 0.05 ).name( 'Operator drift' );
 fHand.add( handheld, 'bursts' ).name( 'Operator bursts' );
 fHand.add( handheld, 'focusHunt', 0, 2, 0.05 ).name( 'Focus hunting' );
 fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
-gui.add( settings, 'mode', { 'Real-time (probe GI + GTAO)': 'realtime', 'Path traced': 'pathtrace' } ).name( 'Renderer' ).onChange( setMode );
+// (the renderer stays real time; ?mode=pathtrace path traces the page itself)
+gui.add( { snapshot: () => ptSnapshot.start() }, 'snapshot' ).name( 'Path tracing snapshot' );
 
 // lighting: the venue's own presets and controls (rebuilt when the venue changes)
 const fLight = gui.addFolder( 'Lighting' );
@@ -952,6 +965,7 @@ fRender.add( settings, 'bloom', 0, 1, 0.01 ).name( 'Bloom' ).onChange( v => {
 	applyBloom();
 
 } );
+fRender.add( settings, 'ptSamples', 16, 1024, 16 ).name( 'PT snapshot samples' );
 fRender.add( settings, 'ptBounces', 2, 16, 1 ).name( 'PT bounces' ).onChange( v => {
 
 	pathTracer.pt.bounces = v;
@@ -1409,6 +1423,7 @@ function frame() {
 	const dt = Math.min( raw, 0.05 );
 	if ( raw > 0 ) fps += ( 1 / raw - fps ) * 0.05;
 	frameBody( dt );
+	ptSnapshot.tick();		// (a path-traced snapshot's tile, after the page's frame)
 	requestAnimationFrame( frame );
 
 }
