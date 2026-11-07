@@ -1926,9 +1926,9 @@ export class Luminara {
 		if ( ! this.active || ! this._built ) return;
 		// the sky's time (its clouds drift, its stars twinkle), the moon's light under the clouds
 		const S = this.skyU;
-		S.uTime.value = ( window.__pianistPaused ? S.uTime.value : clock.now() / 1000 + ( this.skyTimeShift ?? 0 ) );		// (the render clock offline: a render's sky the same each time)		// (skyTimeShift: to look at another moment)
+		S.uTime.value = this.frozenTime ?? ( window.__pianistPaused ? S.uTime.value : clock.now() / 1000 + ( this.skyTimeShift ?? 0 ) );		// (frozenTime: a scene state's moment, src/scenestate.js)		// (the render clock offline: a render's sky the same each time)		// (skyTimeShift: to look at another moment)
 		if ( this.sun.visible && ! S.uSun.value ) this.sun.intensity = this.sun.userData.intensity * ( 1 - this.moonCloud() );
-		this.carousel?.userData.turn( clock.now() / 1000 );		// (the music box's carousel: on the render clock, as the sky)
+		this.carousel?.userData.turn( this.frozenTime ?? clock.now() / 1000 );		// (the music box's carousel: on the render clock, as the sky)
 		if ( this.mode === 'pathtrace' ) return;
 		this.mirror.update( renderer, this.scene, camera, [ this.floorMeshes ].flat(), this.mirrorScale ?? ( this.highQuality ? 0.5 : 0.35 ) );		// (mirrorScale: an offline render's, main.js)
 

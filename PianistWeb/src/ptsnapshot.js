@@ -56,8 +56,13 @@ export class PTSnapshot {
 
 	}
 
-	/** Start (or restart) a snapshot of the view as it is now. */
-	async start() {
+	/**
+	 * Start (or restart) a snapshot of the view as it is now. `camera`: this one instead of the page's
+	 * (copied); `samples`: instead of the GUI's; `exclusive`: the page draws no frames of its own
+	 * meanwhile, every tile a frame is the path tracer's (offline: tools/render-pt.mjs). Resolves when
+	 * the scene is built; `this.done` when the samples are in.
+	 */
+	async start( { camera = null, samples = null, exclusive = false } = {} ) {
 
 		this.stop();
 		const run = ++ this.run;
@@ -79,7 +84,7 @@ export class PTSnapshot {
 		await nextFrame(); await nextFrame();		// (the panel drawn before the scene's build, which blocks a few seconds)
 		if ( run !== this.run ) return;
 
-		const cam = this.frozen = this.camera.clone();
+		const cam = this.frozen = ( camera ?? this.camera ).clone();
 		cam.updateMatrixWorld();
 		// its size: the view's, in CSS pixels (not the device's: path tracing at 2x would take 4 times as long)
 		const buf = this.renderer.getDrawingBufferSize( new THREE.Vector2() ), dpr = this.renderer.getPixelRatio();
@@ -106,7 +111,9 @@ export class PTSnapshot {
 		}
 		pt.reset();
 		this.target.setSize( w, h );
-		this.goal = this.hooks.samples();
+		this.goal = samples ?? this.hooks.samples();
+		this.exclusive = exclusive;
+		this.done = new Promise( ok => this._done = ok );
 		this.t0 = performance.now();
 		this.lastRefresh = 0;
 		this.running = true;
@@ -126,14 +133,18 @@ export class PTSnapshot {
 
 		}
 		const was = this.renderer.getRenderTarget();
-		if ( pt.samples < this.goal ) pt.renderSample();
+		// (exclusive: a whole sample a frame, its tiles one after another; else one tile, the page's frame drawn too)
+		const n = this.exclusive ? pt.tiles.x * pt.tiles.y : 1;
+		for ( let i = 0; i < n && pt.samples < this.goal; ++ i ) pt.renderSample();
 		this.renderer.setRenderTarget( was );
 		const done = pt.samples >= this.goal;
 		if ( done || now - this.lastRefresh > 1000 ) this._refresh();
 		if ( done ) {
 
 			this.running = false;
+			this.exclusive = false;
 			this._restore();
+			this._done?.( Math.floor( pt.samples ) );
 			this._status( 'Path traced · click to open', `${ Math.floor( pt.samples ) } spp · ${ this._elapsed() }` );
 
 		}
@@ -178,6 +189,17 @@ export class PTSnapshot {
 
 	}
 
+	/** The full image as it is now, a PNG as base64 (tools/render-pt.mjs). */
+	pngBase64() {
+
+		this._refresh();
+		return new Promise( ok => this.full.toBlob( b => { const f = new FileReader(); f.onload = () => ok( f.result.slice( f.result.indexOf( ',' ) + 1 ) ); f.readAsDataURL( b ); }, 'image/png' ) );
+
+	}
+
+	/** Samples so far. */
+	get samples() { return Math.floor( this.pathTracer.pt.samples ); }
+
 	/** The full image, as it is now, in a new tab (a blob URL). */
 	openFull() {
 
@@ -208,6 +230,7 @@ export class PTSnapshot {
 		this.run ++;
 		if ( this.running && ! this.live ) this._restore();
 		this.running = false;
+		this.exclusive = false;
 
 	}
 

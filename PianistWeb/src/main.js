@@ -21,6 +21,7 @@ import { GIProbe } from './gi.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
 import { PathTracer } from './pathtracer.js';
 import { PTSnapshot } from './ptsnapshot.js';
+import { captureState, applyState } from './scenestate.js';
 import { KeyShadow } from './keyshadow.js';
 import { HandheldMode } from './handheldmode.js';
 import { Synth } from './synth.js';
@@ -819,8 +820,12 @@ fHand.add( handheld, 'drift', 0, 2, 0.05 ).name( 'Operator drift' );
 fHand.add( handheld, 'bursts' ).name( 'Operator bursts' );
 fHand.add( handheld, 'focusHunt', 0, 2, 0.05 ).name( 'Focus hunting' );
 fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
-// (the renderer stays real time; ?mode=pathtrace path traces the page itself)
-gui.add( { snapshot: () => ptSnapshot.start() }, 'snapshot' ).name( 'Path tracing snapshot' );
+// path tracing: a snapshot of the view (a window in the corner), and the scene's state as JSON (the input
+// of an offline path-traced render: tools/render-pt.mjs). (The renderer stays real time; ?mode=pathtrace
+// path traces the page itself)
+const fPT = gui.addFolder( 'Path tracing' );
+fPT.add( { snapshot: () => ptSnapshot.start() }, 'snapshot' ).name( 'Snapshot' );
+fPT.add( { save: () => downloadState() }, 'save' ).name( 'Download scene state' );
 
 // lighting: the venue's own presets and controls (rebuilt when the venue changes)
 const fLight = gui.addFolder( 'Lighting' );
@@ -965,8 +970,8 @@ fRender.add( settings, 'bloom', 0, 1, 0.01 ).name( 'Bloom' ).onChange( v => {
 	applyBloom();
 
 } );
-fRender.add( settings, 'ptSamples', 16, 1024, 16 ).name( 'PT snapshot samples' );
-fRender.add( settings, 'ptBounces', 2, 16, 1 ).name( 'PT bounces' ).onChange( v => {
+fPT.add( settings, 'ptSamples', 16, 4096, 16 ).name( 'Samples' );
+fPT.add( settings, 'ptBounces', 2, 16, 1 ).name( 'Bounces' ).onChange( v => {
 
 	pathTracer.pt.bounces = v;
 	pathTracer.pt.reset();
@@ -1422,7 +1427,7 @@ function frame() {
 	const raw = timer.getDelta();
 	const dt = Math.min( raw, 0.05 );
 	if ( raw > 0 ) fps += ( 1 / raw - fps ) * 0.05;
-	frameBody( dt );
+	if ( ! ptSnapshot.exclusive ) frameBody( dt );		// (an exclusive snapshot: the GPU the path tracer's only)
 	ptSnapshot.tick();		// (a path-traced snapshot's tile, after the page's frame)
 	requestAnimationFrame( frame );
 
@@ -1530,7 +1535,22 @@ if ( params.has( 'preset' ) ) gui.controllersRecursive().find( c => c.property =
 if ( params.has( 'shake' ) ) gui.controllersRecursive().find( c => c.object === handheld && c.property === 'intensity' )?.setValue( Number( params.get( 'shake' ) ) );
 if ( flag( 'handheld' ) ) gui.controllersRecursive().find( c => c._name === 'Handheld' )?.setValue( true );
 if ( flag( 'screen' ) ) setScreenPower( true );
-window.__pianist = { scene, camera, renderer, room, hall, luminara, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
+// the scene's state (src/scenestate.js): saved as JSON from the GUI, set again from it (tools/render-pt.mjs)
+const stateContext = {
+	settings, camera, controls, renderer, venue: () => venue, venues: { room, hall, luminara }, piano: () => piano, roll, handheld,
+	setStyle, setScreenPower, applyQuality, refreshLighting,
+	chosen: { tone: () => toneChosen, bloom: () => bloomChosen, set: ( t, b ) => { toneChosen = t; bloomChosen = b; } },
+	updateGUI: () => gui.controllersRecursive().forEach( c => c.updateDisplay() ),
+};
+function downloadState() {
+
+	const state = captureState( stateContext ), stamp = state.saved.replace( /[:.]/g, '-' ).slice( 0, 19 );
+	const url = URL.createObjectURL( new Blob( [ JSON.stringify( state, null, '\t' ) ], { type: 'application/json' } ) );
+	Object.assign( document.createElement( 'a' ), { href: url, download: `pianist-${ state.piano.style }-${ stamp }.json` } ).click();
+	setTimeout( () => URL.revokeObjectURL( url ), 10000 );
+
+}
+window.__pianist = { captureState: () => captureState( stateContext ), applyState: st => applyState( stateContext, st ), ptSnapshot, scene, camera, renderer, room, hall, luminara, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
 if ( RENDER ) startRender(); else requestAnimationFrame( frame );
 
 // ---------------------------------------------------------------------------
