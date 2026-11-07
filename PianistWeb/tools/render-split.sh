@@ -30,7 +30,8 @@ mkdir -p "$work" "$( dirname "$out" )"; work=$( realpath "$work" ); out=$( realp
 read -r -a D <<< "$devs"; k=${#D[@]}
 n=$( python3 -c "print( round( ( $to - $from ) * $fps ) )" )
 [ "$n" -ge "$k" ] || k=$n
-# a dev server for all the workers
+# a dev server for all the workers (public/fluid/: the FluidSynth worklet, copied from node_modules as npm run dev does)
+( cd "$here" && node tools/copy-fluid.mjs > /dev/null )
 port=5184; while ( exec 3<>/dev/tcp/127.0.0.1/$port ) 2>/dev/null; do port=$(( port + 1 )); done
 ( cd "$here" && exec npx vite --port $port --strictPort > "$work/vite.log" 2>&1 ) & vp=$!
 trap 'kill $vp 2>/dev/null || true' EXIT
