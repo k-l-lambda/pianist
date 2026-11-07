@@ -106,6 +106,38 @@ export class PTPost {
 
 	}
 
+	/**
+	 * `src` sanitised, its saturation and bloom applied, still linear HDR: the offline frame's input
+	 * (src/offline.js tone maps, resolves and dithers it itself). Returns the half-float target (this.a).
+	 */
+	renderLinear( renderer, src, { saturation = 1, bloom = 0, bloomThreshold = 0.92 } = {} ) {
+
+		const w = src.image.width, h = src.image.height;
+		if ( this.size.x !== w || this.size.y !== h ) {
+
+			this.size.set( w, h );
+			this.a.setSize( w, h ); this.b.setSize( w, h );
+			this.bloom.setSize( w, h );
+
+		}
+
+		const was = { target: renderer.getRenderTarget(), auto: renderer.autoClear };
+		renderer.autoClear = true;
+		this.clamp.uniforms.uSaturation.value = saturation;
+		this.clamp.renderToScreen = false;
+		this.clamp.render( renderer, this.a, { texture: src } );
+		if ( bloom > 0 ) {
+
+			Object.assign( this.bloom, { strength: bloom, threshold: bloomThreshold, renderToScreen: false } );
+			this.bloom.render( renderer, null, this.a, 0, false );
+
+		}
+		renderer.setRenderTarget( was.target );
+		renderer.autoClear = was.auto;
+		return this.a;
+
+	}
+
 	dispose() {
 
 		for ( const p of [ this.clamp, this.bloom, this.output, this.dither ] ) p.dispose?.();

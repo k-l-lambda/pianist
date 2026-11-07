@@ -7,7 +7,7 @@
 //        [--size 1280x720] [--ss 2] [--url http://localhost:5184/] [--no-audio] [--crf 18]
 //        [--watermark "opacity=0.06,right=60,bottom=60,height=96" | off]
 //        [--subframes 1] [--shutter 0.5] [--bits 8|10] [--no-dither] [--filter 1.25] [--hq] [--legacy]
-//        [--query "style=grand-white&preset=Night"] [--frames dir]
+//        [--query "style=grand-white&preset=Night"] [--frames dir] [--pt 1024]
 //
 // The frame (src/offline.js): drawn at size x ss in linear light, resolved to the size there (a
 // Blackman-Harris window, --filter its radius in output px), tone mapped, then quantised with dither
@@ -18,6 +18,8 @@
 // (the mirrors at the frame's size, a 512 px probe, 32 AO samples). --legacy: the old capture (tone
 // mapped on the canvas, scaled by drawImage, PNG, untagged BT.601), for comparison. --query: page
 // parameters (style, preset, ...). --frames dir: also each frame as PNG there (from the raw pixels).
+// --pt N: path traced, N samples per pixel a frame (src/main.js stepPT: the raster's state, the path
+// tracer's image; its samples are the anti-aliasing: --ss 1 and one sub-frame unless given).
 //
 // --watermark: the klstudio.png mark drawn into every frame; defaults as on the page (src/main.js
 // WATERMARK: bottom right, 60 px in, opacity 0.06); keys opacity, right, bottom, height (px at
@@ -75,6 +77,7 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--legacy' ) opt.legacy = true;
 	else if ( a === '--query' ) opt.query = val();
 	else if ( a === '--frames' ) opt.frames = val();
+	else if ( a === '--pt' ) opt.pt = Number( val() );
 	else if ( a === '--no-audio' ) opt.audio = false;
 	else if ( a === '--watermark' ) opt.watermark = val();
 	else if ( a === '-h' || a === '--help' ) {
@@ -89,6 +92,7 @@ for ( let i = 0; i < argv.length; ++ i ) {
 
 if ( ! script ) throw new Error( 'usage: node tools/render-video.mjs <script.yaml> [--fps 25] [--from 0] [--to s] [--out out.mp4] [--size WxH]' );
 const [ W, H ] = opt.size.split( 'x' ).map( Number );
+if ( opt.pt ) { if ( ! argv.includes( '--ss' ) ) opt.ss = 1; if ( ! argv.includes( '--subframes' ) ) opt.subframes = 1; }
 if ( ! [ 8, 10 ].includes( opt.bits ) ) throw new Error( `--bits ${ opt.bits }: 8 or 10` );
 if ( opt.legacy && opt.bits !== 8 ) throw new Error( '--legacy: 8 bits only' );
 opt.crf ??= opt.bits === 10 ? 20 : 18;		// (x265's scale sits a little above x264's for the same quality)
@@ -183,6 +187,7 @@ try {
 	const hash = new URLSearchParams( { render: script, fps: opt.fps, from: opt.from, ss: opt.ss, sub: opt.subframes, shutter: opt.shutter, bits: opt.bits, dither: opt.dither ? 1 : 0, filter: opt.filter, hq: opt.hq ? 1 : 0, legacy: opt.legacy ? 1 : 0 } );
 	if ( opt.to !== null ) hash.set( 'to', opt.to );
 	if ( opt.watermark ) hash.set( 'wm', opt.watermark );
+	if ( opt.pt ) hash.set( 'pt', opt.pt );
 	const base = new URL( opt.url );
 	if ( opt.query ) base.search = opt.query;
 	await page.goto( new URL( '#?' + hash, base ).href, { waitUntil: 'commit' } );
@@ -194,7 +199,7 @@ try {
 		return ext ? r.getParameter( ext.UNMASKED_RENDERER_WEBGL ) : '?';
 
 	} );
-	console.log( `page ready: drawing ${ info.width }x${ info.height }, captured ${ W }x${ H }, ${ opt.fps } fps, ${ opt.subframes } sub-frame(s), ${ opt.legacy ? 'legacy PNG capture' : `${ opt.bits }-bit${ opt.dither ? ' dithered' : '' }` }${ opt.hq ? ', hq' : '' }, GPU: ${ gl }` );
+	console.log( `page ready: drawing ${ info.width }x${ info.height }, captured ${ W }x${ H }, ${ opt.fps } fps, ${ opt.subframes } sub-frame(s), ${ opt.legacy ? 'legacy PNG capture' : `${ opt.bits }-bit${ opt.dither ? ' dithered' : '' }` }${ opt.hq ? ', hq' : '' }${ opt.pt ? `, path traced ${ opt.pt } spp` : '' }, GPU: ${ gl }` );
 	if ( /swiftshader|llvmpipe/i.test( gl ) ) console.warn( 'warning: software GL (check __EGL_VENDOR_LIBRARY_FILENAMES)' );
 
 	// end: --to, else when the script has finished (and its sound has rung out a little)

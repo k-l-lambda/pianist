@@ -127,12 +127,12 @@ process.on( 'SIGINT', () => process.exit( 130 ) );
 // `n` frames; for each the camera as drawn (operator, drift, shake: the phone) and the user's mouth
 // on the person's card (person.js: the card's origin at the phone, mirrored, facing -z): 0.10 m
 // below the eyes, 5 cm in front of the card
-function stepFrames( n ) {
+async function stepFrames( n ) {
 
 	const P = window.__pianist, out = [];
 	for ( let k = 0; k < n; ++ k ) {
 
-		const s = window.__render.step( { draw: false } ), c = P.camera;		// the timeline only: nothing on the GPU
+		const s = await window.__render.step( { draw: false } ), c = P.camera;		// the timeline only: nothing on the GPU
 		const pose = { t: s.time, frame: s.frame, state: s.state, p: c.position.toArray(), q: c.quaternion.toArray(), mouth: null };
 		const h = P.handheld, info = h?.person?.info;
 		if ( h?.enabled && h.showPerson && info ) {

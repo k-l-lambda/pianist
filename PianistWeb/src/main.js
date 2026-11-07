@@ -348,6 +348,17 @@ pathTracer.rasterCallback = () => composer.render();
 // the path-traced snapshot (the GUI's button): the view at the click, path traced in a corner window while
 // the page goes on in real time; the venues in their path-tracing state only while its scene is built
 let ptScreen = null, ptKeyGlows = [];
+// the key glows' gradient (pianoroll.js keyGradient: its alpha in G) as a linear emissive map
+let _ptGlowGradient = null;
+function ptGlowGradient() {
+
+	if ( _ptGlowGradient ) return _ptGlowGradient;
+	const src = roll.keyGradient.image, n = src.height, d = new Uint8Array( 4 * n );
+	for ( let i = 0; i < n; ++ i ) { const a = src.data[ 4 * i + 1 ]; d.set( [ a, a, a, 255 ], 4 * i ); }
+	_ptGlowGradient = Object.assign( new THREE.DataTexture( d, 1, n ), { colorSpace: THREE.NoColorSpace, magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter, needsUpdate: true } );
+	return _ptGlowGradient;
+
+}
 const ptSnapshot = new PTSnapshot( renderer, pathTracer, scene, camera, {
 	enterPT: () => {
 
@@ -358,8 +369,23 @@ const ptSnapshot = new PTSnapshot( renderer, pathTracer, scene, camera, {
 		setLightingMode( 'pathtrace' );
 		roll.group.visible = false;
 		if ( ptScreen ) scene.add( ptScreen );
-		ptKeyGlows = [ ...roll.keyGlows.values() ].filter( g => g.visible );
-		for ( const g of ptKeyGlows ) g.visible = false;
+		// the keys' glows: each additive quad (to the path tracer a tinted film) stood in for by a clear twin
+		// (transmission 1, ior 1: light passes as through air) emitting its colour × level along its gradient
+		ptKeyGlows = [ ...roll.keyGlows.values() ].filter( g => g.visible && g.material.opacity > 0.002 );
+		for ( const g of ptKeyGlows ) {
+
+			g.visible = false;
+			const twin = new THREE.Mesh( g.geometry, new THREE.MeshPhysicalMaterial( {
+				color: 0xffffff, roughness: 0, metalness: 0, transmission: 1, ior: 1, thickness: 0,
+				emissive: g.material.color, emissiveIntensity: g.material.opacity, emissiveMap: ptGlowGradient(),
+			} ) );
+			twin.castShadow = false;
+			twin.userData.ptGlowTwin = true;
+			g.parent.add( twin );
+			twin.position.copy( g.position ); twin.quaternion.copy( g.quaternion ); twin.scale.copy( g.scale );
+			g.userData.ptTwin = twin;
+
+		}
 
 	},
 	leavePT: () => {
@@ -367,7 +393,7 @@ const ptSnapshot = new PTSnapshot( renderer, pathTracer, scene, camera, {
 		setLightingMode( 'raster' );
 		scene.environment = probeEnv;		// (the roll shows again at its next update)
 		ptScreen?.dispose(); ptScreen = null;		// (the path tracer keeps its own copy)
-		for ( const g of ptKeyGlows ) g.visible = true;
+		for ( const g of ptKeyGlows ) { g.visible = true; const t = g.userData.ptTwin; if ( t ) { t.removeFromParent(); t.material.dispose(); delete g.userData.ptTwin; } }
 		ptKeyGlows = [];
 
 	},
@@ -1637,8 +1663,14 @@ function startRender() {
 	// (at 1 fps the user's first line came 4.6 s late, at 25 fps still 0.04 s per event). The
 	// rest of the frame (camera shake, roll, keys) is updated once with the frame's dt
 	const SCRIPT_STEP = 0.005;
-	/** The script and the clock on to `end` ms, in sub-steps of at most SCRIPT_STEP. */
-	const advanceTo = end => {
+	/**
+	 * The script and the clock on to `end` ms, in sub-steps of at most SCRIPT_STEP. After each sub-step the
+	 * microtasks queued in it run (a few turns: chained ones): the script waits on promises (a MIDI file's
+	 * start, a fade's end) before it times the next `gap:` off them; settled only between frames, those came
+	 * up to a frame late, so the timeline depended on the frame rate and on a render's `from` (skipped frames
+	 * run in one task: from 26 s the voice file had started 2 s later than in a render begun at 24 s).
+	 */
+	const advanceTo = async end => {
 
 		const n = Math.max( 1, Math.ceil( ( end - clock.now() ) / ( 1000 * SCRIPT_STEP ) - 1e-9 ) );
 		for ( let i = 1; i <= n; ++ i ) {
@@ -1647,6 +1679,7 @@ function startRender() {
 			const sdt = ( t - clock.now() ) / 1000;
 			clock.advance( t - clock.now() );		// no drift: the last sub-step ends on the frame
 			scriptPlayer.update( sdt );
+			for ( let k = 0; k < 4; ++ k ) await null;
 
 		}
 
@@ -1657,7 +1690,7 @@ function startRender() {
 	// anti-aliasing. One sub-frame: as before, the scene at the frame's time. Not drawn (draw false):
 	// the same sub-steps, so a render from `from` matches one from the start
 	let jitterNo = 0;
-	const step = () => {
+	const step = async () => {
 
 		const end = 1000 * frameNo * dt, size = renderer.getDrawingBufferSize( new THREE.Vector2() );
 		if ( drawFrames ) offline.begin( size.x, size.y, SUB );
@@ -1666,14 +1699,42 @@ function startRender() {
 			handheld.restore();		// the script's camera moves work on the intended pose
 			const t = frameNo > 0 ? end - 1000 * dt * shutter * ( SUB - 1 - k ) / SUB : 0;
 			const before = clock.now();
-			if ( frameNo > 0 ) advanceTo( Math.max( t, clock.now() ) );
-			else if ( k === 0 ) scriptPlayer.update( 0 );
+			if ( frameNo > 0 ) await advanceTo( Math.max( t, clock.now() ) );
+			else if ( k === 0 ) { scriptPlayer.update( 0 ); for ( let j = 0; j < 4; ++ j ) await null; }
 			// (the first sub-frame also takes the time from the frame before up to the shutter's opening)
 			frameBody( frameNo > 0 ? ( clock.now() - before ) / 1000 : 0, true, SUB > 1 && venue.mode !== 'pathtrace' ? halton2( ++ jitterNo ) : null );
 			if ( drawFrames && drawnFrom ) offline.accumulate( drawnFrom );
 
 		}
 		frameNo ++;
+
+	};
+	// Path traced (#?pt=<spp>, the driver's --pt): the frame's state as the raster's (the step above: the script,
+	// keys, roll, camera), then the path tracer's scene built from it (ptsnapshot.js: exclusive, a whole sample
+	// a turn, a fence between) and its samples; its linear image (hdrClamp, saturation, bloom: ptpost.js) is the
+	// offline frame's, which tone maps, resolves and dithers it as a raster frame's. Sub-frames are not used (the
+	// samples are the anti-aliasing; no motion blur)
+	const ptLinear = new PTPost();
+	const stepPT = async () => {
+
+		await step();
+		if ( ! drawFrames ) return;
+		const size = renderer.getDrawingBufferSize( new THREE.Vector2() );
+		await ptSnapshot.start( { camera, samples: o.pt, exclusive: true } );
+		if ( ! ptSnapshot.running ) throw new Error( 'render: the path tracer did not start' );
+		const done = ptSnapshot.done;
+		for ( let settled = false; ! settled; ) {
+
+			ptSnapshot.tick();
+			settled = ! ptSnapshot.running;
+			if ( ! settled ) await new Promise( r => setTimeout( r, 0 ) );
+
+		}
+		await done;
+		const lin = ptLinear.renderLinear( renderer, pathTracer.pt.target.texture, ptPostParams() );
+		offline.begin( size.x, size.y, 1 );
+		offline.accumulate( lin.texture );
+		ptSnapshot.panel.hidden = true;
 
 	};
 	const ready = ( async () => {
@@ -1725,7 +1786,7 @@ function startRender() {
 		drawFrames = false;
 		while ( frameNo < Math.round( o.from * o.fps ) ) {
 
-			step();
+			await step();
 			if ( frameNo % 50 === 0 ) await new Promise( r => setTimeout( r, 0 ) );
 
 		}
@@ -1741,9 +1802,7 @@ function startRender() {
 
 			const t0 = performance.now();
 			drawFrames = draw;
-			step();
-			drawFrames = true;
-			return { frame: frameNo - 1, time: ( frameNo - 1 ) * dt, ms: performance.now() - t0, state: scriptPlayer.playing };
+			return ( o.pt > 0 ? stepPT() : step() ).then( () => { drawFrames = true; return { frame: frameNo - 1, time: ( frameNo - 1 ) * dt, ms: performance.now() - t0, state: scriptPlayer.playing }; } );
 
 		},
 		// the frame just drawn, at the output size: its linear light resolved and quantised (src/offline.js),
