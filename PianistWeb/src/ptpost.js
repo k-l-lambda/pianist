@@ -42,7 +42,11 @@ export class PTPost {
 
 		const half = () => new THREE.WebGLRenderTarget( 1, 1, { type: THREE.HalfFloatType, depthBuffer: false } );
 		this.a = half(); this.b = half();
-		this.clamp = makeHDRClamp();
+		// capped at 64, not the composer's 4096: the path tracer's glossy screen reflects the sun's area light as a
+		// patch of radiance in the thousands, many pixels wide (the raster's: a point light's small highlight);
+		// bloomed, its energy laid a white veil over the whole frame (premiere 30 s). Above ~16 everything is white
+		// after the tone mapping at these exposures, so the cap changes the bloom (and the fireflies) only
+		this.clamp = makeHDRClamp( 64 );
 		this.bloom = new UnrealBloomPass( new THREE.Vector2( 1, 1 ), 0, 0.6, 0.92 );
 		this.output = new OutputPass();
 		// triangular dither, ±1 step of 8 bits, on the sRGB image (the steps of a slow gradient: the walls, the sky)
