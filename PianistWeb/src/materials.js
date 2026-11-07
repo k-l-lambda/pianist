@@ -137,6 +137,14 @@ export function makeMaterials( baker, style ) {
 			m.panel = screen();
 			m.rimInner = null;		// (no veneer: the rim is clear)
 			m.brass = phys( { color: '#e8eaee', metalness: 1, roughness: 0.08 } );		// (chrome)
+			// the plate (the cast frame under the strings, its struts, the pin-block cover) satin silver-white,
+			// not the other grands' gold: under the clear case it reads as part of the chrome and silver trim
+			m.plate = phys( { color: '#dfe2e6', metalness: 1, roughness: 0.22, clearcoat: 0.5, clearcoatRoughness: 0.15 } );
+			// the lid's fold: four short hinges on the boards' edges (GF-TYPE-3), not one long brass one: black lacquer
+			// (a deep black under a full, glassy coat: sharp reflections), each riveted with 3 pairs of silver-white caps
+			m.foldHinge = phys( { color: '#050506', metalness: 0, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.04, specularIntensity: 1, ior: 1.5 } );
+			m.foldHinge.userData.count = 4;
+			m.foldHinge.userData.rivets = phys( { color: '#e4e6ea', metalness: 1, roughness: 0.15 } );
 			// the clear parts switch with the glass (applyGlass: transmission under GI and the path tracer)
 			m.glass.userData.linked = [ m.rim, m.lid ];
 			break;

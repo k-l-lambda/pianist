@@ -677,26 +677,115 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
-		const hinges = [];
-		for ( const x of [ - 0.5, 0.0, 0.5 ] ) hinges.push( woodBox( v3( x - 0.025, open ? 2 * T - 0.001 : T - 0.001, FOLD_Z - 0.02 ), v3( x + 0.025, open ? 2 * T + 0.001 : T + 0.001, FOLD_Z + 0.02 ), { noUV: true } ) );
-		for ( const z of [ - 0.75, - 1.21 ] ) hinges.push( woodBox( v3( - HALF_W - 0.002, - 0.035, z - 0.03 ), v3( - HALF_W + 0.001, T, z + 0.03 ), { noUV: true } ) );
-		for ( const g of [ lidGeo, flapGeo, ...hinges ] ) g.translate( HALF_W, 0, 0 );		// hinge along the spine at x = -HALF_W
+		// the hinges, as a real lid's (Footages.local/find/MHGF3.jpg, GF-TYPE-3.jpg), none standing out of the case's lines:
+		// - the fold: one long piano hinge joining the flap to the main lid over most of the width, a knuckled barrel
+		//   along the fold (2.5 mm, set in at the boards' edges) and a thin leaf on each board beside it
+		// - the spine: two butt hinges between the lid and the rim, their barrels in the corner where the lid's edge
+		//   meets the rim's (the lid's pivot: KN in from the case's side and below the lid, so the barrel's
+		//   outside is flush with both), their leaves on the lid's underside and the rim's top: only the barrel shows
+		const hinges = [], rimHinges = [];
+		const knuckles = ( list, a, b, r, n, gap ) => {		// a barrel from `a` to `b` in n knuckles
+
+			const L = a.distanceTo( b ), step = L / n;
+			for ( let i = 0; i < n; ++ i ) list.push( rod( a.clone().lerp( b, ( i * step + gap / 2 ) / L ), a.clone().lerp( b, ( ( i + 1 ) * step - gap / 2 ) / L ), r, 10 ) );
+
+		};
+		// the fold hinge, on the boards' edges at the joint: its barrel's axis at (y T, z FOLD_Z), the line both boards
+		// turn about. Open, the flap lies folded back on the main lid, the two edges one above the other in the plane
+		// z FOLD_Z, facing the keys (the lid's y 0..T, the flap's T..2T): the leaves on them, mortised (just proud),
+		// the barrel along the joint between them, nested in the groove of the boards' rounded edges. Closed, the
+		// edges meet: the leaves in the joint, the barrel on top along it. One long hinge (brass), or the case's own:
+		// M.foldHinge, `userData.count` short ones evenly along the fold (the crystal's four, black metal)
+		// `userData.rivets` (the crystal's: its rivet caps' material): each short hinge riveted, 3 pairs of domed caps
+		// along it, one of each pair on each leaf's outer face
+		const foldParts = [], rivetParts = [], FH = M.foldHinge ?? M.brass, count = FH.userData.count ?? 0, RIV = FH.userData.rivets;
+		// a rivet's domed cap: 5.5 mm across, 1.7 mm high, its foot at `p`, facing `n`
+		const cap = ( p, n ) => {
+
+			const g = new THREE.SphereGeometry( 0.00275, 12, 6, 0, 2 * Math.PI, 0, Math.PI / 2 ).scale( 1, 0.0017 / 0.00275, 1 );
+			g.applyQuaternion( new THREE.Quaternion().setFromUnitVectors( v3( 0, 1, 0 ), n ) ).translate( p.x, p.y, p.z );
+			rivetParts.push( g.toNonIndexed() );
+
+		};
+		{
+
+			const r = 0.0025, lt = 0.0006, leaf = 0.011;
+			const x0 = - HALF_W + 0.06, x1 = Math.min( HALF_W - 0.1, bentsideX( outer, FOLD_Z ) - 0.06 );
+			const spans = count ? Array.from( { length: count }, ( _, i ) => { const c = x0 + ( i + 0.5 ) * ( x1 - x0 ) / count; return [ c - 0.035, c + 0.035, 3 ]; } )
+				: [ [ x0, x1, Math.round( ( x1 - x0 ) / 0.06 ) ] ];
+			for ( const [ a, b, n ] of spans ) {
+
+				// the rivets: 3 pairs along the hinge, between its knuckles' ends and middle; each leaf's one halfway
+				// across it from the barrel
+				const along = RIV ? [ 0.18, 0.5, 0.82 ].map( f => a + f * ( b - a ) ) : [], mid = r + ( leaf - r ) / 2;
+				if ( open ) {
+
+					knuckles( foldParts, v3( a, T, FOLD_Z - 0.0008 ), v3( b, T, FOLD_Z - 0.0008 ), r, n, 0.0012 );
+					foldParts.push( woodBox( v3( a, T - leaf, FOLD_Z - 0.0004 ), v3( b, T + leaf, FOLD_Z + lt ), { noUV: true } ) );		// (both leaves: one plate across the joint)
+					for ( const x of along ) for ( const s of [ - 1, 1 ] ) cap( v3( x, T + s * mid, FOLD_Z + lt - 0.0001 ), v3( 0, 0, 1 ) );		// (on the leaves' face, towards the keys)
+
+				} else {
+
+					knuckles( foldParts, v3( a, T - 0.0008, FOLD_Z ), v3( b, T - 0.0008, FOLD_Z ), r, n, 0.0012 );
+					if ( RIV ) {		// (the leaves in the joint, back to back: seen through the crystal's clear lid; their caps into each board)
+
+						for ( const s of [ - 1, 1 ] ) foldParts.push( woodBox( v3( a, T - leaf, s < 0 ? FOLD_Z - 0.0006 : FOLD_Z ), v3( b, T - 0.0008, s < 0 ? FOLD_Z : FOLD_Z + 0.0006 ), { noUV: true } ) );
+						for ( const x of along ) for ( const s of [ - 1, 1 ] ) cap( v3( x, T - mid, FOLD_Z + s * 0.0005 ), v3( 0, 0, s ) );
+
+					}
+
+				}
+
+			}
+
+		}
+		const KN = 0.004;		// the spine hinges' barrel radius: the lid's pivot this far in and down from the corner
+		for ( const z of [ - 0.75, - 1.21 ] ) {
+
+			knuckles( hinges, v3( - HALF_W + KN, 0, z - 0.035 ), v3( - HALF_W + KN, 0, z + 0.035 ), KN, 3, 0.001 );
+			hinges.push( woodBox( v3( - HALF_W + KN, - 0.0001 + KN, z - 0.035 ), v3( - HALF_W + 0.05, 0.0011 + KN, z + 0.035 ), { noUV: true } ) );		// (the lid's leaf, under it: hidden closed)
+			rimHinges.push( woodBox( v3( - HALF_W + KN, RIM_TOP - 0.0012, z - 0.035 ), v3( - HALF_W + 0.05, RIM_TOP + 0.0001, z + 0.035 ), { noUV: true } ) );		// (the rim's, on its top)
+
+		}
+		// the lid's own geometry in the pivot's frame: the pivot at the barrels' axis (x -HALF_W + KN, y RIM_TOP + KN)
+		for ( const g of [ lidGeo, flapGeo ] ) g.translate( HALF_W - KN, - KN, 0 );
+		for ( const g of [ ...hinges, ...foldParts, ...rivetParts ] ) g.translate( HALF_W - KN, - KN, 0 );
 		const pivot = new THREE.Group();
-		pivot.position.set( - HALF_W, RIM_TOP, 0 );
+		pivot.position.set( - HALF_W + KN, RIM_TOP + KN, 0 );
 		pivot.rotation.z = THREE.MathUtils.degToRad( lidAngle );
-		pivot.add( mesh( lidGeo, LID ), mesh( flapGeo, LID ), mesh( merge( hinges ), M.brass ) );
-		group.add( pivot );
+		pivot.add( mesh( lidGeo, LID ), mesh( flapGeo, LID ), mesh( merge( hinges ), M.brass ), mesh( merge( foldParts ), FH ) );
+		if ( rivetParts.length ) pivot.add( mesh( merge( rivetParts ), RIV ) );
+		group.add( pivot, mesh( merge( rimHinges ), M.brass ) );
 
 		if ( open ) {
 
-			// prop stick from the bentside rim up to the lid
+			// the prop stick: its foot in a bracket on the bentside's inner face, a little below the rim's top, on a
+			// pin along the rim (it folds down along the rim to close; MHGF3, GF-TYPE-3: the foot inside the case);
+			// its top where the lid's underside was met before
 			const zs = - 0.88;
 			const bx = bentsideX( outer, zs ) - 0.06;
-			const base = v3( bx, RIM_TOP, zs );
 			const a = THREE.MathUtils.degToRad( lidAngle );
 			const r = ( bx + HALF_W ) * 0.86;
 			const top = v3( - HALF_W + r * Math.cos( a ), RIM_TOP + r * Math.sin( a ), zs );
-			group.add( mesh( rod( base, top, 0.011, 12, 0.009 ), PROP ) );
+			// the rim's inner face there, its tangent (the pin's axis) and normal (into the case)
+			const xi = bentsideX( inner, zs ), dz = 0.01, tan = v3( bentsideX( inner, zs + dz ) - bentsideX( inner, zs - dz ), 0, 2 * dz ).normalize();
+			const into = v3( - tan.z, 0, tan.x );
+			if ( into.x > 0 ) into.negate();		// (into the case: towards - x)
+			const pin = v3( xi, RIM_TOP - 0.03, zs ).addScaledVector( into, 0.016 );		// (the pin 16 mm off the rim's face, 30 mm below its top)
+			group.add( mesh( rod( pin, top, 0.011, 12, 0.009 ), PROP ) );
+			group.add( mesh( new THREE.SphereGeometry( 0.0125, 16, 10 ).translate( pin.x, pin.y, pin.z ), PROP ) );		// (its rounded foot round the pin)
+			// the bracket: a plate on the rim's face, two cheeks either side of the foot, the pin through them
+			const at = ( p, w, h, d ) => {		// a box w (along the rim) × h × d (into the case), its back at p
+
+				const g = new THREE.BoxGeometry( w, h, d ).translate( 0, 0, d / 2 );
+				g.applyMatrix4( new THREE.Matrix4().makeBasis( tan, v3( 0, 1, 0 ), into ).setPosition( p ) );
+				return g;
+
+			};
+			const face = v3( xi, RIM_TOP - 0.03, zs ), parts = [ at( face.clone().addScaledVector( v3( 0, 1, 0 ), 0.002 ), 0.06, 0.05, 0.003 ) ];
+			for ( const s of [ - 1, 1 ] ) parts.push( at( face.clone().addScaledVector( tan, s * 0.0165 ), 0.004, 0.03, 0.027 ) );
+			parts.push( rod( pin.clone().addScaledVector( tan, - 0.02 ), pin.clone().addScaledVector( tan, 0.02 ), 0.0028, 10 ) );
+			group.add( mesh( merge( parts.map( g => g.index ? g.toNonIndexed() : g ) ), M.brass ) );
 
 		}
 
