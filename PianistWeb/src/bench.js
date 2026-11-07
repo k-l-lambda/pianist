@@ -16,8 +16,11 @@ const W = 0.76, D = 0.36;			// cushion
 // to the vertical side (one surface: no rim, no seam). TUFT_GAIN: a photo's depth reads shallow.
 const TUFT_GAIN = 3.5;
 const PLAN_R = 0.022;			// the cushion's corners in plan
-const ROLL = 0.008;				// the edge's roll down to the side (radius)
-const BLEND = 0.016;			// the edge's last strip, where the relief eases to its rim's mean level
+// the edge's roll down to the side (radius): a soft 20 mm round, so the top's leather turns into the side's
+// with no line between them (at 8 mm the roll's tight highlight drew a seam, and the side read as a band of its own)
+const ROLL = 0.02;
+const ROLL_STEPS = 10;			// (the roll's rows)
+const BLEND = 0.032;			// the edge's last strip, where the relief eases to its rim's mean level (the roll a clean round)
 let _tuft = null;
 /** The relief (m, about the pillows' middle level) at (s, t): fractions of the half sizes, -1..1, mirrored. */
 function tuftRelief( s, t ) {
@@ -138,9 +141,9 @@ function knobGeometry( sx, x0, y, z ) {
 function edgeCrowded( h, step ) {
 
 	const inner = h - ROLL, n = Math.ceil( 2 * inner / step ), out = [];
-	for ( let k = 6; k >= 1; -- k ) out.push( - inner - ROLL * Math.sin( k / 6 * Math.PI / 2 ) );
+	for ( let k = ROLL_STEPS; k >= 1; -- k ) out.push( - inner - ROLL * Math.sin( k / ROLL_STEPS * Math.PI / 2 ) );
 	for ( let k = 0; k <= n; ++ k ) out.push( - inner + 2 * inner * k / n );
-	for ( let k = 1; k <= 6; ++ k ) out.push( inner + ROLL * Math.sin( k / 6 * Math.PI / 2 ) );
+	for ( let k = 1; k <= ROLL_STEPS; ++ k ) out.push( inner + ROLL * Math.sin( k / ROLL_STEPS * Math.PI / 2 ) );
 	return out;
 
 }
@@ -176,13 +179,31 @@ function cushionGeometry( height ) {
 		return d < ROLL ? base - ( ROLL - Math.sqrt( ROLL * ROLL - ( ROLL - d ) ** 2 ) ) : base;
 
 	};
+	// the outline's outward direction in plan at (px, pz) (its corners: from their centres)
+	const outward = ( px, pz ) => {
+
+		const ex = Math.abs( px ) - ( hw - PLAN_R ), ez = Math.abs( pz ) - ( hd - PLAN_R );
+		let ox = ex > 0 ? Math.sign( px ) * ex : 0, oz = ez > 0 ? Math.sign( pz ) * ez : 0;
+		const l = Math.hypot( ox, oz ) || 1;
+		return [ ox / l, oz / l ];
+
+	};
 	const xs = edgeCrowded( hw, 0.005 ), zs = edgeCrowded( hd, 0.005 ), nx = xs.length, nz = zs.length;
 	const P = [], UV = [], I = [];
 	for ( let j = 0; j < nz; ++ j ) for ( let i = 0; i < nx; ++ i ) {
 
-		const [ px, pz, d ] = plan( xs[ i ], zs[ j ] );
-		P.push( px, y( px, pz, Math.max( 0, d ) ), pz );
-		UV.push( ( px + hw ) / W, ( pz + hd ) / D );
+		const [ px, pz, d ] = plan( xs[ i ], zs[ j ] ), dd = Math.max( 0, d );
+		P.push( px, y( px, pz, dd ), pz );
+		// UVs: the plan's, unfolded over the roll by its arc (a plan projection squeezed the grain into
+		// streaks there, as it turned down); the side's continue from these, so the grain runs on unbroken
+		let u = ( px + hw ) / W, v = ( pz + hd ) / D;
+		if ( dd < ROLL ) {
+
+			const extra = ROLL * Math.asin( Math.min( 1, ( ROLL - dd ) / ROLL ) ) - ( ROLL - dd ), [ ox, oz ] = outward( px, pz );
+			u += ox * extra / W; v += oz * extra / D;
+
+		}
+		UV.push( u, v );
 
 	}
 	const id = ( i, j ) => j * nx + i;
@@ -192,7 +213,7 @@ function cushionGeometry( height ) {
 		I.push( a, d, c, a, c, b );		// (facing up)
 
 	}
-	// the side: the top's outline (shared) down to the bottom, its UVs unfolded outwards from the top's
+	// the side: the top's outline (shared) down to the bottom, its UVs unfolded outwards from the top's (by its height)
 	const ring = [];
 	for ( let i = 0; i < nx; ++ i ) ring.push( id( i, 0 ) );
 	for ( let j = 1; j < nz; ++ j ) ring.push( id( nx - 1, j ) );
@@ -201,9 +222,7 @@ function cushionGeometry( height ) {
 	const low = ring.map( k => {
 
 		const px = P[ 3 * k ], pz = P[ 3 * k + 2 ], h = P[ 3 * k + 1 ];
-		const ex = Math.abs( px ) - ( hw - PLAN_R ), ez = Math.abs( pz ) - ( hd - PLAN_R );
-		let nxp = ex > 0 ? Math.sign( px ) * ex : 0, nzp = ez > 0 ? Math.sign( pz ) * ez : 0;
-		const l = Math.hypot( nxp, nzp ) || 1; nxp /= l; nzp /= l;		// (the outline's outward normal in plan)
+		const [ nxp, nzp ] = outward( px, pz );		// (the outline's outward normal in plan)
 		P.push( px, 0, pz );
 		UV.push( UV[ 2 * k ] + nxp * h / W, UV[ 2 * k + 1 ] + nzp * h / D );
 		return P.length / 3 - 1;
