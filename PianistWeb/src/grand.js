@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import { Keyboard } from './keyboard.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { woodBox, v3, extrudeTop, merge, beam, rod, boxProjectUV } from './geometry.js';
 import { PianoAction } from './action.js';
 import { pedalShape } from './upright.js';
@@ -250,20 +251,106 @@ function insideOut( geo ) {
 
 }
 
-/** A box tapering linearly from (w0, d0) at y0 to (w1, d1) at y1, centred on (x, z). */
-function taperedBox( x, z, y0, y1, w0, d0, w1, d1 ) {
+/**
+ * A box tapering linearly from (w0, d0) at y0 to (w1, d1) at y1, centred on (x, z), its edges rounded
+ * (radius r at the top, scaled with the section below: 3 segments, the normals the surface's own), so
+ * the lacquer catches a thin line of light along each.
+ */
+function taperedBox( x, z, y0, y1, w0, d0, w1, d1, r = 0.004 ) {
 
-	const g = new THREE.BoxGeometry( 1, 1, 1 ).toNonIndexed();
-	const p = g.attributes.position;
+	const g = new RoundedBoxGeometry( w1, y1 - y0, d1, 3, r );
+	const p = g.attributes.position, n = g.attributes.normal, h = y1 - y0;
 	for ( let i = 0; i < p.count; ++ i ) {
 
-		const t = p.getY( i ) + 0.5;
-		p.setXYZ( i, x + p.getX( i ) * THREE.MathUtils.lerp( w0, w1, t ), THREE.MathUtils.lerp( y0, y1, t ), z + p.getZ( i ) * THREE.MathUtils.lerp( d0, d1, t ) );
+		// the section at height t scaled by (sx, sz) of the top's: a point (px, py, pz) -> (sx px, y, sz pz);
+		// its normal by the inverse transpose of that map (sx, sz vary with y: a y term too)
+		const t = p.getY( i ) / h + 0.5;
+		const sx = THREE.MathUtils.lerp( w0 / w1, 1, t ), sz = THREE.MathUtils.lerp( d0 / d1, 1, t );
+		const dsx = ( 1 - w0 / w1 ) / h, dsz = ( 1 - d0 / d1 ) / h;
+		const px = p.getX( i ), pz = p.getZ( i );
+		const nx = n.getX( i ) / sx, nz = n.getZ( i ) / sz;
+		const ny = n.getY( i ) - nx * px * dsx - nz * pz * dsz;
+		const l = Math.hypot( nx, ny, nz );
+		n.setXYZ( i, nx / l, ny / l, nz / l );
+		p.setXYZ( i, x + px * sx, THREE.MathUtils.lerp( y0, y1, t ), z + pz * sz );
 
 	}
 
-	g.computeVertexNormals();
 	return boxProjectUV( g );
+
+}
+
+/**
+ * Normals for an ExtrudeGeometry with a bevel (non-indexed; `ez`: each vertex's extrusion coordinate
+ * before any transform, the caps at 0 and `len`, the bevel `bt` deep at each end): the caps flat (their
+ * face's), the walls smooth along the outline where it bends gently (under 30°: the leg's flare) and hard at
+ * its corners, the bevel's rings blending from the cap's normal to the wall's: a rounded edge, shaded so.
+ * The geometry in its final place (mirrored, tapered): the normals from its faces as they are.
+ */
+function bevelNormals( g, ez, len, bt ) {
+
+	const pos = g.attributes.position, N = pos.count / 3, eps = 1e-5;
+	const fn = [], kind = [];		// per triangle: its normal; 'cap' | 'wall' | 'bevel'
+	const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+	for ( let f = 0; f < N; ++ f ) {
+
+		a.fromBufferAttribute( pos, 3 * f ); b.fromBufferAttribute( pos, 3 * f + 1 ); c.fromBufferAttribute( pos, 3 * f + 2 );
+		const v = new THREE.Vector3().subVectors( c, b ).cross( a.sub( b ) );
+		fn.push( v.lengthSq() > 0 ? v.normalize() : v );
+		const z = [ ez[ 3 * f ], ez[ 3 * f + 1 ], ez[ 3 * f + 2 ] ], lo = Math.min( ...z ), hi = Math.max( ...z );
+		kind.push( hi - lo < eps ? 'cap' : ( lo > bt - eps && hi < len - bt + eps ) ? 'wall' : 'bevel' );
+
+	}
+	// the triangles at each position (welded by value)
+	const key = i => `${ Math.round( pos.getX( i ) * 1e6 ) },${ Math.round( pos.getY( i ) * 1e6 ) },${ Math.round( pos.getZ( i ) * 1e6 ) }`;
+	const at = new Map();
+	for ( let i = 0; i < pos.count; ++ i ) { const k = key( i ); if ( ! at.has( k ) ) at.set( k, [] ); at.get( k ).push( Math.floor( i / 3 ) ); }
+	// a corner's normal: its face's, averaged with the faces of `kinds` at its position within `cos` of it
+	const smooth = ( i, kinds, cos ) => {
+
+		const f = Math.floor( i / 3 ), s = new THREE.Vector3();
+		for ( const o of at.get( key( i ) ) ) if ( kinds.includes( kind[ o ] ) && fn[ o ].dot( fn[ f ] ) > cos ) s.add( fn[ o ] );
+		return s.lengthSq() > 0 ? s.normalize() : fn[ f ].clone();
+
+	};
+	const COS30 = Math.cos( Math.PI / 6 ), COS60 = 0.5;
+	const out = new Float32Array( pos.count * 3 );
+	for ( let i = 0; i < pos.count; ++ i ) {
+
+		const f = Math.floor( i / 3 );
+		let n;
+		if ( kind[ f ] === 'cap' ) n = fn[ f ];
+		else if ( kind[ f ] === 'wall' ) n = smooth( i, [ 'wall' ], COS30 );
+		else {
+
+			// a bevel's corner on the cap's edge or the wall's: that one's normal (the nearest such face's, so a
+			// corner of the outline takes its own side's); within the bevel: the rings' facets averaged
+			let best = null, bestDot = COS60;
+			for ( const o of at.get( key( i ) ) ) {
+
+				if ( kind[ o ] === 'bevel' ) continue;
+				const d = fn[ o ].dot( fn[ f ] );
+				if ( d > bestDot ) { bestDot = d; best = o; }
+
+			}
+			if ( best === null ) n = smooth( i, [ 'bevel' ], COS60 );
+			else if ( kind[ best ] === 'cap' ) n = fn[ best ];
+			else {
+
+				// the wall's smoothed normal at this position (as its own corner there computes it)
+				const tri = 3 * best;
+				let j = tri;
+				for ( let k = 0; k < 3; ++ k ) if ( key( tri + k ) === key( i ) ) j = tri + k;
+				n = smooth( j, [ 'wall' ], COS30 );
+
+			}
+
+		}
+		out[ 3 * i ] = n.x; out[ 3 * i + 1 ] = n.y; out[ 3 * i + 2 ] = n.z;
+
+	}
+	g.setAttribute( 'normal', new THREE.BufferAttribute( out, 3 ) );
+	return g;
 
 }
 
@@ -669,11 +756,18 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		prof.lineTo( - 0.50, FRONT_BOTTOM + 0.001 );
 		prof.quadraticCurveTo( LEG_Z - 0.042, FRONT_BOTTOM, LEG_Z - 0.042, 0.48 );
 		prof.closePath();
+		// its edges rounded, LEG_R in the profile's plane and across the width (3 segments: the black and
+		// white lacquer and the crystal's dark glass catch a thin, sharp line of light along each edge)
+		const LEG_R = 0.004, LEG_BT = LEG_R / LEG_W1;		// (the extrusion is 1 deep, then scaled to the width)
 		for ( const sx of [ - 1, 1 ] ) {
 
-			const g = new THREE.ExtrudeGeometry( prof, { depth: 1, bevelEnabled: false, curveSegments: 16 } ).toNonIndexed();
+			let g = new THREE.ExtrudeGeometry( prof, { depth: 1 - 2 * LEG_BT, bevelEnabled: true, bevelThickness: LEG_BT, bevelSize: LEG_R, bevelOffset: - LEG_R, bevelSegments: 3, curveSegments: 16 } );
+			g = g.index ? g.toNonIndexed() : g;
+			g.deleteAttribute( 'normal' ); g.deleteAttribute( 'uv' );
+			g.translate( 0, 0, LEG_BT );		// (the bevel starts at -bevelThickness: the caps at 0 and 1)
+			const pos = g.attributes.position, ez = new Float32Array( pos.count );
+			for ( let i = 0; i < pos.count; ++ i ) ez[ i ] = pos.getZ( i );
 			g.rotateY( - Math.PI / 2 );			// profile (z, y) -> world (z, y); extrusion -> -x, 0..-1
-			const pos = g.attributes.position;
 			for ( let i = 0; i < pos.count; ++ i ) {
 
 				// width tapers towards the floor; the outer face stays vertical
@@ -685,15 +779,17 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 			if ( sx < 0 ) {
 
-				// mirrored: restore the winding
-				const idx = [];
-				for ( let i = 0; i < pos.count; i += 3 ) idx.push( i, i + 2, i + 1 );
-				g.setIndex( idx );
+				// mirrored: restore the winding (each triangle's corners 1 and 2 swapped)
+				for ( let i = 0; i < pos.count; i += 3 ) {
+
+					for ( let c = 0; c < 3; ++ c ) { const t = pos.array[ 3 * ( i + 1 ) + c ]; pos.array[ 3 * ( i + 1 ) + c ] = pos.array[ 3 * ( i + 2 ) + c ]; pos.array[ 3 * ( i + 2 ) + c ] = t; }
+					const t = ez[ i + 1 ]; ez[ i + 1 ] = ez[ i + 2 ]; ez[ i + 2 ] = t;
+
+				}
 
 			}
 
-			g.computeVertexNormals();
-			legParts.push( boxProjectUV( g.index ? g.toNonIndexed() : g ) );
+			legParts.push( boxProjectUV( bevelNormals( g, ez, 1, LEG_BT ) ) );
 
 		}
 
