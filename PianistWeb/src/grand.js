@@ -62,7 +62,7 @@ const v2 = ( x, y ) => new THREE.Vector2( x, y );
 const mesh = ( geo, mat, cast = true ) => {
 
 	const m = new THREE.Mesh( geo, mat );
-	m.castShadow = cast;
+	m.castShadow = cast && ! [ mat ].flat().some( x => x?.userData?.clear );		// (clear parts: no shadow; src/clearglass.js)
 	m.receiveShadow = true;
 	return m;
 
@@ -294,6 +294,9 @@ function grilleMaterial() {
 
 export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
+	// the case's parts, each its own material when the set has one (the crystal grand: clear rim, lid and
+	// prop, smoked legs, white lacquer elsewhere), else the case's
+	const RIM = M.rim ?? M.case, LID = M.lid ?? M.case, PROP = M.prop ?? M.case, LEGS = M.legs ?? M.case, BASE = M.caseBase ?? M.case;
 	const group = new THREE.Group();
 	const dampers = new Map();
 	const pedals = {};
@@ -309,16 +312,16 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		const s = new THREE.Shape( outer );
 		for ( let i = inner.length - 1; i >= 0; -- i ) s.lineTo( inner[ i ].x, inner[ i ].y );
 		s.closePath();
-		group.add( mesh( extrudeXZ( s, RIM_BOTTOM, RIM_TOP, 0.004 ), M.case ) );
+		group.add( mesh( extrudeXZ( s, RIM_BOTTOM, RIM_TOP, 0.004 ), RIM ) );
 
 		// bottom board (on to the front of the case, under the keybed), and the deeper front
 		// section holding keybed and action, down to FRONT_BOTTOM back to z = -0.72 (Fig. 5)
 		const closed = new THREE.Shape( [ v2( - HALF_W, FRONT_Z ), ...outer, v2( HALF_W, FRONT_Z ) ] );
 		closed.closePath();
-		group.add( mesh( extrudeXZ( closed, RIM_BOTTOM - 0.03, RIM_BOTTOM, 0.006 ), M.case ) );
+		group.add( mesh( extrudeXZ( closed, RIM_BOTTOM - 0.03, RIM_BOTTOM, 0.006 ), BASE ) );
 		const front = new THREE.Shape( [ v2( - HALF_W, FRONT_Z ), ...outer.map( p => v2( p.x, Math.max( p.y, FRONT_SECTION_Z ) ) ), v2( HALF_W, FRONT_Z ) ] );
 		front.closePath();
-		group.add( mesh( extrudeXZ( front, FRONT_BOTTOM, RIM_BOTTOM - 0.03, 0.006 ), M.case ) );
+		group.add( mesh( extrudeXZ( front, FRONT_BOTTOM, RIM_BOTTOM - 0.03, 0.006 ), BASE ) );
 
 		const sb = new THREE.Shape( inner );
 		sb.closePath();
@@ -326,7 +329,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		// front belly rail closing the case under the display (kept below its face: at 0.84 m its
 		// top edge stood out of the screen as a ridge across the middle)
-		group.add( mesh( woodBox( v3( - HALF_W, RIM_BOTTOM, FRONT_Z - RIM_T ), v3( HALF_W, 0.78, FRONT_Z ), { noUV: true } ), M.case ) );
+		group.add( mesh( woodBox( v3( - HALF_W, RIM_BOTTOM, FRONT_Z - RIM_T ), v3( HALF_W, 0.78, FRONT_Z ), { noUV: true } ), BASE ) );
 
 		// side boards: one board per side between the display's end and the case side (Fig. 6:
 		// a strip the display abuts), from the front of the keyboard back to the rim. Its top
@@ -358,7 +361,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		// inner rim veneer (the photos show warm wood inside the lacquered case), from the
 		// soundboard up to just below the rim top
-		group.add( mesh( rimVeneer( offsetPolyline( inner, 0.0015 ), SOUNDBOARD_Y, RIM_TOP - 0.012 ), M.rimInner ?? M.case, false ) );
+		if ( M.rimInner !== null ) group.add( mesh( rimVeneer( offsetPolyline( inner, 0.0015 ), SOUNDBOARD_Y, RIM_TOP - 0.012 ), M.rimInner ?? M.case, false ) );		// (null: none, the crystal grand's rim is clear)
 
 	}
 
@@ -594,7 +597,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		const pivot = new THREE.Group();
 		pivot.position.set( - HALF_W, RIM_TOP, 0 );
 		pivot.rotation.z = THREE.MathUtils.degToRad( lidAngle );
-		pivot.add( mesh( lidGeo, M.case ), mesh( flapGeo, M.case ), mesh( merge( hinges ), M.brass ) );
+		pivot.add( mesh( lidGeo, LID ), mesh( flapGeo, LID ), mesh( merge( hinges ), M.brass ) );
 		group.add( pivot );
 
 		if ( open ) {
@@ -606,7 +609,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			const a = THREE.MathUtils.degToRad( lidAngle );
 			const r = ( bx + HALF_W ) * 0.86;
 			const top = v3( - HALF_W + r * Math.cos( a ), RIM_TOP + r * Math.sin( a ), zs );
-			group.add( mesh( rod( base, top, 0.011, 12, 0.009 ), M.case ) );
+			group.add( mesh( rod( base, top, 0.011, 12, 0.009 ), PROP ) );
 
 		}
 
@@ -651,7 +654,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	// --- legs and the frame below the case (USD834638 Figs. 1, 2, 5, 7) ------------------------
 	{
 
-		const caseParts = [], brass = [], steel = [];
+		const caseParts = [], legParts = [], brass = [], steel = [];
 
 		// front legs: flat posts set back under the case (z = -0.32, outer face 13 mm inside the
 		// case side), 0.10 m wide tapering to 0.075 at the floor (outer face vertical), 0.08 m
@@ -690,7 +693,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			}
 
 			g.computeVertexNormals();
-			caseParts.push( boxProjectUV( g.index ? g.toNonIndexed() : g ) );
+			legParts.push( boxProjectUV( g.index ? g.toNonIndexed() : g ) );
 
 		}
 
@@ -699,7 +702,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		const TAIL = v2( - 0.265, - 1.456 );
 		const TAIL_TOP = RIM_BOTTOM - 0.06;
 		caseParts.push( woodBox( v3( - 0.448, TAIL_TOP, - 1.503 ), v3( - 0.065, RIM_BOTTOM - 0.03, - 1.397 ), { noUV: true, radius: 0.006 } ) );
-		caseParts.push( taperedBox( TAIL.x, TAIL.y, FOOT, TAIL_TOP, 0.06, 0.07, 0.085, 0.097 ) );
+		legParts.push( taperedBox( TAIL.x, TAIL.y, FOOT, TAIL_TOP, 0.06, 0.07, 0.085, 0.097 ) );
 
 		// casters, one under each leg
 		for ( const [ x, z ] of [ [ - LEG_OUT + 0.044, LEG_Z ], [ LEG_OUT - 0.044, LEG_Z ], [ TAIL.x, TAIL.y ] ] ) {
@@ -714,12 +717,12 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// the stretcher joining the front legs just above the floor (Fig. 2: the full width between
 		// them, 6 cm high), with a deeper box in the middle holding the pedal pivots (Fig. 7)
 		const ST0 = 0.035, ST1 = 0.095, STZ0 = - 0.323, STZ1 = - 0.279;
-		caseParts.push( woodBox( v3( - LEG_OUT + 0.06, ST0, STZ0 ), v3( LEG_OUT - 0.06, ST1, STZ1 ), { noUV: true, radius: 0.008 } ) );
-		caseParts.push( woodBox( v3( - 0.11, ST0, - 0.41 ), v3( 0.11, ST1 + 0.01, STZ1 - 0.002 ), { noUV: true, radius: 0.008 } ) );
+		legParts.push( woodBox( v3( - LEG_OUT + 0.06, ST0, STZ0 ), v3( LEG_OUT - 0.06, ST1, STZ1 ), { noUV: true, radius: 0.008 } ) );
+		legParts.push( woodBox( v3( - 0.11, ST0, - 0.41 ), v3( 0.11, ST1 + 0.01, STZ1 - 0.002 ), { noUV: true, radius: 0.008 } ) );
 
 		// frosted panel between the front legs, from the pedal box up to the keybed (Fig. 2: 0.30 m
 		// wide; GF-TYPE-2/3), the two pedal rods behind it
-		const panelMat = new THREE.MeshPhysicalMaterial( { color: '#b9bcc1', metalness: 0.75, roughness: 0.42 } );
+		const panelMat = M.legs ?? new THREE.MeshPhysicalMaterial( { color: '#b9bcc1', metalness: 0.75, roughness: 0.42 } );		// (the crystal grand: smoked, as its legs)
 		group.add( mesh( woodBox( v3( - 0.15, ST1 + 0.01, - 0.375 ), v3( 0.15, FRONT_BOTTOM, - 0.365 ), { noUV: true } ), panelMat ) );
 		const RODS_Y = 0.585;
 		for ( const x of [ - 0.04, 0.05 ] ) steel.push( rod( v3( x, ST1, - 0.395 ), v3( x, RODS_Y, - 0.395 ), 0.006, 8 ) );
@@ -763,7 +766,8 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
-		group.add( mesh( merge( caseParts ), M.case ) );
+		group.add( mesh( merge( caseParts ), BASE ) );
+		group.add( mesh( merge( legParts ), LEGS ) );
 		group.add( mesh( merge( brass ), M.brass ) );
 		group.add( mesh( merge( steel ), M.steel ) );
 

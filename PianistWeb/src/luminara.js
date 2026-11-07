@@ -21,6 +21,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLYPHS } from './luminaraglyphs.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
 import { clock } from './rendermode.js';
+import { clearMaterial, setClearMode } from './clearglass.js';
 
 export const LUMINARA = {
 	radius: 7.0,		// the wall
@@ -1811,17 +1812,7 @@ export class Luminara {
 	setClear() {
 
 		const on = this.highQuality || this.mode === 'pathtrace';
-		for ( const m of this.clear ?? [] ) {
-
-			if ( ( m.transmission > 0 ) === on && m.userData.clearSet ) continue;
-			m.userData.clearSet = true;
-			m.transmission = on ? 1 : 0;
-			m.transparent = ! on; m.depthWrite = on; m.side = on ? THREE.FrontSide : THREE.DoubleSide;		// (three draws a two-sided transmissive thing's back into its own transmission first: TRELLIS's mixed winding refracted it into itself, milky)
-			// (off: premultiplied by hand in its shader, the reflection added, the back dimmed by its alpha)
-			Object.assign( m, on ? { blending: THREE.NormalBlending } : { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor } );
-			m.needsUpdate = true;
-
-		}
+		for ( const m of this.clear ?? [] ) setClearMode( m, on );		// (src/clearglass.js)
 
 	}
 
@@ -2030,29 +2021,9 @@ export class Luminara {
 		this.clear = [];
 		const clear = cut => {
 
-			const ior = cut ? 2.0 : 1.5;
-			const m = phys( { color: '#ffffff', metalness: 0, roughness: cut ? 0.0 : 0.02, ior, thickness: cut ? 0.06 : 0.02, dispersion: cut ? 4 : 1,
-				attenuationColor: new THREE.Color( cut ? '#f4f8ff' : '#f6fbfb' ), attenuationDistance: 0.6, specularIntensity: 1,
-				flatShading: cut, side: THREE.DoubleSide } );
-			m.userData.clear = true;
-			// Fresnel for the alpha fallback (transmission has its own: three's refraction is weighted by 1 - F): what is
-			// seen through is dimmed by 1 - F, the reflection (its specular, F already in it) added in full, not faded
-			// with the body; a little haze (the body's diffuse) so it does not vanish face on
-			const U = { uClearF0: { value: ( ( ior - 1 ) / ( ior + 1 ) ) ** 2 }, uClearHaze: { value: cut ? 0.08 : 0.1 } };
-			chainCompile( m, shader => {
-
-				Object.assign( shader.uniforms, U );
-				shader.fragmentShader = shader.fragmentShader
-					.replace( '#include <common>', '#include <common>\nuniform float uClearF0, uClearHaze;' )
-					.replace( '#include <opaque_fragment>', `#ifdef USE_TRANSMISSION
-						#include <opaque_fragment>
-					#else
-						float clearF = uClearF0 + ( 1.0 - uClearF0 ) * pow( 1.0 - saturate( abs( dot( normal, geometryViewDir ) ) ), 5.0 );
-						float clearHaze = uClearHaze * ( 1.0 - clearF );
-						gl_FragColor = vec4( totalSpecular + ( outgoingLight - totalSpecular ) * clearHaze, clearF + clearHaze );
-					#endif` );
-
-			}, 'clearFresnel' );
+			// (src/clearglass.js: transmission under GI and the path tracer, Fresnel alpha glass else)
+			const m = clearMaterial( cut ? { ior: 2.0, roughness: 0.0, thickness: 0.06, dispersion: 4, tint: '#f4f8ff', haze: 0.08, flatShading: true }
+				: { ior: 1.5, roughness: 0.02, thickness: 0.02, dispersion: 1, tint: '#f6fbfb', haze: 0.1 } );
 			this.clear.push( m );
 			return m;
 

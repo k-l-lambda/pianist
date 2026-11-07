@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { bakeKeyAO } from './keyboard.js';
+import { clearMaterial, setClearMode } from './clearglass.js';
 
 const phys = params => new THREE.MeshPhysicalMaterial( params );
 
@@ -110,6 +111,31 @@ export function makeMaterials( baker, style ) {
 			m.rimInner = woodMaterial( baker.walnut(), { clearcoat: 0.6, clearcoatRoughness: 0.2 } );
 			break;
 
+		// FIND GF-TYPE-3 in crystal (Footages.local/find/GF-TYPE-3.jpg): the case's rim, the lid and its
+		// prop in clear acrylic (a faint grey-blue in its thickness, polished), the legs, their stretcher
+		// and the lyre panel in smoked acrylic; the key area (key slip, key blocks, the front section) and
+		// the bottom board in white lacquer; hinges, casters and pedals chrome; the plate, the soundboard,
+		// the strings and the action as the other grands, seen through the case
+		case 'grand-crystal': {
+
+			// acrylic (PMMA): ior 1.49, little dispersion; its thickness per part (the rim 45 mm, the lid 20 mm)
+			const acrylic = o => clearMaterial( { ior: 1.49, roughness: 0.015, dispersion: 0.4, tint: '#dfe8ee', attenuationDistance: 0.9, haze: 0.035, ...o } );
+			m.rim = acrylic( { thickness: 0.045 } );
+			m.lid = acrylic( { thickness: 0.02 } );
+			m.prop = acrylic( { thickness: 0.022 } );
+			m.legs = acrylic( { thickness: 0.08, tint: '#5a5f66', attenuationDistance: 0.25, haze: 0.16 } );		// (smoked: about 70 % through its 8 cm)
+			m.case = lacquer( '#f1f0ec', { roughness: 0.2 } );		// (the key area, the bottom board; the bench)
+			m.caseBase = m.case;
+			m.trim = m.case;
+			m.panel = screen();
+			m.rimInner = null;		// (no veneer: the rim is clear)
+			m.brass = phys( { color: '#e8eaee', metalness: 1, roughness: 0.08 } );		// (chrome)
+			// the clear parts switch with the glass (applyGlass: transmission under GI and the path tracer)
+			m.glass.userData.linked = [ m.rim, m.lid, m.prop, m.legs ];
+			break;
+
+		}
+
 		default:
 			throw new Error( 'unknown style ' + style );
 
@@ -134,6 +160,7 @@ export function makeMaterials( baker, style ) {
  */
 export function applyGlass( mat, physical ) {
 
+	for ( const c of mat.userData.linked ?? [] ) setClearMode( c, physical );		// (the crystal grand's case: src/clearglass.js)
 	mat.transmission = physical ? 0.98 : 0;
 	// transmissive: white (the colour would tint what's seen through it); alpha: 20 % albedo
 	mat.color.setScalar( physical ? 1 : 0.2 );
@@ -151,4 +178,5 @@ export const STYLES = [
 	// venue: where it stands (main.js; the uprights in the room)
 	{ id: 'grand-black', name: 'Grand · black lacquer', type: 'grand', venue: 'hall' },
 	{ id: 'grand-white', name: 'Grand · white lacquer', type: 'grand', venue: 'luminara' },
+	{ id: 'grand-crystal', name: 'Grand · crystal', type: 'grand', venue: 'luminara' },		// (for now in Luminara, as the white)
 ];
