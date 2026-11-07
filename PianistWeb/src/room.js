@@ -33,11 +33,12 @@ export const ROOM_DEFAULTS = {
 };
 
 export const LIGHT_PRESETS = {
-	'Sunlit afternoon': { sunAzimuth: 50, sunElevation: 9, sunIntensity: 7, sunColor: '#ffd9a8', sunSoftness: 0.6, sky: 1.0, skyColor: '#a9c4e8', lamp: 0, exposure: 1.0 },
-	'Overcast': { sunAzimuth: 62, sunElevation: 30, sunIntensity: 0, sunColor: '#ffffff', sunSoftness: 1, sky: 2.2, skyColor: '#d0d8e0', lamp: 0, exposure: 1.3 },
-	'Golden hour': { sunAzimuth: 45, sunElevation: 5, sunIntensity: 6, sunColor: '#ffb070', sunSoftness: 0.4, sky: 0.6, skyColor: '#9fb3d9', lamp: 0, exposure: 1.1 },
-	'Evening lamp': { sunAzimuth: 62, sunElevation: 14, sunIntensity: 0, sunColor: '#ffd9a8', sunSoftness: 0.6, sky: 0.05, skyColor: '#203050', lamp: 42, exposure: 1.4 },
+	'Sunlit afternoon': { sunAzimuth: 50, sunElevation: 9, sunIntensity: 7, sunColor: '#ffd9a8', sunSoftness: 0.6, sky: 1.0, skyColor: '#a9c4e8', lamp: 0, exposure: 1.0, ptFill: 4 },
+	'Overcast': { sunAzimuth: 62, sunElevation: 30, sunIntensity: 0, sunColor: '#ffffff', sunSoftness: 1, sky: 2.2, skyColor: '#d0d8e0', lamp: 0, exposure: 1.3, ptFill: 4 },
+	'Golden hour': { sunAzimuth: 45, sunElevation: 5, sunIntensity: 6, sunColor: '#ffb070', sunSoftness: 0.4, sky: 0.6, skyColor: '#9fb3d9', lamp: 0, exposure: 1.1, ptFill: 4 },
+	'Evening lamp': { sunAzimuth: 62, sunElevation: 14, sunIntensity: 0, sunColor: '#ffd9a8', sunSoftness: 0.6, sky: 0.05, skyColor: '#203050', lamp: 42, exposure: 1.4, ptFill: 4 },
 };
+const PT_FILL = 4;		// (ptFill for light values saved without it)
 
 const phys = p => new THREE.MeshPhysicalMaterial( p );
 
@@ -144,6 +145,7 @@ export class Room {
 			[ 'sunIntensity', 0, 20, 0.1, 'Sun intensity' ], [ 'sunColor', 'color', 'Sun color' ],
 			[ 'sunSoftness', 0, 1, 0.01, 'Sun softness' ], [ 'sky', 0, 4, 0.01, 'Sky' ],
 			[ 'skyColor', 'color', 'Sky color' ], [ 'lamp', 0, 200, 1, 'Lamp' ],
+			[ 'ptFill', 0, 12, 0.1, 'PT window fill' ],
 		];
 
 	}
@@ -399,6 +401,15 @@ export class Room {
 		this.lights.add( portal );
 		this.portal = portal;
 
+		// the path tracer's window fill: the raster's portal (unshadowed) and the probe's ambient light the
+		// room about twice as bright as the sky through the window alone (a mean of 72 against 31 at the
+		// default view); a window-sized area light just outside the window, behind its bars (they shadow it),
+		// facing in, `ptFill` times the sky's radiance, brings the path-traced room to the raster's level
+		const ptPortal = new THREE.RectAreaLight( '#ffffff', 1, 1, 1 );
+		ptPortal.visible = false;
+		this.lights.add( ptPortal );
+		this.ptPortal = ptPortal;
+
 		// overhead lamp for the evening preset
 		const lamp = new THREE.SpotLight( '#ffc98a', 0, 0, THREE.MathUtils.degToRad( 38 ), 0.6, 2 );
 		lamp.castShadow = true;
@@ -516,6 +527,13 @@ export class Room {
 			this.portal.color.set( L.skyColor ).lerp( new THREE.Color( '#ffffff' ), 0.4 );
 			this.portal.intensity = L.sky * SKY_RADIANCE;
 			this.portal.visible = L.sky > 0 && this.mode !== 'pathtrace';
+			const fill = L.ptFill ?? PT_FILL, P = this.ptPortal;
+			P.width = this.portal.width; P.height = this.portal.height;
+			P.position.copy( f.center ).addScaledVector( f.inward, - 0.1 );		// (the wall's outer face: 0.075 out)
+			P.lookAt( P.position.clone().add( f.inward ) );
+			P.color.copy( this.portal.color );
+			P.intensity = fill * L.sky * SKY_RADIANCE;
+			P.visible = fill > 0 && L.sky > 0 && this.mode === 'pathtrace';
 
 		}
 

@@ -97,8 +97,12 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 		return false;
 
 	}
-	const cdf = new THREE.DataTexture( new Float32Array( [ 1, 1, 0, 0 ] ), 1, 1, THREE.RGFormat, THREE.FloatType );
-	cdf.needsUpdate = true;
+	// the CDF: a new texture whenever the number of lights changes (three allocates a texture's storage once,
+	// at its first upload, immutable: a larger image after that is not uploaded, the old size kept, and the
+	// pick read past its end: with a light more than at the first build, the room's sun went dark; two more,
+	// the image black)
+	const makeCdf = ( data, n ) => Object.assign( new THREE.DataTexture( data, n, 1, THREE.RGFormat, THREE.FloatType ), { needsUpdate: true } );
+	let cdf = makeCdf( new Float32Array( [ 1, 1 ] ), 1 );
 	for ( const m of mats ) {
 
 		m.fragmentShader = patched;
@@ -130,9 +134,13 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 		const lightsShare = env !== undefined && sum > 0 && env < 0.1 * sum ? 0.85 : share;
 		for ( const m of mats ) m.uniforms.ptLightsShareSet.value = lightsShare;
 		pt.lightsShareNow = lightsShare;
-		cdf.image = { data, width: Math.max( n, 1 ), height: 1 };
-		cdf.needsUpdate = true;
-		for ( const m of mats ) m.uniforms.ptCdfCount.value = n;
+		if ( cdf.image.width === Math.max( n, 1 ) ) { cdf.image.data = data; cdf.needsUpdate = true; } else {
+
+			cdf.dispose();
+			cdf = makeCdf( data, Math.max( n, 1 ) );
+
+		}
+		for ( const m of mats ) { m.uniforms.ptLightCdf.value = cdf; m.uniforms.ptCdfCount.value = n; }
 
 	};
 	pt.lightsShare = v => { for ( const m of mats ) m.uniforms.ptLightsShareSet.value = v; pt.reset(); };
