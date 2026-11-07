@@ -118,12 +118,19 @@ export function makeMaterials( baker, style ) {
 		// the strings and the action as the other grands, seen through the case
 		case 'grand-crystal': {
 
-			// acrylic (PMMA): ior 1.49, little dispersion; its thickness per part (the rim 45 mm, the lid 20 mm)
-			const acrylic = o => clearMaterial( { ior: 1.49, roughness: 0.015, dispersion: 0.4, tint: '#dfe8ee', attenuationDistance: 0.9, haze: 0.035, ...o } );
+			// acrylic (PMMA): ior 1.49, little dispersion, its thickness per part; absorbing, a cool grey (the
+			// reference's): about 64 % through the 45 mm rim and 82 % through the 20 mm lid face on, less at
+			// grazing angles (under GI and the path tracer transmission's attenuation; without GI the alpha
+			// glass's see-through dimmed as much: clearglass.js `absorb`)
+			const acrylic = o => clearMaterial( { ior: 1.49, roughness: 0.015, dispersion: 0.4, tint: '#c4ccd2', attenuationDistance: 0.023, haze: 0.035, absorb: true, ...o } );
 			m.rim = acrylic( { thickness: 0.045 } );
 			m.lid = acrylic( { thickness: 0.02 } );
-			m.prop = acrylic( { thickness: 0.022 } );
-			m.legs = acrylic( { thickness: 0.08, tint: '#5a5f66', attenuationDistance: 0.25, haze: 0.16 } );		// (smoked: about 70 % through its 8 cm)
+			// the lid prop and the legs: dark glass, opaque (a deep grey-black under a glassy coat; their edges
+			// catch the light, nothing shows through); the pedal stretcher and the lyre's upright panel satin silver
+			m.prop = phys( { color: '#16181b', roughness: 0.06, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, ior: 1.52 } );
+			m.legs = m.prop;
+			m.stretcher = phys( { color: '#c9cdd2', metalness: 1, roughness: 0.3 } );
+			m.lyrePanel = m.stretcher;
 			m.case = lacquer( '#f1f0ec', { roughness: 0.2 } );		// (the key area, the bottom board; the bench)
 			m.caseBase = m.case;
 			m.trim = m.case;
@@ -131,7 +138,7 @@ export function makeMaterials( baker, style ) {
 			m.rimInner = null;		// (no veneer: the rim is clear)
 			m.brass = phys( { color: '#e8eaee', metalness: 1, roughness: 0.08 } );		// (chrome)
 			// the clear parts switch with the glass (applyGlass: transmission under GI and the path tracer)
-			m.glass.userData.linked = [ m.rim, m.lid, m.prop, m.legs ];
+			m.glass.userData.linked = [ m.rim, m.lid ];
 			break;
 
 		}

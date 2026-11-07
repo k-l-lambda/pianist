@@ -296,7 +296,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 	// the case's parts, each its own material when the set has one (the crystal grand: clear rim, lid and
 	// prop, smoked legs, white lacquer elsewhere), else the case's
-	const RIM = M.rim ?? M.case, LID = M.lid ?? M.case, PROP = M.prop ?? M.case, LEGS = M.legs ?? M.case, BASE = M.caseBase ?? M.case;
+	const RIM = M.rim ?? M.case, LID = M.lid ?? M.case, PROP = M.prop ?? M.case, LEGS = M.legs ?? M.case, BASE = M.caseBase ?? M.case, STRETCHER = M.stretcher ?? LEGS;
 	const group = new THREE.Group();
 	const dampers = new Map();
 	const pedals = {};
@@ -654,7 +654,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	// --- legs and the frame below the case (USD834638 Figs. 1, 2, 5, 7) ------------------------
 	{
 
-		const caseParts = [], legParts = [], brass = [], steel = [];
+		const caseParts = [], legParts = [], stretcherParts = [], brass = [], steel = [];
 
 		// front legs: flat posts set back under the case (z = -0.32, outer face 13 mm inside the
 		// case side), 0.10 m wide tapering to 0.075 at the floor (outer face vertical), 0.08 m
@@ -717,12 +717,12 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// the stretcher joining the front legs just above the floor (Fig. 2: the full width between
 		// them, 6 cm high), with a deeper box in the middle holding the pedal pivots (Fig. 7)
 		const ST0 = 0.035, ST1 = 0.095, STZ0 = - 0.323, STZ1 = - 0.279;
-		legParts.push( woodBox( v3( - LEG_OUT + 0.06, ST0, STZ0 ), v3( LEG_OUT - 0.06, ST1, STZ1 ), { noUV: true, radius: 0.008 } ) );
-		legParts.push( woodBox( v3( - 0.11, ST0, - 0.41 ), v3( 0.11, ST1 + 0.01, STZ1 - 0.002 ), { noUV: true, radius: 0.008 } ) );
+		stretcherParts.push( woodBox( v3( - LEG_OUT + 0.06, ST0, STZ0 ), v3( LEG_OUT - 0.06, ST1, STZ1 ), { noUV: true, radius: 0.008 } ) );
+		stretcherParts.push( woodBox( v3( - 0.11, ST0, - 0.41 ), v3( 0.11, ST1 + 0.01, STZ1 - 0.002 ), { noUV: true, radius: 0.008 } ) );
 
 		// frosted panel between the front legs, from the pedal box up to the keybed (Fig. 2: 0.30 m
 		// wide; GF-TYPE-2/3), the two pedal rods behind it
-		const panelMat = M.legs ?? new THREE.MeshPhysicalMaterial( { color: '#b9bcc1', metalness: 0.75, roughness: 0.42 } );		// (the crystal grand: smoked, as its legs)
+		const panelMat = M.lyrePanel ?? new THREE.MeshPhysicalMaterial( { color: '#b9bcc1', metalness: 0.75, roughness: 0.42 } );		// (the crystal grand: its own, satin silver)
 		group.add( mesh( woodBox( v3( - 0.15, ST1 + 0.01, - 0.375 ), v3( 0.15, FRONT_BOTTOM, - 0.365 ), { noUV: true } ), panelMat ) );
 		const RODS_Y = 0.585;
 		for ( const x of [ - 0.04, 0.05 ] ) steel.push( rod( v3( x, ST1, - 0.395 ), v3( x, RODS_Y, - 0.395 ), 0.006, 8 ) );
@@ -768,6 +768,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		group.add( mesh( merge( caseParts ), BASE ) );
 		group.add( mesh( merge( legParts ), LEGS ) );
+		group.add( mesh( merge( stretcherParts ), STRETCHER ) );
 		group.add( mesh( merge( brass ), M.brass ) );
 		group.add( mesh( merge( steel ), M.steel ) );
 
