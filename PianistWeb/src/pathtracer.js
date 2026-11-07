@@ -12,6 +12,31 @@ import { WebGLPathTracer } from 'three-gpu-pathtracer';
  * windows dark another). The stand-ins share the geometry's attributes (the group's indices copied) and
  * sit where the mesh is; gone again after (the path tracer keeps its own copy).
  */
+/**
+ * The path tracer's texture layers sized to fit: it copies every texture into one array of
+ * textureSize² RGBA8 layers; past the driver's limit (the Berlin hall: 269 textures at 2048² is 4.2 GB)
+ * its allocation fails (GL_INVALID_FRAMEBUFFER_OPERATION) and every texture reads black. The largest
+ * power of two up to 2048 whose array stays within `budget` bytes.
+ */
+export function fitTextureSize( pt, scene, budget = 1.5 * 2 ** 30 ) {
+
+	const set = new Set();
+	scene.traverseVisible( o => { if ( o.isMesh ) for ( const m of [ o.material ].flat() ) for ( const k in m ) if ( m[ k ]?.isTexture ) set.add( m[ k ] ); } );
+	let size = 2048;
+	while ( size > 256 && set.size * size * size * 4 > budget ) size /= 2;
+	pt.textureSize.set( size, size );
+	return { textures: set.size, size };
+
+}
+
+/** Build the path tracer's scene: its texture layers fitted, multi-material meshes split (below). */
+export function buildScene( pt, scene, camera ) {
+
+	fitTextureSize( pt, scene );
+	return withSingleMaterials( scene, () => pt.setScene( scene, camera ) );
+
+}
+
 export function withSingleMaterials( scene, fn ) {
 
 	const swaps = [];
@@ -89,7 +114,7 @@ export class PathTracer {
 
 		this.scene = scene;
 		this.camera = camera;
-		withSingleMaterials( scene, () => this.pt.setScene( scene, camera ) );
+		buildScene( this.pt, scene, camera );
 		this.ready = true;
 
 	}

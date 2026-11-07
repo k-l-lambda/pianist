@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { withSingleMaterials } from './pathtracer.js';
+import { buildScene } from './pathtracer.js';
 
 const nextFrame = () => new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
 
@@ -96,7 +96,7 @@ export class PTSnapshot {
 		this.hooks.enterPT();
 		try {
 
-			withSingleMaterials( this.scene, () => pt.setScene( this.scene, cam ) );		// (multi-material meshes split: pathtracer.js)
+			buildScene( pt, this.scene, cam );		// (texture layers fitted, multi-material meshes split: pathtracer.js)
 
 		} finally {
 
