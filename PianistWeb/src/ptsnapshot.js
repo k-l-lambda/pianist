@@ -9,8 +9,8 @@
 // samples asked for; the window refreshed about once a second.
 
 import * as THREE from 'three';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildScene } from './pathtracer.js';
+import { PTPost, ptLens } from './ptpost.js';
 
 const nextFrame = () => new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
 
@@ -18,14 +18,15 @@ export class PTSnapshot {
 
 	/**
 	 * `pathTracer`: src/pathtracer.js's (its `pt`, a WebGLPathTracer: shared with the live path tracing).
-	 * `hooks`: { enterPT(), leavePT(), isLive(): the page path traces itself, samples(), bounces(), changed(): the live path tracer must rebuild }.
+	 * `hooks`: { enterPT(), leavePT(), isLive(): the page path traces itself, samples(), bounces(), changed(): the live path tracer must rebuild,
+ *   post(): PTPost's params (the venue's saturation and bloom, the dither), lens( camera ): { fStop, focus } (fStop 0: a pinhole) }.
 	 */
 	constructor( renderer, pathTracer, scene, camera, hooks ) {
 
 		Object.assign( this, { renderer, pathTracer, scene, camera, hooks } );
 		this.running = false;
 		this.run = 0;
-		this.output = new OutputPass();
+		this.post = new PTPost();		// (the raster composer's finish: saturation, bloom, tone mapping, dither: ptpost.js)
 		this.target = new THREE.WebGLRenderTarget( 1, 1, { depthBuffer: false } );
 		this.full = document.createElement( 'canvas' );		// (the full image, at the path tracer's size)
 		this._buildUI();
@@ -84,8 +85,10 @@ export class PTSnapshot {
 		await nextFrame(); await nextFrame();		// (the panel drawn before the scene's build, which blocks a few seconds)
 		if ( run !== this.run ) return;
 
-		const cam = this.frozen = ( camera ?? this.camera ).clone();
-		cam.updateMatrixWorld();
+		// the camera copied (frozen), as the path tracer's lens: a PhysicalCamera, its aperture and focus the GUI's
+		const src = ( camera ?? this.camera ).clone();
+		src.updateMatrixWorld();
+		const cam = this.frozen = ptLens( src, this.hooks.lens?.( src ) ?? {} );
 		// its size: the view's, in CSS pixels (not the device's: path tracing at 2x would take 4 times as long)
 		const buf = this.renderer.getDrawingBufferSize( new THREE.Vector2() ), dpr = this.renderer.getPixelRatio();
 		const w = Math.max( 16, Math.round( buf.x / dpr ) ), h = Math.max( 16, Math.round( buf.y / dpr ) );
@@ -173,7 +176,7 @@ export class PTSnapshot {
 
 	}
 
-	/** The path tracer's image now, tone mapped (as the page's output), into the full canvas and the window. */
+	/** The path tracer's image now, finished as the page's (ptpost.js), into the full canvas and the window. */
 	_refresh() {
 
 		const pt = this.pathTracer.pt, src = pt.target;
@@ -181,8 +184,7 @@ export class PTSnapshot {
 		const w = src.width, h = src.height, r = this.renderer;
 		if ( this.target.width !== w || this.target.height !== h ) this.target.setSize( w, h );
 		const was = { target: r.getRenderTarget(), auto: r.autoClear };
-		this.output.renderToScreen = false;
-		this.output.render( r, this.target, src );
+		this.post.render( r, src.texture, this.target, this.hooks.post?.() ?? {} );
 		const px = new Uint8Array( 4 * w * h );
 		r.readRenderTargetPixels( this.target, 0, 0, w, h, px );
 		r.setRenderTarget( was.target );

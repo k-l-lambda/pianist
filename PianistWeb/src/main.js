@@ -5,7 +5,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import GUI from 'lil-gui';
 
@@ -21,6 +20,8 @@ import { GIProbe } from './gi.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
 import { PathTracer } from './pathtracer.js';
 import { PTSnapshot } from './ptsnapshot.js';
+import { PTPost, makeHDRClamp } from './ptpost.js';
+import { captureScreen } from './ptscreen.js';
 import { captureState, applyState } from './scenestate.js';
 import { KeyShadow } from './keyshadow.js';
 import { HandheldMode } from './handheldmode.js';
@@ -73,6 +74,12 @@ const settings = {
 	giBounces: 2,
 	ptBounces: 8,
 	ptSamples: 128,		// a path-traced snapshot's samples per pixel (ptsnapshot.js)
+	// the path tracer's lens (a snapshot's, an offline render's): depth of field off, or an f-number and the
+	// focus (auto: the piano's centre along the view; else ptFocus m)
+	ptDof: false,
+	ptFStop: 2.8,
+	ptAutoFocus: true,
+	ptFocus: 2,
 	lidAngle: 34,
 	volume: 0.5,
 };
@@ -278,18 +285,7 @@ composer.addPass( gtaoPass );
 // bloom's sum of five mips stays under half float's 65504
 // (and the venue preset's saturation, in linear light before the tone mapping: ACES warms and
 // saturates the Berlin hall's gilt and ivory beyond its renders)
-const hdrClamp = new ShaderPass( {
-	uniforms: { tDiffuse: { value: null }, uMax: { value: 4096 }, uSaturation: { value: 1 } },
-	vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }',
-	fragmentShader: `uniform sampler2D tDiffuse; uniform float uMax; uniform float uSaturation; varying vec2 vUv;
-		void main() {
-			vec4 c = texture2D( tDiffuse, vUv );
-			c = mix( c, vec4( 0.0 ), vec4( notEqual( c, c ) ) );		// NaN
-			vec3 rgb = clamp( c.rgb, 0.0, uMax );		// Inf, too bright
-			rgb = max( mix( vec3( dot( rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) ), rgb, uSaturation ), 0.0 );
-			gl_FragColor = vec4( rgb, clamp( c.a, 0.0, 1.0 ) );
-		}`,
-} );
+const hdrClamp = makeHDRClamp( 4096 );		// (ptpost.js: the path tracer's image gets the same)
 composer.addPass( hdrClamp );
 composer.addPass( bloomPass );
 // depth of field, only for a lens that loses focus for a moment (scripts: `defocus`); off otherwise
@@ -351,14 +347,67 @@ function applyAO() {
 pathTracer.rasterCallback = () => composer.render();
 // the path-traced snapshot (the GUI's button): the view at the click, path traced in a corner window while
 // the page goes on in real time; the venues in their path-tracing state only while its scene is built
+let ptScreen = null, ptKeyGlows = [];
 const ptSnapshot = new PTSnapshot( renderer, pathTracer, scene, camera, {
-	enterPT: () => { setLightingMode( 'pathtrace' ); roll.group.visible = false; },
-	leavePT: () => { setLightingMode( 'raster' ); scene.environment = probeEnv; },		// (the roll shows again at its next update)
+	enterPT: () => {
+
+		// the screen's image as an emitting plate (ptscreen.js: the roll's additive shaders are not the path
+		// tracer's), drawn before the roll is hidden; the keys' additive glows hidden too (to the path tracer:
+		// tinted films)
+		ptScreen = captureScreen( renderer, roll, piano?.materials?.panel );
+		setLightingMode( 'pathtrace' );
+		roll.group.visible = false;
+		if ( ptScreen ) scene.add( ptScreen );
+		ptKeyGlows = [ ...roll.keyGlows.values() ].filter( g => g.visible );
+		for ( const g of ptKeyGlows ) g.visible = false;
+
+	},
+	leavePT: () => {
+
+		setLightingMode( 'raster' );
+		scene.environment = probeEnv;		// (the roll shows again at its next update)
+		ptScreen?.dispose(); ptScreen = null;		// (the path tracer keeps its own copy)
+		for ( const g of ptKeyGlows ) g.visible = true;
+		ptKeyGlows = [];
+
+	},
 	isLive: () => settings.mode === 'pathtrace',
 	samples: () => settings.ptSamples,
 	bounces: () => settings.ptBounces,
 	changed: () => { ptDirty = true; },
+	post: () => ptPostParams(),
+	lens: cam => ptLensParams( cam ),
 } );
+
+/** The raster composer's finish for the path tracer's image (ptpost.js): the venue's saturation and bloom (as applyBloom's), the dither. */
+function ptPostParams() {
+
+	// (bloom as applyBloom's: with GI on, or where the venue's preset asks for it; the GI-off raster has none)
+	const own = ! bloomChosen && venue?.light.bloom !== undefined, on = settings.gi || own;
+	return { saturation: venue?.light.saturation ?? 1, bloom: on ? ( own ? venue.light.bloom : settings.bloom ) : 0, bloomThreshold: venue?.light.bloomThreshold ?? 0.92, dither: true };
+
+}
+
+/** The path tracer's lens: { fStop, focus } (fStop 0: a pinhole). Auto focus: the piano's centre along the view. */
+function ptLensParams( cam ) {
+
+	if ( ! settings.ptDof ) return { fStop: 0 };
+	let focus = settings.ptFocus;
+	const c = settings.ptAutoFocus ? pianoCentre() : null;
+	if ( c ) focus = THREE.MathUtils.clamp( c.clone().sub( cam.position ).dot( cam.getWorldDirection( new THREE.Vector3() ) ), 0.3, 20 );
+	return { fStop: settings.ptFStop, focus };
+
+}
+
+// the live path tracing's image to the canvas, finished as a snapshot's (the library draws it with its own
+// tone mapping only: no saturation, bloom or dither)
+const livePost = new PTPost();
+pathTracer.pt.renderToCanvasCallback = ( target, r, quad ) => {
+
+	if ( quad.material.opacity < 1 ) { const a = r.autoClear; r.autoClear = false; quad.render( r ); r.autoClear = a; return; }		// (fading in over the low-res image)
+	livePost.render( r, target.texture, null, ptPostParams() );
+
+};
 
 // ---------------------------------------------------------------------------
 // piano
@@ -977,6 +1026,11 @@ fPT.add( settings, 'ptBounces', 2, 16, 1 ).name( 'Bounces' ).onChange( v => {
 	pathTracer.pt.reset();
 
 } );
+// the lens (snapshots, offline renders: a PhysicalCamera's aperture; the live path tracing stays a pinhole)
+fPT.add( settings, 'ptDof' ).name( 'Depth of field' );
+fPT.add( settings, 'ptFStop', 0.7, 22, 0.1 ).name( 'Aperture (f/)' );
+fPT.add( settings, 'ptAutoFocus' ).name( 'Focus on the piano' );
+fPT.add( settings, 'ptFocus', 0.3, 20, 0.01 ).name( 'Focus distance (m)' );
 
 const fGrand = gui.addFolder( 'Grand' ).close();
 fGrand.add( settings, 'lidAngle', 0, 45, 1 ).name( 'Lid angle' ).onFinishChange( () => piano.style.type === 'grand' && setStyle( settings.style ) );
@@ -1537,7 +1591,7 @@ if ( flag( 'handheld' ) ) gui.controllersRecursive().find( c => c._name === 'Han
 if ( flag( 'screen' ) ) setScreenPower( true );
 // the scene's state (src/scenestate.js): saved as JSON from the GUI, set again from it (tools/render-pt.mjs)
 const stateContext = {
-	settings, camera, controls, renderer, venue: () => venue, venues: { room, hall, luminara }, piano: () => piano, roll, handheld,
+	settings, camera, controls, renderer, venue: () => venue, venues: { room, hall, luminara }, piano: () => piano, roll, handheld, midiPlayer, loadMidi: ( b, n ) => loadMidiBuffer( b, n ),
 	setStyle, setScreenPower, applyQuality, refreshLighting,
 	chosen: { tone: () => toneChosen, bloom: () => bloomChosen, set: ( t, b ) => { toneChosen = t; bloomChosen = b; } },
 	updateGUI: () => gui.controllersRecursive().forEach( c => c.updateDisplay() ),

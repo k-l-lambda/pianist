@@ -1554,9 +1554,10 @@ export class PianoRoll {
 
 		if ( player.events !== this.events ) {
 
-			this._ghost();
+			if ( this.instantIn ) { this.ghostLevel = 0; this.ghostBars.visible = false; } else this._ghost();
 			this._build( player.events );
-			this.fadeIn = this.mode === 'voice' ? 1 : 0;
+			this.fadeIn = this.mode === 'voice' || this.instantIn ? 1 : 0;		// (instantIn: a scene state's file, on the screen already)
+			this.instantIn = false;
 
 		}
 		const target = this.power ? 1 : 0;
@@ -1659,7 +1660,7 @@ export class PianoRoll {
 
 			const y0 = Math.max( 0, ( n.on - pos ) * speed ), y1 = Math.min( this.height + 0.05, ( n.off - pos ) * speed );
 			if ( y1 <= y0 ) continue;
-			const sounding = player.playing && n.on <= pos;		// paused: frozen, nothing sounds
+			const sounding = ( player.playing || player.frozenSounding ) && n.on <= pos;		// paused: frozen, nothing sounds (a saved moment of play: as it was)
 			if ( sounding ) drive[ n.pitch ] = Math.max( drive[ n.pitch ], 0.55 + 0.45 * n.vel );
 
 			if ( nb < MAX_BARS ) {

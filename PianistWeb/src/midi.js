@@ -75,6 +75,8 @@ export class MidiFilePlayer {
 		this.events = [];
 		this.duration = 0;
 		this.name = null;
+		this.bytes = null;			// the file as loaded (a scene state embeds it: scenestate.js)
+		this.frozenSounding = false;	// a saved moment of a playing file, held still: drawn as sounding (pianoroll.js)
 		this.playing = false;
 		this.rate = 1;
 		this._pos = 0;				// file ms when not playing
@@ -102,6 +104,8 @@ export class MidiFilePlayer {
 		// clean piano state on every channel (whatever an earlier file or instrument left set)
 		this._fluid?.resetChannels();
 		const { events, duration } = parseMidiEvents( buffer );
+		this.bytes = new Uint8Array( buffer.slice ? buffer.slice( 0 ) : buffer );
+		this.frozenSounding = false;
 		this.events = events;
 		this.duration = duration;
 		this.name = name;
@@ -115,6 +119,7 @@ export class MidiFilePlayer {
 	play() {
 
 		if ( this.playing || ! this.events.length ) return;
+		this.frozenSounding = false;
 		if ( this._pos >= this.duration ) this._pos = 0;
 		this._restorePedals( this._pos );
 		this._cursor = this._indexAt( this._pos );
@@ -137,6 +142,7 @@ export class MidiFilePlayer {
 	stop() {
 
 		this._halt();
+		this.frozenSounding = false;
 		this._pos = 0;
 		this._cursor = 0;
 
@@ -146,6 +152,7 @@ export class MidiFilePlayer {
 
 		const was = this.playing;
 		this._halt();
+		this.frozenSounding = false;
 		this._pos = Math.max( 0, Math.min( time, this.duration ) );
 		this._cursor = this._indexAt( this._pos );
 		if ( was ) this.play();

@@ -5,11 +5,13 @@
 // writes the image as PNG.
 //
 //   node tools/render-pt.mjs <state.json> [--spp 1024] [--out out.png] [--size 1920x1080]
-//        [--marks 64,256] [--bounces 8] [--url http://localhost:5184/]
+//        [--marks 64,256] [--bounces 8] [--fstop 2.8] [--focus 1.6] [--url http://localhost:5184/]
 //
 // --spp: samples per pixel (default: the state's). --size: the image (default: the view's size when the
 // state was saved; another aspect widens or narrows the view). --marks: also the image at these spp
-// (<out>-<n>spp.png). --url: a running dev server; without one the driver starts vite on 5184 itself.
+// (<out>-<n>spp.png). --fstop: depth of field at this f-number (0: off; default: the state's); --focus: its
+// distance in m (default: the state's, or the piano's centre). --url: a running dev server; without one the
+// driver starts vite on 5184 itself.
 // GPU: as tools/render-video.mjs (PLAYWRIGHT_CORE, CHROME, __EGL_VENDOR_LIBRARY_FILENAMES).
 
 import { spawn } from 'node:child_process';
@@ -20,7 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..' );
-const argv = process.argv.slice( 2 ), opt = { spp: null, out: null, size: null, marks: [], bounces: null, url: null };
+const argv = process.argv.slice( 2 ), opt = { spp: null, out: null, size: null, marks: [], bounces: null, fstop: null, focus: null, url: null };
 let file = null;
 for ( let i = 0; i < argv.length; ++ i ) {
 
@@ -30,8 +32,10 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--size' ) opt.size = val();
 	else if ( a === '--marks' ) opt.marks = val().split( ',' ).map( Number ).filter( n => n > 0 );
 	else if ( a === '--bounces' ) opt.bounces = Number( val() );
+	else if ( a === '--fstop' ) opt.fstop = Number( val() );
+	else if ( a === '--focus' ) opt.focus = Number( val() );
 	else if ( a === '--url' ) opt.url = val();
-	else if ( a === '-h' || a === '--help' ) { console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 14 ).join( '\n' ) ); process.exit( 0 ); }
+	else if ( a === '-h' || a === '--help' ) { console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 16 ).join( '\n' ) ); process.exit( 0 ); }
 	else if ( ! a.startsWith( '--' ) && ! file ) file = a;
 	else throw new Error( `unknown argument ${ a }` );
 
@@ -42,6 +46,8 @@ const spp = opt.spp ?? state.render?.ptSamples ?? 1024;
 const [ W, H ] = ( opt.size ?? `${ state.camera?.width ?? 1280 }x${ state.camera?.height ?? 720 }` ).split( 'x' ).map( Number );
 if ( ! ( W > 0 && H > 0 ) || ! ( spp > 0 ) ) throw new Error( 'bad --size / --spp' );
 if ( opt.bounces ) state.render = { ...state.render, ptBounces: opt.bounces };
+if ( opt.fstop !== null ) state.render = { ...state.render, ptDof: opt.fstop > 0, ...( opt.fstop > 0 ? { ptFStop: opt.fstop } : {} ) };
+if ( opt.focus !== null ) state.render = { ...state.render, ptAutoFocus: false, ptFocus: opt.focus };
 opt.out ??= path.basename( file ).replace( /\.json$/i, '' ) + `-${ spp }spp.png`;
 fs.mkdirSync( path.dirname( path.resolve( opt.out ) ), { recursive: true } );
 

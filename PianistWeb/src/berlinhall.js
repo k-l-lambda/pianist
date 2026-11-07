@@ -301,6 +301,7 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8, rendere
 		geos.forEach( g => g.dispose() );
 		const mesh = new THREE.Mesh( geo, mat );
 		mesh.castShadow = ! mat.userData.lamp && ! mat.userData.grille;
+		mesh.userData.ptNoOccluder = ! mesh.castShadow;		// (the path tracer too: pathtracer.js withPTMaterials; the chandeliers round their own lights)
 		mesh.receiveShadow = true;
 		if ( mat.userData.grille ) { mesh.userData.noAO = true; mesh.renderOrder = 1; }		// (transparent: not in GTAO's depth; after the floor)
 		mesh.name = `berlinHall:${ mat.name }`;
