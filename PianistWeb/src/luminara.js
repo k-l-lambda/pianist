@@ -53,9 +53,9 @@ const OPENINGS = {
 // shelving beside it wide (its room given to the shelving); from the doors' (centred on φ 0) round
 const BAYS = [
 	[ 'door', 37.2 ], [ 'plain', 37.2 ], [ 'pipes', 37.2 ], [ 'window', 30 ],		// (window R at 108)
-	[ 'shelves', 28, { a: 1.51, cols: [ 0.5 ], heights: [ [ 0.48, 1.0 ], [ 0.54, 1.06 ] ] } ],
+	[ 'shelves', 28, { a: 1.51, cols: [ 0.5 ], heights: [ [ 0.52, 1.08 ], [ 0.56, 1.12 ] ] } ],		// (the shelves' openings more even: 0.48/0.52/0.83 m were; the top one less empty)
 	[ 'curtain', 14, { a: 0.65 } ], [ 'window', 30 ], [ 'clef', 18 ],		// (window M at 180)
-	[ 'shelves', 24, { a: 1.27, cols: [ 0.5 ], heights: [ [ 0.52, 1.04 ], [ 0.46, 0.98 ] ] } ],
+	[ 'shelves', 24, { a: 1.27, cols: [ 0.5 ], heights: [ [ 0.55, 1.1 ], [ 0.5, 1.06 ] ] } ],
 	[ 'window', 30 ], [ 'pipes', 37.2 ], [ 'plain', 37.2 ],		// (window L at 252: the three windows 72° apart)
 ];
 /** Each bay's centre and its edges (rad), from BAYS' widths. */
@@ -120,20 +120,35 @@ const ON_SIDEBOARD = [ [ 'table-lamp', 0.74, 0 ], [ 'ceramic-vase', - 0.66, 0 ],
 const SHELVING = {
 	1: [		// (shelving 1, by window L)
 		[ [ 'crystal-ball', - 0.45, 0 ], [ 'hourglass', 0.45, 0 ] ],
-		[ [ 'books-grey', - 0.4, 0 ], [ 'perfume', 0.3, - 15 ], [ 'crystal-gem', 0.75, 0 ] ],
+		[ [ 'books-grey', - 0.42, 0 ], [ 'perfume', 0.32, - 15 ], [ 'crystal-gem', 0.76, 0 ] ],
 		[ [ 'pothos', - 0.6, 0 ], [ 'armillary', 0.05, 0 ], [ 'figurine', 0.62, - 20 ] ],
-		[ [ 'picture', - 0.5, 0 ], [ 'loop-sculpture', 0.15, 0 ], [ 'shell', 0.65, 20 ] ],
+		[ [ 'picture', - 0.45, 0 ], [ 'loop-sculpture', 0.45, 0 ] ],		// (the shell to the top on the right: here it crowded)
 		[ [ 'carousel', - 0.32, 0 ], [ 'gold-star', 0.55, 0 ] ],		// (the carousel music box in the books' place)
-		[ [ 'brass-globe', - 0.4, 0 ], [ 'jewelry-box', 0.45, 10 ] ],
+		[ [ 'brass-globe', - 0.55, 0 ], [ 'shell', 0.05, 20 ], [ 'jewelry-box', 0.6, 10 ] ],
 	],
 	2: [		// (shelving 2, by window R)
-		[ [ 'radio', - 0.55, 0 ], [ 'coral-tree', 0.1, 0 ], [ 'mushroom-lamp', 0.65, 0 ] ],
+		[ [ 'radio', - 0.5, 0 ], [ 'coral-tree', 0.4, 0 ] ],		// (the mushroom lamp up beside the crystal note: the gold ribbon's place)
 		[ [ 'books-gold', - 0.45, 0 ], [ 'astronaut', 0.25, 20 ], [ 'clock', 0.72, - 10 ] ],
 		[ [ 'vinyl', - 0.55, 12 ], [ 'headphones', 0.05, 15 ], [ 'diffuser', 0.65, 0 ] ],
 		[ [ 'roses', - 0.55, 0 ], [ 'cloche', 0.1, 0 ], [ 'metronome', 0.65, 0 ] ],
-		[ [ 'crystal-note', - 0.45, 0 ], [ 'gold-ribbon', 0.4, - 20 ] ],
+		[ [ 'crystal-note', - 0.4, 0 ], [ 'mushroom-lamp', 0.45, 0 ] ],		// (the gold ribbon gone: its loops read as a clef, oddly drawn)
 		[ [ 'whale-tail', - 0.4, 20 ], [ 'olive-vase', 0.45, 0 ] ],
 	],
+};
+// the shelves' ornaments' sizes over the pack's (tools/luminara-asset.mjs SIZE), as the close-ups': the tall ones
+// about two thirds of their shelf's height, the broad flat ones smaller than packed (the globe, the jewellery box,
+// the loop sculpture, the coral's base, the whale tail and the roses were as wide as half a shelf). Default 1.15
+const ORNAMENT_SCALE = { 'brass-globe': 0.85, 'jewelry-box': 0.8, 'loop-sculpture': 0.85, 'coral-tree': 0.9, 'whale-tail': 0.9, 'roses': 0.95, 'crystal-gem': 1.0, 'olive-vase': 1.0 };
+// TRELLIS ornaments with their contact shadow baked in as a plate at the foot: the bottom fraction of their height
+// that is the plate (dropBasePlate)
+const BASE_PLATE = { 'whale-tail': 0.03, 'olive-vase': 0.055 };
+// a TRELLIS ornament's parts classed by colour that are wrong low down: below this fraction of its height, its
+// foliage is its pot's (the olive vase's shaded lower side classed as leaves: green once its plate no longer hid it)
+const POT_BELOW = { 'olive-vase': [ 0.4, 'foliage', 'ceramic' ] };
+// the books, built here (bookRow): their palettes as the close-ups' (shelving 1 greys and whites, shelving 2 creams and golds)
+const BOOK_ROWS = {
+	'books-grey': { palette: [ '#e9e7e2', '#cfccc6', '#a9a6a1', '#7d7b78', '#4a4a4c', '#d9d2c4', '#b9b0a3' ], seed: 3, width: 0.34, lean: 2, angle: 13 },
+	'books-gold': { palette: [ '#efe7d6', '#e2d3b0', '#c9ab72', '#a88a57', '#f4f1ea', '#d8c7a4', '#8a7558' ], seed: 11, width: 0.3, lean: 3, angle: 10 },
 };
 // Lit as such a room would be, by its own fixtures (no stage spots but in Recital): the coves and the
 // dome (emissive: their light reaches the room through the probe, `env`), four spots in the dome's rim on the piano
@@ -749,6 +764,173 @@ function framedPicture( tex, w, h, lean = 0 ) {
 	for ( const [ x, y, sw, sh ] of [ [ 0, h / 2, w + 2 * fr, fr ], [ 0, - h / 2, w + 2 * fr, fr ], [ w / 2, 0, fr, h ], [ - w / 2, 0, fr, h ] ] ) g.add( new THREE.Mesh( new THREE.BoxGeometry( sw, sh, 0.025 ).translate( x, y, 0.0125 ), brass ) );
 	g.traverse( o => { if ( o.isMesh ) o.castShadow = o.receiveShadow = true; } );
 	if ( lean ) { g.position.y = h / 2 + fr; g.position.z = - 0.04; g.rotation.x = - lean; const out = new THREE.Group(); out.add( g ); return out; }
+	return g;
+
+}
+
+/**
+ * Drop a TRELLIS ornament's baked contact-shadow plate: a thin sheet at its foot, much wider than the object (the
+ * whale tail's and the olive vase's: their shadows on a white studio floor, made solid; on a shelf a slanted white or
+ * black slab). Of the triangles wholly in the bottom `t` of its height, those lying flat (the plate, and the
+ * object's own underside: unseen) and those outside the body's footprint (the plate's edges: the body's x/z extent
+ * above the band, 5 mm over) go; the body's own walls down to its foot stay (TRELLIS's fine surface: a band alone
+ * cut the foot of the whale tail's block and the vase open). Its geometry its own copy; then the object set down
+ * onto its new foot. `o`: the node (no parent yet).
+ */
+function dropBasePlate( o, t ) {
+
+	o.updateMatrixWorld( true );
+	const meshes = [], world = new Map();
+	let min = Infinity, max = - Infinity;
+	o.traverse( c => { if ( c.isMesh ) meshes.push( c ); } );
+	for ( const c of meshes ) {
+
+		const p = c.geometry.attributes.position, w = new Float32Array( 3 * p.count ), v = new THREE.Vector3();
+		for ( let i = 0; i < p.count; ++ i ) { v.fromBufferAttribute( p, i ).applyMatrix4( c.matrixWorld ).toArray( w, 3 * i ); min = Math.min( min, v.y ); max = Math.max( max, v.y ); }
+		world.set( c, w );
+
+	}
+	const band = min + t * ( max - min ), low = min + 0.45 * t * ( max - min ), M = 0.005;
+	// the body's footprint: its extent in x and z above the band
+	const fp = { x0: Infinity, x1: - Infinity, z0: Infinity, z1: - Infinity };
+	for ( const w of world.values() ) for ( let i = 0; i < w.length; i += 3 ) if ( w[ i + 1 ] >= band ) { fp.x0 = Math.min( fp.x0, w[ i ] ); fp.x1 = Math.max( fp.x1, w[ i ] ); fp.z0 = Math.min( fp.z0, w[ i + 2 ] ); fp.z1 = Math.max( fp.z1, w[ i + 2 ] ); }
+	const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), N = new THREE.Vector3();
+	let foot = Infinity;
+	for ( const c of meshes ) {
+
+		const g = c.geometry = c.geometry.clone(), w = world.get( c ), n = g.attributes.position.count;
+		const I = g.index ? g.index.array : Array.from( { length: n }, ( _, i ) => i ), keep = [];
+		// (a foliage part has nothing at the foot: what of it is there is the plate's shadow, its dark rim classed as
+		// leaves by colour: the olive vase's foot green and black)
+		const leaves = ( c.material.userData?.look ?? c.material.name ) === 'foliage';
+		for ( let k = 0; k < I.length; k += 3 ) {
+
+			const a = I[ k ], b = I[ k + 1 ], d = I[ k + 2 ];
+			A.fromArray( w, 3 * a ); B.fromArray( w, 3 * b ); C.fromArray( w, 3 * d );
+			if ( A.y < band && B.y < band && C.y < band ) {
+
+				N.subVectors( B, A ).cross( C.clone().sub( A ) );
+				const flat = N.lengthSq() > 0 && Math.abs( N.y ) > 0.7 * N.length() && Math.max( A.y, B.y, C.y ) < low;		// (flat in the plate's own layer only: the vase's underside, curving up into view higher in the band, kept: taking it left a notch in its foot)
+				const cx = ( A.x + B.x + C.x ) / 3, cz = ( A.z + B.z + C.z ) / 3;
+				const outside = cx < fp.x0 - M || cx > fp.x1 + M || cz < fp.z0 - M || cz > fp.z1 + M;
+				if ( flat || outside || leaves ) continue;
+
+			}
+			keep.push( a, b, d );
+			foot = Math.min( foot, A.y, B.y, C.y );
+
+		}
+		g.setIndex( keep );
+
+	}
+	if ( isFinite( foot ) ) o.position.y -= foot;		// (its foot on the shelf, y 0 of its holder: the pack's seat was the plate's, not the body's: the whale tail's block 13 mm up)
+
+}
+
+/**
+ * Move a TRELLIS ornament's triangles of part `from` (its material's look) lying wholly below `frac` of its height
+ * to part `to`'s material: a new mesh of them beside the old (the pack's colour classes wrong low down). `o`: the node.
+ */
+function reclassBelow( o, frac, from, to ) {
+
+	o.updateMatrixWorld( true );
+	const look = c => c.material.userData?.look ?? c.material.name, meshes = [];
+	o.traverse( c => { if ( c.isMesh ) meshes.push( c ); } );
+	const src = meshes.find( c => look( c ) === from ), dst = meshes.find( c => look( c ) === to );
+	if ( ! src || ! dst ) return;
+	const box = new THREE.Box3();
+	for ( const c of meshes ) box.expandByObject( c );
+	const cut = box.min.y + frac * ( box.max.y - box.min.y ), v = new THREE.Vector3();
+	const g = src.geometry = src.geometry.clone(), p = g.attributes.position, n = p.count, ys = new Float32Array( n );
+	for ( let i = 0; i < n; ++ i ) ys[ i ] = v.fromBufferAttribute( p, i ).applyMatrix4( src.matrixWorld ).y;
+	const I = g.index ? g.index.array : Array.from( { length: n }, ( _, i ) => i ), keep = [], moved = [];
+	for ( let k = 0; k < I.length; k += 3 ) ( ys[ I[ k ] ] < cut && ys[ I[ k + 1 ] ] < cut && ys[ I[ k + 2 ] ] < cut ? moved : keep ).push( I[ k ], I[ k + 1 ], I[ k + 2 ] );
+	if ( ! moved.length ) return;
+	g.setIndex( keep );
+	const mg = g.clone(); mg.setIndex( moved );
+	const m = new THREE.Mesh( mg, dst.material );
+	m.matrixAutoUpdate = src.matrixAutoUpdate; m.position.copy( src.position ); m.quaternion.copy( src.quaternion ); m.scale.copy( src.scale ); m.matrix.copy( src.matrix );
+	m.name = src.name + '-' + to;
+	src.parent.add( m );
+
+}
+
+/**
+ * A row of books standing on a shelf, as the close-ups' (Footages.local/Luminara/22a45a68-...): each its own height,
+ * depth and thickness, the last few leaning on the row (parallel, flush), a brass L bookend holding its other end.
+ * Each book: two boards and a spine in its cover's colour, the page block (cream) set a little in: its top shows
+ * between the boards. A thin gilt band on some spines. The spines face +z, the row along x centred on 0, its foot
+ * on y 0. `palette`: the covers' colours; `seed`: the row's own draw (the same each load); `width`: the row's, m.
+ */
+function bookRow( segU, { palette, seed = 1, width = 0.3, lean = 2, angle = 12 } ) {
+
+	let s = seed * 7919 % 2147483647 || 1;
+	const rnd = () => ( s = s * 16807 % 2147483647 ) / 2147483647;
+	const cover = [], gilt = [], col = new THREE.Color(), PAGE = new THREE.Color( '#efe6d3' );
+	const box = ( list, w, h, d, x, y, z, c, M ) => {
+
+		const g = new THREE.BoxGeometry( w, h, d ).translate( x, y + h / 2, z );
+		if ( M ) g.applyMatrix4( M );
+		if ( c ) { const n = g.attributes.position.count, a = new Float32Array( 3 * n ); for ( let i = 0; i < n; ++ i ) c.toArray( a, 3 * i ); g.setAttribute( 'color', new THREE.BufferAttribute( a, 3 ) ); }
+		list.push( g );
+
+	};
+	// one book in its own frame (x 0..t, y 0..h, the spine at z + d/2), placed by M
+	const book = ( t, h, d, c, M ) => {
+
+		const b = 0.0016, inset = 0.004;
+		box( cover, b, h, d, b / 2, 0, 0, c, M ); box( cover, b, h, d, t - b / 2, 0, 0, c, M );
+		box( cover, t, h, 0.0022, t / 2, 0, d / 2 - 0.0011, c, M );		// (the spine)
+		box( cover, t - 2 * b, h - 2 * inset, d - 0.006, t / 2, inset, - 0.002, PAGE, M );		// (the pages: set in at the top and the fore-edge)
+		if ( rnd() < 0.4 ) for ( const f of rnd() < 0.5 ? [ 0.86 ] : [ 0.84, 0.16 ] ) box( gilt, t + 0.0004, 0.006, 0.0012, t / 2, f * h, d / 2 + 0.0004, null, M );
+
+	};
+	// the books: thickness 18–48 mm (most thin), height 0.19–0.27 m, depth 0.13–0.19 m, each its colour a little off
+	const list = [];
+	for ( let w = 0; w < width; ) {
+
+		const t = 0.018 + 0.03 * rnd() ** 1.6, h = 0.19 + 0.08 * rnd(), d = 0.13 + 0.06 * rnd();
+		col.set( palette[ Math.floor( rnd() * palette.length ) ] ).multiplyScalar( 0.9 + 0.18 * rnd() );
+		list.push( { t, h, d, c: col.clone() } );
+		w += t + 0.0015;
+
+	}
+	const up = list.slice( 0, Math.max( 1, list.length - lean ) ), leaning = list.slice( up.length );
+	// the bookend at the left: its upright plate, its foot under the first books (they stand on it: 2.5 mm up)
+	const end = 0.003, foot = 0.0025, footLen = 0.09, x0 = - width / 2;
+	box( gilt, end, 0.16, 0.11, x0 - end / 2, 0, 0 );
+	box( gilt, footLen, foot, 0.11, x0 + footLen / 2, 0, 0 );
+	let x = x0;
+	for ( const b of up ) {
+
+		const y = x < x0 + footLen ? foot : 0;
+		book( b.t, b.h, b.d, b.c, new THREE.Matrix4().makeTranslation( x, y, ( b.d - 0.17 ) / 2 ) );		// (the spines not flush either: the deep ones further out)
+		x += b.t + 0.0015;
+
+	}
+	// the leaning ones: each on its bottom-left edge, its top on the one before (the first on the last upright, near
+	// its top); parallel, so each one's left face flush on the one before's right face
+	const last = up[ up.length - 1 ], th = THREE.MathUtils.degToRad( angle ), cos = Math.cos( th ), sin = Math.sin( th );
+	let xl = x - 0.0015 + 0.85 * Math.min( leaning[ 0 ]?.h ?? 0, last.h / cos ) * sin;
+	for ( const b of leaning ) {
+
+		const M = new THREE.Matrix4().makeTranslation( xl, 0, ( b.d - 0.17 ) / 2 ).multiply( new THREE.Matrix4().makeRotationZ( th ) );
+		book( b.t, b.h, b.d, b.c, M );
+		xl += b.t / cos;
+
+	}
+	// the row centred on 0 (its span: the bookend to the last leaning book's foot)
+	const shift = - ( x0 - end + xl ) / 2, g = new THREE.Group();
+	const mats = [ phys( { color: '#ffffff', vertexColors: true, roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.3 } ), phys( { color: '#d6a95c', metalness: 1, roughness: 0.28 } ) ];
+	[ cover, gilt ].forEach( ( list, i ) => {
+
+		const m = new THREE.Mesh( mergeGeometries( list, false ).translate( shift, 0, 0 ), mats[ i ] );
+		m.castShadow = m.receiveShadow = true;
+		g.add( m );
+		for ( const l of list ) l.dispose();
+
+	} );
+	for ( const m of mats ) addSegmentGlow( m, segU );
 	return g;
 
 }
@@ -2230,6 +2412,7 @@ export class Luminara {
 			}
 
 			const built = { 'gold-disc': () => goldRecord( this.segUPack ), 'vinyl': () => goldRecord( this.segUPack, true ), 'picture': () => mapOf( 'painting-3' ) && framedPicture( mapOf( 'painting-3' ), 0.34, 0.26, 0.1 ),
+				'books-grey': () => bookRow( this.segUPack, BOOK_ROWS[ 'books-grey' ] ), 'books-gold': () => bookRow( this.segUPack, BOOK_ROWS[ 'books-gold' ] ),
 				// the carousel music box: built here round the pack's horse (its looks finished), turning (beforeRender)
 				'carousel': () => {
 					const h = nodes[ 'carousel-horse' ]?.clone();
@@ -2249,7 +2432,9 @@ export class Luminara {
 
 			}
 			const o = nodes[ name ].clone();
-			if ( ORNAMENTS.has( name ) && ! /^books/.test( name ) ) o.scale.multiplyScalar( 1.15 );		// (as the close-ups': about three quarters of a shelf's height)
+			if ( ORNAMENTS.has( name ) && ! /^books/.test( name ) ) o.scale.multiplyScalar( ORNAMENT_SCALE[ name ] ?? 1.15 );		// (as the close-ups': ORNAMENT_SCALE)
+			if ( BASE_PLATE[ name ] ) dropBasePlate( o, BASE_PLATE[ name ] );
+			if ( POT_BELOW[ name ] ) reclassBelow( o, ...POT_BELOW[ name ] );
 			o.traverse( c => { if ( c.isMesh ) { c.material = finish( c.material ); c.castShadow = ! c.material.transparent && ! c.material.userData.clear; c.receiveShadow = true; } } );		// (glass: no shadow)
 			if ( name === 'plant' ) {
 
