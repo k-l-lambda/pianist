@@ -33,7 +33,38 @@ export function fitTextureSize( pt, scene, budget = 1.5 * 2 ** 30 ) {
 export function buildScene( pt, scene, camera ) {
 
 	fitTextureSize( pt, scene );
-	return withSingleMaterials( scene, () => pt.setScene( scene, camera ) );
+	return withRGBAColors( scene, () => withSingleMaterials( scene, () => pt.setScene( scene, camera ) ) );
+
+}
+
+/**
+ * Run `fn` with every 3-wide vertex colour attribute stood in for by an RGBA one (alpha 1). The path
+ * tracer gives meshes without colours a 4-wide white one, then merges each mesh's colours as if all were
+ * as wide as the first mesh's (in uuid order: random per load): when that one had none, the RGB meshes
+ * (the furniture's TRELLIS colours) were copied out of step and the plants and pillows came out dark.
+ */
+export function withRGBAColors( scene, fn ) {
+
+	const swaps = [];
+	scene.traverseVisible( o => {
+
+		const c = o.isMesh && o.geometry.attributes.color;
+		if ( ! c || c.itemSize !== 3 || swaps.some( s => s.g === o.geometry ) ) return;
+		const f = new Float32Array( c.count * 4 );
+		for ( let i = 0; i < c.count; ++ i ) { f[ 4 * i ] = c.getX( i ); f[ 4 * i + 1 ] = c.getY( i ); f[ 4 * i + 2 ] = c.getZ( i ); f[ 4 * i + 3 ] = 1; }
+		swaps.push( { g: o.geometry, c } );
+		o.geometry.setAttribute( 'color', new BufferAttribute( f, 4 ) );
+
+	} );
+	try {
+
+		return fn();
+
+	} finally {
+
+		for ( const { g, c } of swaps ) g.setAttribute( 'color', c );
+
+	}
 
 }
 
