@@ -483,13 +483,17 @@ export class Room {
 
 		}
 
-		// area sun: angular size grows with softness; keep irradiance equal to the directional light
-		const size = 0.15 + 0.9 * L.sunSoftness;
+		// area sun (the path tracer's): as the raster's, SUN_DIST out along the sun's direction from the
+		// window, and as big as its soft shadows' sun (keyLightRadius: the PCSS radius, a disc of that angular
+		// radius as a square of the same area); its irradiance the directional light's. (It was 12 m out and
+		// 0.15 + 0.9 softness m across: ~1.65° in radius against the raster's ~0.35°, and near enough to
+		// spread: the window's patch wider and its edges much softer than in real time)
+		const sunR = this.keyLightRadius(), size = Math.sqrt( Math.PI ) * sunR * SUN_DIST, aim = f ? f.center : target;
 		this.sunArea.width = this.sunArea.height = size;
 		this.sunArea.color.set( L.sunColor );
-		this.sunArea.intensity = L.sunIntensity * Math.PI * dist * dist / ( size * size ) / Math.PI;
-		this.sunArea.position.copy( target ).addScaledVector( dir, dist );
-		this.sunArea.lookAt( target );
+		this.sunArea.intensity = L.sunIntensity * SUN_DIST * SUN_DIST / ( size * size );
+		this.sunArea.position.copy( aim ).addScaledVector( dir, SUN_DIST );
+		this.sunArea.lookAt( aim );
 		this.sunArea.visible = L.sunIntensity > 0 && this.mode === 'pathtrace';
 
 		// foliage plane: outside the window, perpendicular to the sun

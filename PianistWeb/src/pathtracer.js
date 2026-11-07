@@ -3,6 +3,7 @@
 
 import { BufferAttribute, BufferGeometry, Mesh } from 'three';
 import { WebGLPathTracer } from 'three-gpu-pathtracer';
+import { patchPathTracer } from './ptpatch.js';
 
 /**
  * Run `fn` (the path tracer's scene build) with each multi-material mesh stood in for by one mesh per
@@ -114,6 +115,7 @@ export class PathTracer {
 
 		this.renderer = renderer;
 		this.pt = new WebGLPathTracer( renderer );
+		patchPathTracer( this.pt );		// (lights picked by power, the environment its share; camera-only emitters: ptpatch.js)
 		this.pt.tiles.set( 2, 2 );
 		this.pt.bounces = 8;
 		this.pt.transmissiveBounces = 10;

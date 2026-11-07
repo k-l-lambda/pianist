@@ -22,6 +22,7 @@ import { GLYPHS } from './luminaraglyphs.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
 import { clock } from './rendermode.js';
 import { clearMaterial, setClearMode } from './clearglass.js';
+import { CubeToEquirectGenerator } from 'three-gpu-pathtracer/src/utils/CubeToEquirectGenerator.js';		// (not in the package's index: its src/* export)
 
 export const LUMINARA = {
 	radius: 7.0,		// the wall
@@ -952,6 +953,9 @@ function gradient( f ) {
 
 }
 
+/** The sky material's map now (skyEnvironment's key: another preset's photo). */
+const M_skyMap = L => L.materials.sky.map?.uuid ?? null;
+
 export class Luminara {
 
 	constructor( scene, baker ) {
@@ -1083,13 +1087,128 @@ export class Luminara {
 
 		this.active = false;
 		this.scene.remove( this.group, this.lights );
+		delete this.scene.userData.ptEnvPower;		// (the path tracer's share: another venue's own)
 
 	}
 
 	get keyLight() { return this.light.top > 0 ? this.topSpot : this.domeSpots[ 0 ]; }
 	get specularOff() { return []; }
 	get probeHidden() { return []; }		// (the sky in the probe too: else each window is a black hole in the floor's reflection)
-	get environment() { return null; }
+	/**
+	 * The path tracer's area lights for the ceiling's rings of light (on: shown, off: hidden). A ring a few cm
+	 * high is a small target for a bounce ray: the walls and the floor they light came out grainy, the path
+	 * tracer finding them by chance only. As area lights next-event estimation samples them (src/ptpatch.js:
+	 * by power): chords 0.4 m round each ring, facing the axis; the rings then emit to the camera only
+	 * (castShadow false: a bounce gets their light from the area lights, not twice), and are no occluders.
+	 * Night, 64 spp: the noise 24.0 -> ~21 (against 1024 spp). (The lines of light as area lights too cut it
+	 * little for the time they cost: not.) Kept until the rings change (rebuild).
+	 */
+	ptLights( on ) {
+
+		const M = this.materials, bands = this.ledBands ?? [];
+		const key = `${ bands.length }`;
+		if ( on && this._ptLightsKey !== key ) {
+
+			for ( const l of this._ptLights ?? [] ) this.lights.remove( l );
+			this._ptLights = [];
+			const rect = ( w, h, pos, x, n, src ) => {		// (its local x along `x`, its face towards `n`)
+
+				const l = new THREE.RectAreaLight( '#ffffff', 1, w, h ), z = n.clone().negate(), y = z.clone().cross( x ).normalize();
+				l.quaternion.setFromRotationMatrix( new THREE.Matrix4().makeBasis( x.clone().normalize(), y, z ) );
+				l.position.copy( pos );
+				l.layers.set( 31 );		// (not the raster's: its fallback frames under path tracing would compile every lit material with them all; the path tracer takes lights by visibility)
+				l.userData.pt = src;
+				this.lights.add( l );
+				this._ptLights.push( l );
+
+			};
+			// (the lines of light, the shelves' strips and the tubes, not: as area lights they cut the noise little
+			// for the time they cost; their fixtures emit as before)
+			// the ceiling's rings: chords 0.4 m long (3 mm off the curve at 7 m: at 0.9 m, 15 mm, a ray off the mirror
+			// floor missed the chord and found the band, no emitter on a bounce: a dark line where it reflected), a
+			// little taller than the band and 3 mm in front of it, facing the axis
+			for ( const b of bands ) {
+
+				const n = Math.max( 4, Math.ceil( b.r * b.len / 0.4 ) ), h = ( b.y1 - b.y0 ) * 1.25, ym = ( b.y0 + b.y1 ) / 2;
+				for ( let i = 0; i < n; ++ i ) {
+
+					const ta = b.a0 + b.len * i / n, tb = b.a0 + b.len * ( i + 1 ) / n, tm = ( ta + tb ) / 2;
+					const pa = new THREE.Vector3( Math.sin( ta ), 0, Math.cos( ta ) ).multiplyScalar( b.r ), pb = new THREE.Vector3( Math.sin( tb ), 0, Math.cos( tb ) ).multiplyScalar( b.r );
+					const out = new THREE.Vector3( Math.sin( tm ), 0, Math.cos( tm ) ), x = pb.clone().sub( pa );
+					rect( pa.distanceTo( pb ), h, pa.add( pb ).multiplyScalar( 0.5 ).setY( ym ).addScaledVector( out, - 0.003 ), x, out.clone().negate(), { band: M.led } );
+
+				}
+
+			}
+			this._ptLightsKey = key;
+			this._ptLightsSync();
+
+		}
+		for ( const l of this._ptLights ?? [] ) l.visible = on;
+		// their fixtures: camera-only emitters, no occluders, while the area lights stand in (the path tracer reads castShadow)
+		M.led.castShadow = ! on;
+
+	}
+
+	/** The area lights' light, from what they stand in for (updateLights: a line's per-metre colour, a ring's emission). */
+	_ptLightsSync() {
+
+		// (under the bake as the raster draws it: the room's own light on the shell is the bake's, scaled by
+		// bakeInterior: the windows' light first; the area lights' likewise, else the path tracer's shelves
+		// came out 13 % brighter than the raster's)
+		const L = this.light, gain = L.baked !== false && this.bakes?.[ this.preset ] ? L.bakeInterior ?? 1 : 1;
+		for ( const l of this._ptLights ?? [] ) {
+
+			const s = l.userData.pt;
+			if ( s.line ) { l.color.copy( s.line.col ?? new THREE.Color( 0 ) ); l.intensity = s.k * gain; }
+			else { l.color.copy( s.band.emissive ); l.intensity = s.band.emissiveIntensity * gain; }
+
+		}
+
+	}
+
+	/** The path tracer's environment: the sky as the raster draws it, captured (skyEnvironment); none in real time. */
+	get environment() { return this.mode === 'pathtrace' ? this.skyEnvironment() : null; }
+
+	/**
+	 * The sky's shader (the city's photo by direction, the clouds, the stars, the moon, the low sun) captured
+	 * as an equirect map from SKY_EYE on its axis: the path tracer's environment. It reads the sky by
+	 * direction as the raster does (the cylinder, hit at a place, gave its photo another azimuth off the
+	 * axis, and none of the shader's extras); its moon and sun found by importance sampling. Drawn on a
+	 * sphere (every direction; the cylinder's ends: its photo's edge rows, as the raster's clamp). Kept until
+	 * its inputs change (the preset's sky values, the moment to 10 s).
+	 */
+	skyEnvironment( width = 4096 ) {
+
+		const L = this.light, S = this.skyU, key = JSON.stringify( [ L.outside, L.sky, L.sun, L.sunColor, L.sunAz, L.sunEl, L.moon, L.stars, L.clouds, Math.round( S.uTime.value / 10 ), M_skyMap( this ), width ] );
+		if ( this._skyEnv?.key === key ) { this.scene.userData.ptEnvPower = this._skyEnv.power; return this._skyEnv.texture; }
+		const r = this.baker.renderer, face = width / 4;
+		const rt = new THREE.WebGLCubeRenderTarget( face, { type: THREE.HalfFloatType, generateMipmaps: false } );
+		const cam = new THREE.CubeCamera( 0.1, 100, rt ), scene = new THREE.Scene();
+		const sky = this._ptTwins?.get( this.sky )?.raster ?? this.sky.material;
+		const ball = new THREE.Mesh( new THREE.SphereGeometry( 30, 128, 64 ), sky );
+		scene.add( ball, cam );
+		cam.position.set( 0, SKY_EYE, 0 );
+		cam.update( r, scene );
+		const env = new CubeToEquirectGenerator( r ).generate( rt.texture, width, width / 2 );
+		ball.geometry.dispose(); rt.dispose();
+		this._skyEnv?.texture.dispose();
+		// its power, roughly (the path tracer's share of samples for it: src/ptpatch.js): its mean radiance
+		// near the horizon (what the windows see) × π × the windows' area
+		const d = env.image.data, W = env.image.width, H = env.image.height, rows = [ Math.floor( H / 3 ), Math.floor( 2 * H / 3 ) ];
+		let sum = 0, n = 0;
+		for ( let y = rows[ 0 ]; y < rows[ 1 ]; y += 4 ) for ( let x = 0; x < W; x += 8 ) {
+
+			const i = 4 * ( y * W + x ), f = THREE.DataUtils.fromHalfFloat;
+			sum += 0.2126 * f( d[ i ] ) + 0.7152 * f( d[ i + 1 ] ) + 0.0722 * f( d[ i + 2 ] ); n ++;
+
+		}
+		const windows = bayLayout().filter( b => b.kind === 'window' ).reduce( ( a, b ) => a + Math.PI * b.o.a * b.o.a, 0 );
+		this._skyEnv = { key, texture: env, power: ( sum / Math.max( n, 1 ) ) * Math.PI * windows };
+		this.scene.userData.ptEnvPower = this._skyEnv.power;
+		return env;
+
+	}
 	keyLightRadius() { return 0.02; }
 
 	/** The piano's footprint centred under the dome. */
@@ -1156,6 +1275,7 @@ export class Luminara {
 		this._shelvingCount = 0;
 		this.paintings = [];
 		this.segments = [];		// { a, b, n (the strip's facing; null: a tube), clip (a plane, Vector4; null), kind }
+		this.ledBands = [];		// the ceiling's rings of light: { r, y0, y1, a0, len } (ptLights)
 
 		// the bays: a panel of wall round each opening, the opening's reveal and back
 		const layout = bayLayout();
@@ -1176,7 +1296,12 @@ export class Luminara {
 
 		// skirting (broken at the doors), a brass line above it; the cornice
 		const doorHalf = ( OPENINGS.door.a + 0.03 ) / R;
-		const lathe = ( pts, mat, a0 = 0, len = 2 * Math.PI, n = 192 ) => add( new THREE.LatheGeometry( pts.map( ( [ r, y ] ) => new THREE.Vector2( r, y ) ), n, a0, len ), mat );
+		const lathe = ( pts, mat, a0 = 0, len = 2 * Math.PI, n = 192 ) => {
+
+			if ( mat === M.led && pts.length === 2 && pts[ 0 ][ 0 ] === pts[ 1 ][ 0 ] ) this.ledBands.push( { r: pts[ 0 ][ 0 ], y0: Math.min( pts[ 0 ][ 1 ], pts[ 1 ][ 1 ] ), y1: Math.max( pts[ 0 ][ 1 ], pts[ 1 ][ 1 ] ), a0, len } );		// (a ring of light: ptLights)
+			return add( new THREE.LatheGeometry( pts.map( ( [ r, y ] ) => new THREE.Vector2( r, y ) ), n, a0, len ), mat );
+
+		};
 		lathe( [ [ R, 0 ], [ R - 0.035, 0 ], [ R - 0.035, 0.15 ], [ R - 0.02, 0.17 ], [ R, 0.17 ] ], M.lacquer, doorHalf, 2 * Math.PI - 2 * doorHalf );
 		lathe( [ [ R, 0.17 ], [ R - 0.012, 0.17 ], [ R - 0.012, 0.185 ], [ R, 0.185 ] ], M.brass, doorHalf, 2 * Math.PI - 2 * doorHalf );
 		lathe( [ [ R - 0.036, 0.008 ], [ R - 0.036, 0.024 ] ], M.ledFloor, doorHalf, 2 * Math.PI - 2 * doorHalf );		// (a line of light along the floor)
@@ -1757,6 +1882,7 @@ export class Luminara {
 		for ( const m of [ M.cove, M.dome ] ) { m.emissive.set( L.coveColor ); m.emissiveIntensity = L.cove * ( m === M.dome ? 0.7 : 1 ); }
 		M.niche.emissive.set( L.nicheColor ); M.niche.emissiveIntensity = L.niche;
 		for ( const [ m, v ] of [ [ M.led, L.led ], [ M.ledWall, L.ledWall ], [ M.ledFloor, L.ledFloor ] ] ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = v; }
+		this._ptLightsSync();		// (the path tracer's area lights: ptLights)
 		M.staff.color.set( L.ledColor ).multiplyScalar( 0.75 * L.ledWall );		// (on the ceiling, but ornament: the walls' tier)
 		for ( const m of this.glow ) { m.emissive.set( L.ledColor ); m.emissiveIntensity = 2.2 * L.ledWall; }		// (the clef's raised pattern: the walls' brightest, below the bloom)
 		if ( this.nicheLights.length !== this.nichePoints.filter( n => n.kind === 'pipes' ).length ) {		// (the pipes' only: the shelves lit by their strips)
@@ -1802,7 +1928,8 @@ export class Luminara {
 			key.shadow.map = null;
 
 		}
-		if ( this.active ) this.scene.background = this.background;
+		// (path tracing: the captured sky; a camera ray out of a window shows the background, not the environment)
+		if ( this.active ) this.scene.background = this.mode === 'pathtrace' ? this.skyEnvironment() : this.background;
 
 	}
 
@@ -1944,6 +2071,9 @@ export class Luminara {
 		// path tracing: what only the raster shows as light (MeshBasicMaterial: no emission to the path
 		// tracer, it reads it as a dark surface) as an emitter: the sky (the windows' daylight), the staff
 		this._ptTwins ??= new Map();
+		if ( this.sky ) this.sky.visible = mode !== 'pathtrace';		// (the environment is the sky there: skyEnvironment)
+		this.ptLights( mode === 'pathtrace' );
+		if ( mode !== 'pathtrace' ) delete this.scene.userData.ptEnvPower;
 		for ( const o of [ this.sky, ...this.group.children.filter( c => c.name === 'luminara:staff' ) ] ) {
 
 			if ( ! o ) continue;

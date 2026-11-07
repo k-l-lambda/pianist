@@ -132,11 +132,24 @@ export class PTSnapshot {
 			return;
 
 		}
+		// the GPU done with the last frame's tiles first (a fence): requestAnimationFrame comes at 60 Hz whatever
+		// the GPU's pace, and with no canvas drawn (exclusive) nothing else holds it back: the queue grew by a
+		// sample a frame until Chrome dropped the context (CONTEXT_LOST_WEBGL: the next images black)
+		const gl = this.renderer.getContext();
+		if ( this._fence ) {
+
+			const st = gl.clientWaitSync( this._fence, 0, 0 );
+			if ( st === gl.TIMEOUT_EXPIRED ) return;		// (still drawing: next frame)
+			gl.deleteSync( this._fence );
+			this._fence = null;
+
+		}
 		const was = this.renderer.getRenderTarget();
 		// (exclusive: a whole sample a frame, its tiles one after another; else one tile, the page's frame drawn too)
 		const n = this.exclusive ? pt.tiles.x * pt.tiles.y : 1;
 		for ( let i = 0; i < n && pt.samples < this.goal; ++ i ) pt.renderSample();
 		this.renderer.setRenderTarget( was );
+		if ( pt.samples < this.goal ) { this._fence = gl.fenceSync( gl.SYNC_GPU_COMMANDS_COMPLETE, 0 ); gl.flush(); return this._refreshIfDue( now ); }
 		const done = pt.samples >= this.goal;
 		if ( done || now - this.lastRefresh > 1000 ) this._refresh();
 		if ( done ) {
@@ -150,6 +163,8 @@ export class PTSnapshot {
 		}
 
 	}
+
+	_refreshIfDue( now ) { if ( now - this.lastRefresh > 1000 ) this._refresh(); }
 
 	_elapsed() {
 
@@ -228,6 +243,7 @@ export class PTSnapshot {
 	stop() {
 
 		this.run ++;
+		if ( this._fence ) { this.renderer.getContext().deleteSync( this._fence ); this._fence = null; }
 		if ( this.running && ! this.live ) this._restore();
 		this.running = false;
 		this.exclusive = false;
