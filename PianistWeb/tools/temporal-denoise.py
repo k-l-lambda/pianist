@@ -22,7 +22,7 @@ import cv2
 ap = argparse.ArgumentParser()
 ap.add_argument( 'input', nargs = '?' ); ap.add_argument( 'output', nargs = '?' )
 ap.add_argument( '--radius', type = int, default = 2 ); ap.add_argument( '--sigma', type = float, default = 8.0 )
-ap.add_argument( '--time-sigma', type = float, default = 1.5 ); ap.add_argument( '--crf', type = int, default = 18 )
+ap.add_argument( '--time-sigma', type = float, default = 1.5 ); ap.add_argument( '--speck', type = int, default = 24, help = "a pixel this far above its 7x7 median (8-bit) is kept as it is" ); ap.add_argument( "--ring", type = int, default = 3, help = "and the pixels in a ring x ring box round it" ); ap.add_argument( '--crf', type = int, default = 18 )
 ap.add_argument( '--raw', help = 'WxH: raw rgb24 frames on stdin' ); ap.add_argument( '--raw-out', action = 'store_true', help = 'raw rgb24 frames on stdout' )
 a = ap.parse_args()
 
@@ -41,7 +41,7 @@ else:
 	if not a.output: sys.exit( 'an output file (or --raw-out)' )
 	tmp = a.output + '.video.mp4' if not a.raw else a.output
 	enc = subprocess.Popen( [ 'ffmpeg', '-y', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{ W }x{ H }', '-framerate', fps or '25', '-i', '-',
-		'-vf', 'scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int', '-c:v', 'libx264', '-preset', 'slow', '-crf', str( a.crf ), '-pix_fmt', 'yuv420p',
+		'-vf', 'scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int' + ( f',pad={ W + W % 2 }:{ H + H % 2 }:0:0:black' if W % 2 or H % 2 else '' ), '-c:v', 'libx264', '-preset', 'slow', '-crf', str( a.crf ), '-pix_fmt', 'yuv420p',
 		'-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv', '-movflags', '+faststart', tmp ], stdin = subprocess.PIPE )
 	dst = enc.stdin
 
@@ -62,13 +62,19 @@ def read():
 	b = src.read( N )
 	if not b or len( b ) < N: return None
 	f = np.frombuffer( b, np.uint8 ).reshape( H, W, 3 )
-	return { 'rgb': f, 'grey': grey( f ), 'lin': lin[ f ] }
+	return { 'rgb': f, 'grey': grey( f ), 'grey_raw': cv2.cvtColor( f, cv2.COLOR_RGB2GRAY ), 'lin': lin[ f ] }
 
 def denoise( win, c ):
 
 	t = win[ c ]
 	acc = t[ 'lin' ].copy(); wsum = np.ones( ( H, W, 1 ), np.float32 )
 	tf = t[ 'rgb' ].astype( np.float32 )
+	# small bright things (the roll's particles, sparks, glints) kept as they are: a pixel well above its 7x7 median
+	# (the spatial denoiser has taken the noise's own sparkle out: what stands out now is meant), a pixel round it
+	# too. They move fast and small: the flow does not carry them, and averaged they lost a third of their light
+	g = t[ 'grey_raw' ]
+	keep = ( g.astype( np.int16 ) - cv2.medianBlur( g, 7 ).astype( np.int16 ) ) > a.speck
+	keep = cv2.dilate( keep.astype( np.uint8 ), np.ones( ( a.ring, a.ring ), np.uint8 ) ) > 0
 	for k, s in enumerate( win ):
 
 		if k == c or s is None: continue
@@ -76,9 +82,13 @@ def denoise( win, c ):
 		mx, my = gx + flow[ ..., 0 ], gy + flow[ ..., 1 ]
 		ws = cv2.remap( s[ 'lin' ], mx, my, cv2.INTER_LINEAR, borderMode = cv2.BORDER_REPLICATE )
 		wsr = cv2.remap( s[ 'rgb' ], mx, my, cv2.INTER_LINEAR, borderMode = cv2.BORDER_REPLICATE ).astype( np.float32 )
-		d = cv2.GaussianBlur( np.abs( wsr - tf ).mean( axis = 2 ), ( 5, 5 ), 1.0 )
+		e = np.abs( wsr - tf )
+		# the blurred difference (the noise's own differences average out: flicker passes), or the pixel's own, if
+		# larger: a small bright thing (a particle, a spark) not where it is in the neighbour keeps its own value
+		# (blurred alone, its difference was diluted under sigma and it was averaged with the neighbours' dark)
+		d = np.maximum( cv2.GaussianBlur( e.mean( axis = 2 ), ( 5, 5 ), 1.0 ), 0.5 * e.max( axis = 2 ) )
 		inside = ( mx >= 0 ) & ( mx <= W - 1 ) & ( my >= 0 ) & ( my <= H - 1 )
-		w = ( np.exp( - ( d / a.sigma ) ** 2 ) * np.exp( - 0.5 * ( ( k - c ) / a.time_sigma ) ** 2 ) * inside )[ ..., None ].astype( np.float32 )
+		w = ( np.exp( - ( d / a.sigma ) ** 2 ) * np.exp( - 0.5 * ( ( k - c ) / a.time_sigma ) ** 2 ) * inside * ~ keep )[ ..., None ].astype( np.float32 )
 		acc += w * ws; wsum += w
 
 	return to_srgb( acc / wsum ).round().astype( np.uint8 )
