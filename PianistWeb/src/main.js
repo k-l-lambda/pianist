@@ -365,7 +365,7 @@ const ptSnapshot = new PTSnapshot( renderer, pathTracer, scene, camera, {
 		// the screen's image as an emitting plate (ptscreen.js: the roll's additive shaders are not the path
 		// tracer's), drawn before the roll is hidden; the keys' additive glows hidden too (to the path tracer:
 		// tinted films)
-		ptScreen = captureScreen( renderer, roll, piano?.materials?.panel );
+		ptScreen = captureScreen( renderer, roll, piano?.materials?.panel, { size: pathTracer.pt.textureSize.x } );
 		setLightingMode( 'pathtrace' );
 		roll.group.visible = false;
 		if ( ptScreen ) scene.add( ptScreen );

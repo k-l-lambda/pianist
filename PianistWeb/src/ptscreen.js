@@ -2,27 +2,39 @@
 // subtitles, the power-on artwork) is drawn by additive ShaderMaterials, which the path tracer cannot
 // read; while its scene is built the roll is hidden and the screen would be the bare black panel. Here
 // the roll is drawn once, straight on (an orthographic camera on its plane), into a linear HDR target;
-// read back, scaled by its peak and encoded to sRGB 8-bit (the path tracer's texture layers are RGBA8),
-// it is the emissive map of a thin plate laid on the panel, its emissive intensity the peak: the image's
-// radiance as the raster draws it, the screen a real light on the keys, the music desk, the player.
+// read back, it is the emissive map of a thin plate laid on the panel: the image's radiance as the raster
+// draws it, the screen a real light on the keys, the music desk, the player.
+//
+// Its precision: the path tracer copies every texture into one array of RGBA8 layers, decoded (linear) 8-bit.
+// Scaled by each frame's peak (17..27 in the premiere) the faint guides (radiance 0.04) were stored as 0 but in
+// one frame of twelve (0.07: the vertical lines blinked in video) and the dim bars by ±30 % from frame to frame.
+// So: a fixed scale (SCALE: the same levels every frame), linear 8-bit with a fixed per-texel dither (each
+// output pixel averages tens of texels: their mean is right), at the layer's own size (the rows repeated to
+// fill it: no resampling and rounding again when the path tracer copies it in).
 
 import * as THREE from 'three';
 
-const PX_PER_M = 1400;		// (the grand's 1.3 m screen: ~1820 px across)
-const MAX_PX = 2048;
+const SCALE = 32;		// radiance at byte 255 (above it white anyway after the tone mapping: the flares' cores)
+// half floats to floats, a table
+let HALF = null;
+const halfTable = () => HALF ??= Float32Array.from( { length: 65536 }, ( _, i ) => { const v = THREE.DataUtils.fromHalfFloat( i ); return Number.isFinite( v ) && v > 0 ? v : 0; } );
+// a fixed dither in [0, 1) per texel and channel
+const dither = ( x, y, c ) => { let h = Math.imul( x * 73856093 ^ y * 19349663 ^ c * 83492791, 0x9E3779B1 ); h ^= h >>> 15; h = Math.imul( h, 0x85EBCA6B ); h ^= h >>> 13; return ( h >>> 8 ) / 16777216; };
 
 /**
  * The roll's image as a mesh for the path tracer's scene (world space, on the screen's plane), or null
  * (no screen, the screen off, nothing drawn). `panel`: the screen's material (its lacquer: the plate
- * keeps its gloss). The caller adds it to the scene for the build and disposes it after (dispose()).
+ * keeps its gloss). `size`: the path tracer's texture layers' (pt.textureSize). The caller adds it to the
+ * scene for the build and disposes it after (dispose()).
  */
-export function captureScreen( renderer, roll, panel ) {
+export function captureScreen( renderer, roll, panel, { size = 2048 } = {} ) {
 
 	if ( ! roll?.piano || ! roll.screen || ! roll.power || ! ( roll.powerLevel > 0 ) ) return null;
 	const clip = roll.clipUniform.value;		// (the screen's rectangle on the roll plane: x0, x1, y0, y1)
 	const w = clip.y - clip.x, h = clip.w - clip.z;
 	if ( ! ( w > 0 && h > 0 ) ) return null;
-	const W = Math.min( MAX_PX, Math.round( w * PX_PER_M ) ), H = Math.max( 1, Math.round( W * h / w ) );
+	// drawn at the layer's width and the screen's aspect (the particles' sprites square), its rows repeated to the layer's height after
+	const W = size, H = Math.max( 1, Math.round( W * h / w ) );
 
 	// the camera on the roll's plane: its frame the roll group's (x across, y up the screen, z towards the player)
 	roll.piano.group.updateMatrixWorld( true );
@@ -68,37 +80,29 @@ export function captureScreen( renderer, roll, panel ) {
 
 	}
 
-	// read back (half floats), scale by the peak, encode to sRGB 8-bit
+	// read back (half floats); linear 8-bit at SCALE, dithered, rows repeated to the layer's size
 	const half = new Uint16Array( 4 * W * H );
 	renderer.readRenderTargetPixels( target, 0, 0, W, H, half );
 	target.dispose();
-	const lin = new Float32Array( 3 * W * H );
+	const F = halfTable(), px = new Uint8Array( 4 * size * size ), k = 255 / SCALE;
 	let peak = 0;
-	for ( let i = 0, j = 0; i < half.length; i += 4, j += 3 ) for ( let c = 0; c < 3; ++ c ) {
-
-		const v = THREE.DataUtils.fromHalfFloat( half[ i + c ] );
-		const x = Number.isFinite( v ) && v > 0 ? v : 0;
-		lin[ j + c ] = x;
-		if ( x > peak ) peak = x;
-
-	}
-
+	for ( let i = 0; i < half.length; i += 4 ) peak = Math.max( peak, F[ half[ i ] ], F[ half[ i + 1 ] ], F[ half[ i + 2 ] ] );
 	if ( ! ( peak > 1e-4 ) ) return null;
-	const px = new Uint8Array( 4 * W * H );
-	for ( let i = 0, j = 0; j < lin.length; i += 4, j += 3 ) {
+	for ( let y = 0; y < size; ++ y ) {
 
-		for ( let c = 0; c < 3; ++ c ) {
+		const row = 4 * W * Math.min( H - 1, Math.floor( ( y + 0.5 ) * H / size ) ), o = 4 * size * y;
+		for ( let x = 0; x < size; ++ x ) {
 
-			const x = lin[ j + c ] / peak;
-			px[ i + c ] = Math.round( 255 * ( x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow( x, 1 / 2.4 ) - 0.055 ) );
+			const i = row + 4 * x, j = o + 4 * x;
+			for ( let c = 0; c < 3; ++ c ) px[ j + c ] = Math.min( 255, Math.floor( F[ half[ i + c ] ] * k + dither( x, y, c ) ) );
+			px[ j + 3 ] = 255;
 
 		}
-		px[ i + 3 ] = 255;
 
 	}
 
-	const tex = new THREE.DataTexture( px, W, H, THREE.RGBAFormat, THREE.UnsignedByteType );
-	tex.colorSpace = THREE.SRGBColorSpace;
+	const tex = new THREE.DataTexture( px, size, size, THREE.RGBAFormat, THREE.UnsignedByteType );
+	tex.colorSpace = THREE.NoColorSpace;		// (linear: copied into the layer as it is)
 	tex.minFilter = tex.magFilter = THREE.LinearFilter;
 	tex.generateMipmaps = false;
 	tex.needsUpdate = true;		// (rows bottom first, as read: v up, the plane's uvs)
@@ -110,7 +114,7 @@ export function captureScreen( renderer, roll, panel ) {
 	const mat = new THREE.MeshPhysicalMaterial( {
 		color: panel?.color ?? new THREE.Color( 0 ), roughness: panel?.roughness ?? 0.05, metalness: panel?.metalness ?? 0,
 		clearcoat: panel?.clearcoat ?? 0, clearcoatRoughness: panel?.clearcoatRoughness ?? 0,
-		emissive: new THREE.Color( 0xffffff ), emissiveMap: tex, emissiveIntensity: peak,
+		emissive: new THREE.Color( 0xffffff ), emissiveMap: tex, emissiveIntensity: SCALE,
 	} );
 	const mesh = new THREE.Mesh( geo, mat );
 	mesh.name = 'ptScreen';
