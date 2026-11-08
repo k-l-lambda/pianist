@@ -4,11 +4,13 @@
 // stdout, alike.
 //
 //   in   { id, type: 'frame', url, job: { script, fps, size, pt, denoise, ss, sub, bits, dither, filter, hq, wm, query },
-//          frame, file }           the video frame `frame` (time frame / fps) of `script`, raw rgb24/rgb48le to `file`
-//        { id, type: 'still', url, state, size, spp, denoise, file }        a path-traced still (PNG) of a scene state
+//          frame }                 the video frame `frame` (time frame / fps) of `script`: raw rgb24 / rgb48le
+//        { id, type: 'still', url, state, size, spp, denoise }              a path-traced still (PNG) of a scene state
 //        { type: 'idle', soft, hard }                                       the idle timeouts (s; set by the server)
 //        { type: 'exit' }
-//   out  { id, ok: true, ms, ... } | { id, ok: false, error }   { log }   { state: 'cold' | 'warm' | 'browser' | 'down' }
+//   out  { id, ok: true, ms, data (base64), ... } | { id, ok: false, error }   { log }   { state: 'cold' | 'warm' | 'browser' | 'down' }
+//
+// Nothing is written to disk: the image goes back in the reply (the server holds it until its client has it).
 //
 // The page stays between frames of one job (the same script and settings): a later frame only steps the timeline
 // on (frames undrawn: milliseconds each), so the server deals out frames in increasing order and a worker never
@@ -18,7 +20,6 @@
 // memory back, the browser kept), after `hard` s the browser too (its GPU process gone).
 
 import { createRequire } from 'node:module';
-import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -91,7 +92,7 @@ async function openPage( href, width, height ) {
 
 const jobKey = j => JSON.stringify( [ j.script, j.fps, j.size, j.pt, !! j.denoise, j.ss, j.sub, j.bits, j.dither, j.filter, !! j.hq, j.wm ?? null, j.query ?? '' ] );
 
-async function frameTask( { url, job, frame, file } ) {
+async function frameTask( { url, job, frame } ) {
 
 	const [ W, H ] = job.size.split( 'x' ).map( Number ), key = jobKey( job );
 	if ( session !== key || ! page || frame < pos ) {
@@ -119,16 +120,14 @@ async function frameTask( { url, job, frame, file } ) {
 	const s = await page.evaluate( () => window.__render.step() );
 	if ( s.frame !== frame ) throw new Error( `drew frame ${ s.frame }, expected ${ frame }` );
 	++ pos;
-	const px = Buffer.from( await page.evaluate( ( [ w, h ] ) => window.__render.frame( w, h ), [ W, H ] ), 'base64' );
-	const expect = W * H * 3 * ( job.bits === 10 ? 2 : 1 );
-	if ( px.length !== expect ) throw new Error( `frame ${ frame }: ${ px.length } bytes, expected ${ expect }` );
-	fs.writeFileSync( file + '.part', px );
-	fs.renameSync( file + '.part', file );		// (a frame on disk is a whole one)
-	return { ms: Date.now() - t0, time: s.time, playing: s.state };
+	const data = await page.evaluate( ( [ w, h ] ) => window.__render.frame( w, h ), [ W, H ] );
+	const bytes = Buffer.byteLength( data, 'base64' ), expect = W * H * 3 * ( job.bits === 10 ? 2 : 1 );
+	if ( bytes !== expect ) throw new Error( `frame ${ frame }: ${ bytes } bytes, expected ${ expect }` );
+	return { ms: Date.now() - t0, time: s.time, playing: s.state, data };
 
 }
 
-async function stillTask( { url, state, size, spp, denoise, file } ) {
+async function stillTask( { url, state, size, spp, denoise } ) {
 
 	const [ W, H ] = ( size ?? `${ state.camera?.width ?? 1280 }x${ state.camera?.height ?? 720 }` ).split( 'x' ).map( Number );
 	// the app (not render mode): a page of its own, its scene from the state
@@ -153,11 +152,8 @@ async function stillTask( { url, state, size, spp, denoise, file } ) {
 
 	}, [ st, n, W, H ] );
 	await page.waitForFunction( n => window.__pianist.ptSnapshot.samples >= n, n, { timeout: 24 * 3600 * 1000, polling: 2000 } );
-	const png = Buffer.from( await page.evaluate( () => window.__pianist.ptSnapshot.pngBase64() ), 'base64' );
-	fs.mkdirSync( path.dirname( file ), { recursive: true } );
-	fs.writeFileSync( file + '.part', png );
-	fs.renameSync( file + '.part', file );
-	return { ms: Date.now() - t0, spp: n };
+	const data = await page.evaluate( () => window.__pianist.ptSnapshot.pngBase64() );
+	return { ms: Date.now() - t0, spp: n, data };
 
 }
 
