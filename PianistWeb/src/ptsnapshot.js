@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { buildScene } from './pathtracer.js';
 import { PTPost, ptLens } from './ptpost.js';
+import { PTDenoiser } from './ptdenoise.js';
 
 const nextFrame = () => new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
 
@@ -19,14 +20,16 @@ export class PTSnapshot {
 	/**
 	 * `pathTracer`: src/pathtracer.js's (its `pt`, a WebGLPathTracer: shared with the live path tracing).
 	 * `hooks`: { enterPT(), leavePT(), isLive(): the page path traces itself, samples(), bounces(), changed(): the live path tracer must rebuild,
- *   post(): PTPost's params (the venue's saturation and bloom, the dither), lens( camera ): { fStop, focus } (fStop 0: a pinhole) }.
+ *   post(): PTPost's params (the venue's saturation and bloom, the dither), lens( camera ): { fStop, focus } (fStop 0: a pinhole),
+ *   denoise(): the path tracer's buffers and the spatial denoiser on (ptdenoise.js) }.
 	 */
 	constructor( renderer, pathTracer, scene, camera, hooks ) {
 
 		Object.assign( this, { renderer, pathTracer, scene, camera, hooks } );
 		this.running = false;
 		this.run = 0;
-		this.post = new PTPost();		// (the raster composer's finish: saturation, bloom, tone mapping, dither: ptpost.js)
+		this.post = new PTPost();
+		this.denoiser = new PTDenoiser();		// (the raster composer's finish: saturation, bloom, tone mapping, dither: ptpost.js)
 		this.target = new THREE.WebGLRenderTarget( 1, 1, { depthBuffer: false } );
 		this.full = document.createElement( 'canvas' );		// (the full image, at the path tracer's size)
 		this._buildUI();
@@ -97,6 +100,9 @@ export class PTSnapshot {
 		// tiles of about 64k pixels: one a frame keeps the page moving
 		const n = Math.max( 1, Math.round( Math.sqrt( w * h / 65536 ) ) );
 		pt.tiles.set( n, n );
+		// the denoiser's buffers (ptpatch.js: a recompile when switched; left as they are after)
+		this.denoise = !! this.hooks.denoise?.() && !! pt.setAOV;
+		pt.setAOV?.( this.denoise );
 		pt._pathTracer.setSize( w, h );
 		pt._lowResPathTracer.setSize( Math.max( 1, Math.floor( w * pt.lowResScale ) ), Math.max( 1, Math.floor( h * pt.lowResScale ) ) );
 		// the live path tracer's own state: not its scene now (it rebuilds when it is next used)
@@ -176,6 +182,15 @@ export class PTSnapshot {
 
 	}
 
+	/** The path tracer's linear HDR image now: denoised (ptdenoise.js) when the snapshot asked for it. */
+	linearTexture() {
+
+		const pt = this.pathTracer.pt, tex = pt.aovTextures?.();
+		if ( this.denoise && tex && ! this.live ) return this.denoiser.render( this.renderer, tex, Math.max( 1, Math.floor( pt.samples ) ) ).texture;
+		return pt.target.texture;
+
+	}
+
 	/** The path tracer's image now, finished as the page's (ptpost.js), into the full canvas and the window. */
 	_refresh() {
 
@@ -184,7 +199,7 @@ export class PTSnapshot {
 		const w = src.width, h = src.height, r = this.renderer;
 		if ( this.target.width !== w || this.target.height !== h ) this.target.setSize( w, h );
 		const was = { target: r.getRenderTarget(), auto: r.autoClear };
-		this.post.render( r, src.texture, this.target, this.hooks.post?.() ?? {} );
+		this.post.render( r, this.linearTexture(), this.target, this.hooks.post?.() ?? {} );
 		const px = new Uint8Array( 4 * w * h );
 		r.readRenderTargetPixels( this.target, 0, 0, w, h, px );
 		r.setRenderTarget( was.target );

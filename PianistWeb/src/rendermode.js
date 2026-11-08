@@ -28,6 +28,7 @@ export const RENDER_OPTS = RENDER ? {
 	legacy: get( 'legacy' ) === '1',		// the old capture: tone mapped on the canvas, drawImage to the size, PNG
 	hq: get( 'hq' ) === '1',		// the offline quality profile: the mirrors at full size, a finer probe, more AO samples
 	pt: Math.max( 0, Math.round( Number( get( 'pt' ) ?? 0 ) ) ),		// path traced: samples per pixel a frame (0: the raster)
+	denoise: get( 'dn' ) === '1',		// the path tracer's image denoised (ptdenoise.js)
 } : null;
 
 // a render is reproducible: Math.random (wood grain offsets in geometry.js, ...) seeded

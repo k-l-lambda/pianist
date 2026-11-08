@@ -19,7 +19,8 @@
 // mapped on the canvas, scaled by drawImage, PNG, untagged BT.601), for comparison. --query: page
 // parameters (style, preset, ...). --frames dir: also each frame as PNG there (from the raw pixels).
 // --pt N: path traced, N samples per pixel a frame (src/main.js stepPT: the raster's state, the path
-// tracer's image; its samples are the anti-aliasing: --ss 1 and one sub-frame unless given).
+// tracer's image; its samples are the anti-aliasing: --ss 1 and one sub-frame unless given). --denoise:
+// its image denoised (src/ptdenoise.js).
 //
 // --watermark: the klstudio.png mark drawn into every frame; defaults as on the page (src/main.js
 // WATERMARK: bottom right, 60 px in, opacity 0.06); keys opacity, right, bottom, height (px at
@@ -78,6 +79,7 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--query' ) opt.query = val();
 	else if ( a === '--frames' ) opt.frames = val();
 	else if ( a === '--pt' ) opt.pt = Number( val() );
+	else if ( a === '--denoise' ) opt.denoise = true;
 	else if ( a === '--no-audio' ) opt.audio = false;
 	else if ( a === '--watermark' ) opt.watermark = val();
 	else if ( a === '-h' || a === '--help' ) {
@@ -188,6 +190,7 @@ try {
 	if ( opt.to !== null ) hash.set( 'to', opt.to );
 	if ( opt.watermark ) hash.set( 'wm', opt.watermark );
 	if ( opt.pt ) hash.set( 'pt', opt.pt );
+	if ( opt.denoise ) hash.set( 'dn', 1 );
 	const base = new URL( opt.url );
 	if ( opt.query ) base.search = opt.query;
 	await page.goto( new URL( '#?' + hash, base ).href, { waitUntil: 'commit' } );

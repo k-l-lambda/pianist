@@ -34,6 +34,7 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--bounces' ) opt.bounces = Number( val() );
 	else if ( a === '--fstop' ) opt.fstop = Number( val() );
 	else if ( a === '--focus' ) opt.focus = Number( val() );
+	else if ( a === '--denoise' ) opt.denoise = true;
 	else if ( a === '--url' ) opt.url = val();
 	else if ( a === '-h' || a === '--help' ) { console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 16 ).join( '\n' ) ); process.exit( 0 ); }
 	else if ( ! a.startsWith( '--' ) && ! file ) file = a;
@@ -48,6 +49,7 @@ if ( ! ( W > 0 && H > 0 ) || ! ( spp > 0 ) ) throw new Error( 'bad --size / --sp
 if ( opt.bounces ) state.render = { ...state.render, ptBounces: opt.bounces };
 if ( opt.fstop !== null ) state.render = { ...state.render, ptDof: opt.fstop > 0, ...( opt.fstop > 0 ? { ptFStop: opt.fstop } : {} ) };
 if ( opt.focus !== null ) state.render = { ...state.render, ptAutoFocus: false, ptFocus: opt.focus };
+if ( opt.denoise ) state.render = { ...state.render, ptDenoise: true };
 opt.out ??= path.basename( file ).replace( /\.json$/i, '' ) + `-${ spp }spp.png`;
 fs.mkdirSync( path.dirname( path.resolve( opt.out ) ), { recursive: true } );
 

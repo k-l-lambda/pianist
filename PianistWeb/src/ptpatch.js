@@ -62,6 +62,100 @@ function patchShader( fs ) {
 	if ( env !== 2 ) throw new Error( `ptpatch: envPdf /= lightsDenom found ${ env } times` );
 	fs = fs.split( 'envPdf /= lightsDenom;' ).join( 'envPdf *= 1.0 - ptLightsShare;' );
 	// the selection's pdf: randomLightSample's record times its pick's probability (the light's own pdf: the area's)
+	return patchAOV( fs );
+
+}
+
+/**
+ * The denoiser's buffers (ptdenoise.js), with PT_AOV 1: four more outputs beside the colour, averaged by the
+ * same blending (each its alpha the colour's), at the first non-delta surface along the camera path (through
+ * glass and near-mirrors: what is seen in them):
+ *   1 ptAlbedo   that surface's albedo (diffuse + a specular share, floored) times the path's throughput to it
+ *   2 ptNormal   its shading normal (world) and its distance along the path
+ *   3 ptDirect   what is not its reflected light: lights and sky seen directly or through delta surfaces,
+ *                specular hits on the way, its own emission: added back unfiltered
+ *   4 ptStats    the demodulated illumination's luminance and its square (the variance), the count of
+ *                samples that found such a surface
+ * The rest (colour − direct) / albedo is the illumination the filter smooths.
+ */
+function patchAOV( fs ) {
+
+	const edits = [
+		[ 'float lightsDenom;', `float lightsDenom;
+				#if PT_AOV
+				layout( location = 1 ) out highp vec4 ptAlbedo;
+				layout( location = 2 ) out highp vec4 ptNormal;
+				layout( location = 3 ) out highp vec4 ptDirect;
+				layout( location = 4 ) out highp vec4 ptStats;
+				#endif` ],
+		[ 'gl_FragColor = vec4( 0, 0, 0, 1 );', `gl_FragColor = vec4( 0, 0, 0, 1 );
+					// the first non-delta surface: not yet found; its albedo, normal, path distance; the light before it
+					bool aovSet = false, aovSkip = false;
+					vec3 aovAlbedo = vec3( 0.0 ), aovNormal = vec3( 0.0 ), aovPre = vec3( 0.0 ), aovPost = vec3( 0.0 ), aovEmit = vec3( 0.0 );
+					float aovDist = 0.0, aovPath = 0.0;` ],
+		// at a surface, before its next-event estimation: is it the first non-delta one?
+		[ '// next event estimation\n', `// (the denoiser's buffers: the first surface that is not glass or a near-mirror)
+						aovPath += surfaceHit.dist;
+						bool aovMark = false;
+						if ( ! aovSet && ! aovSkip ) {
+
+							float dl = luminance( surf.color ) * ( 1.0 - surf.metalness ) * ( 1.0 - surf.transmission );
+							bool delta = surf.transmission > 0.5 || ( surf.roughness < 0.08 && ( surf.metalness > 0.5 || dl < 0.1 ) );
+							// seen through a dim mirror (the black screen: ~4 % Fresnel): left unfiltered. Its samples' illumination
+							// over so small an albedo varies widely with the lobe each takes, the variance with it, and the filter
+							// smeared the reflection; dim, its own noise shows little. Bright glass (the strings behind the
+							// cabinet's) stays filtered
+							if ( ! delta && luminance( state.throughputColor ) < 0.5 ) aovSkip = true;
+							else if ( ! delta || i == bounces - 1 ) {
+
+								vec3 spec = mix( vec3( 0.04 ), surf.color, surf.metalness ) + vec3( 0.04 * surf.clearcoat );
+								vec3 alb = surf.color * ( 1.0 - surf.metalness ) * ( 1.0 - surf.transmission ) + spec;
+								aovAlbedo = state.throughputColor * max( alb, vec3( 0.02 ) );
+								aovNormal = surf.normal;
+								aovDist = aovPath;
+								aovPre = gl_FragColor.rgb;
+								aovSet = true;
+								aovMark = true;
+
+							}
+
+						}
+						// next event estimation
+` ],
+		// after it: the colour so far (to take the surface's own emission out as direct)
+		[ 'gl_FragColor.rgb += directLightContribution( - ray.direction, surf, state, hitPoint );\n\n						#endif',
+			`gl_FragColor.rgb += directLightContribution( - ray.direction, surf, state, hitPoint );
+
+						#endif
+						if ( aovMark ) aovPost = gl_FragColor.rgb;` ],
+		[ 'if ( material.castShadow || ptSeenDirectly ) gl_FragColor.rgb += ( surf.emission * state.throughputColor );',
+			`if ( material.castShadow || ptSeenDirectly ) gl_FragColor.rgb += ( surf.emission * state.throughputColor );
+						if ( aovMark ) aovEmit = gl_FragColor.rgb - aovPost;` ],
+		[ 'gl_FragColor.a *= opacity;', `gl_FragColor.a *= opacity;
+					#if PT_AOV
+					{
+
+						// direct: before the surface, plus its own emission; illumination: the rest over the albedo
+						vec3 direct = aovSet ? aovPre + aovEmit : gl_FragColor.rgb;
+						vec3 illum = aovSet ? max( gl_FragColor.rgb - direct, vec3( 0.0 ) ) / aovAlbedo : vec3( 0.0 );
+						float l = luminance( illum );
+						float a = gl_FragColor.a;
+						ptAlbedo = vec4( aovSet ? aovAlbedo : vec3( 0.0 ), a );
+						ptNormal = vec4( aovNormal * 0.5 + 0.5, a );		// (averaged encoded: decoded and renormalised by the filter)
+						ptDirect = vec4( direct, a );
+						ptStats = vec4( l, l * l, aovSet ? aovDist : 0.0, a );
+						if ( any( isnan( ptStats ) ) || any( isinf( ptStats ) ) ) ptStats = vec4( 0.0, 0.0, 0.0, a );
+
+					}
+					#endif` ],
+	];
+	for ( const [ from, to ] of edits ) {
+
+		const n = fs.split( from ).length - 1;
+		if ( n !== 1 ) throw new Error( `ptpatch (AOV): ${ from.slice( 0, 60 ) }… found ${ n } times` );
+		fs = fs.replace( from, to );
+
+	}
 	return fs;
 
 }
@@ -107,6 +201,7 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 
 		m.fragmentShader = patched;
 		Object.assign( m.uniforms, { ptLightCdf: { value: cdf }, ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 } } );
+		m.defines.PT_AOV = 0;
 		m.needsUpdate = true;
 
 	}
@@ -144,6 +239,27 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 
 	};
 	pt.lightsShare = v => { for ( const m of mats ) m.uniforms.ptLightsShareSet.value = v; pt.reset(); };
+	// the denoiser's buffers (patchAOV): the main path tracer's target with 5 attachments and PT_AOV 1 (a
+	// recompile: switched only when asked otherwise, and left so); its textures: colour, albedo, normal, direct, stats
+	const R = pt._pathTracer, single = R._primaryTarget;
+	let multi = null;
+	pt.setAOV = on => {
+
+		if ( !! on === !! pt.aovOn ) return;
+		if ( on ) {
+
+			multi ??= new THREE.WebGLRenderTarget( 1, 1, { count: 5, format: THREE.RGBAFormat, type: THREE.FloatType, magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter, depthBuffer: false } );
+			multi.setSize( single.width, single.height );
+			R._primaryTarget = multi;
+
+		} else R._primaryTarget = single;
+		R.material.defines.PT_AOV = on ? 1 : 0;
+		R.material.needsUpdate = true;
+		pt.aovOn = !! on;
+		R.reset();
+
+	};
+	pt.aovTextures = () => pt.aovOn ? multi.textures : null;
 	return true;
 
 }

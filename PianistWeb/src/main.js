@@ -80,6 +80,8 @@ const settings = {
 	ptFStop: 2.8,
 	ptAutoFocus: true,
 	ptFocus: 2,
+	// the path tracer's image denoised (ptdenoise.js: the illumination filtered, variance-guided)
+	ptDenoise: RENDER ? RENDER_OPTS.denoise : params.has( 'denoise' ),
 	lidAngle: 34,
 	volume: 0.5,
 };
@@ -403,6 +405,7 @@ const ptSnapshot = new PTSnapshot( renderer, pathTracer, scene, camera, {
 	changed: () => { ptDirty = true; },
 	post: () => ptPostParams(),
 	lens: cam => ptLensParams( cam ),
+	denoise: () => settings.ptDenoise,
 } );
 
 /** The raster composer's finish for the path tracer's image (ptpost.js): the venue's saturation and bloom (as applyBloom's), the dither. */
@@ -1057,6 +1060,7 @@ fPT.add( settings, 'ptDof' ).name( 'Depth of field' );
 fPT.add( settings, 'ptFStop', 0.7, 22, 0.1 ).name( 'Aperture (f/)' );
 fPT.add( settings, 'ptAutoFocus' ).name( 'Focus on the piano' );
 fPT.add( settings, 'ptFocus', 0.3, 20, 0.01 ).name( 'Focus distance (m)' );
+fPT.add( settings, 'ptDenoise' ).name( 'Denoise' );
 
 const fGrand = gui.addFolder( 'Grand' ).close();
 fGrand.add( settings, 'lidAngle', 0, 45, 1 ).name( 'Lid angle' ).onFinishChange( () => piano.style.type === 'grand' && setStyle( settings.style ) );
@@ -1731,7 +1735,7 @@ function startRender() {
 
 		}
 		await done;
-		const lin = ptLinear.renderLinear( renderer, pathTracer.pt.target.texture, ptPostParams() );
+		const lin = ptLinear.renderLinear( renderer, ptSnapshot.linearTexture(), ptPostParams() );
 		offline.begin( size.x, size.y, 1 );
 		offline.accumulate( lin.texture );
 		ptSnapshot.panel.hidden = true;

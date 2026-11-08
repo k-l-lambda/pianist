@@ -40,7 +40,7 @@ export function captureState( ctx ) {
 			preset: venue.preset,
 			light: plain( venue.light ),
 		},
-		render: { exposure: S.exposure, toneMapping: S.toneMapping, toneChosen: ctx.chosen.tone(), bloom: S.bloom, bloomChosen: ctx.chosen.bloom(), gi: S.gi, giBounces: S.giBounces, ao: S.ao, aoRadius: S.aoRadius, ptBounces: S.ptBounces, ptSamples: S.ptSamples, ptDof: S.ptDof, ptFStop: S.ptFStop, ptAutoFocus: S.ptAutoFocus, ptFocus: S.ptFocus },
+		render: { exposure: S.exposure, toneMapping: S.toneMapping, toneChosen: ctx.chosen.tone(), bloom: S.bloom, bloomChosen: ctx.chosen.bloom(), gi: S.gi, giBounces: S.giBounces, ao: S.ao, aoRadius: S.aoRadius, ptBounces: S.ptBounces, ptSamples: S.ptSamples, ptDof: S.ptDof, ptFStop: S.ptFStop, ptAutoFocus: S.ptAutoFocus, ptFocus: S.ptFocus, ptDenoise: S.ptDenoise },
 		camera: {
 			position: c.position.toArray(), quaternion: c.quaternion.toArray(), target: controls.target.toArray(),
 			fov: c.fov, zoom: c.zoom, near: c.near, far: c.far,
@@ -82,7 +82,7 @@ export async function applyState( ctx, state ) {
 	Object.assign( venue.light, state.venue?.light ?? {} );
 	if ( venue === ctx.venues.luminara ) await venue._needBake?.( venue.preset );
 	// the rendering
-	for ( const k of [ 'exposure', 'toneMapping', 'bloom', 'gi', 'giBounces', 'ao', 'aoRadius', 'ptBounces', 'ptSamples', 'ptDof', 'ptFStop', 'ptAutoFocus', 'ptFocus' ] ) if ( R[ k ] !== undefined ) S[ k ] = R[ k ];
+	for ( const k of [ 'exposure', 'toneMapping', 'bloom', 'gi', 'giBounces', 'ao', 'aoRadius', 'ptBounces', 'ptSamples', 'ptDof', 'ptFStop', 'ptAutoFocus', 'ptFocus', 'ptDenoise' ] ) if ( R[ k ] !== undefined ) S[ k ] = R[ k ];
 	ctx.chosen.set( !! R.toneChosen, !! R.bloomChosen );
 	ctx.applyQuality();		// (GI, the pixel ratio, AO, bloom, the venues' quality; relights)
 	ctx.refreshLighting();
