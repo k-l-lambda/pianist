@@ -100,16 +100,19 @@ function patchAOV( fs ) {
 						if ( ! aovSet && ! aovSkip ) {
 
 							float dl = luminance( surf.color ) * ( 1.0 - surf.metalness ) * ( 1.0 - surf.transmission );
-							bool delta = surf.transmission > 0.5 || ( surf.roughness < 0.08 && ( surf.metalness > 0.5 || dl < 0.1 ) );
-							// seen through a dim mirror (the black screen: ~4 % Fresnel): left unfiltered. Its samples' illumination
-							// over so small an albedo varies widely with the lobe each takes, the variance with it, and the filter
-							// smeared the reflection; dim, its own noise shows little. Bright glass (the strings behind the
-							// cabinet's) stays filtered
-							if ( ! delta && luminance( state.throughputColor ) < 0.5 ) aovSkip = true;
+							// a dark dielectric mirror (the screen's black lacquer: ~4 % Fresnel over next to no diffuse): its own
+							// surface is where the light is demodulated, by its specular albedo (the same over all of it), so what it
+							// reflects is filtered on its plane (its normal and depth), its edges kept by the luminance weight; its
+							// emission (the roll's image) stays direct. (Through it to the room the albedo was the throughput's ~4 %,
+							// each sample's lobe making it vary: smeared, so it was left unfiltered: noise 7× the raster's in video)
+							bool darkMirror = surf.transmission < 0.5 && surf.metalness < 0.5 && surf.roughness < 0.08 && dl < 0.1;
+							bool delta = ! darkMirror && ( surf.transmission > 0.5 || ( surf.roughness < 0.08 && surf.metalness > 0.5 ) );
+							// seen through other dim glass: left unfiltered (as above, its albedo varies too much per sample)
+							if ( ! delta && ! darkMirror && luminance( state.throughputColor ) < 0.5 ) aovSkip = true;
 							else if ( ! delta || i == bounces - 1 ) {
 
 								vec3 spec = mix( vec3( 0.04 ), surf.color, surf.metalness ) + vec3( 0.04 * surf.clearcoat );
-								vec3 alb = surf.color * ( 1.0 - surf.metalness ) * ( 1.0 - surf.transmission ) + spec;
+								vec3 alb = darkMirror ? spec : surf.color * ( 1.0 - surf.metalness ) * ( 1.0 - surf.transmission ) + spec;
 								aovAlbedo = state.throughputColor * max( alb, vec3( 0.02 ) );
 								aovNormal = surf.normal;
 								aovDist = aovPath;
