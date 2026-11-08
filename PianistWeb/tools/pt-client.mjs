@@ -4,13 +4,15 @@
 //
 //   node tools/pt-client.mjs [--ssh host] video <script.yaml> --from A --to B [--fps 25] [--size 640x360]
 //        [--pt 1024] [--denoise] [--bits 8|10] [--crf 18] [--wm off] [--query "style=..."] [--no-audio]
-//        [--frames dir] [--ahead K] [--out file.mp4]
+//        [--frames dir] [--ahead K] [--temporal R] [--out file.mp4]
 //   node tools/pt-client.mjs [--ssh host] still <state.json> [--spp 4096] [--size WxH] [--denoise] [--out file.png]
 //   node tools/pt-client.mjs [--ssh host] status | jobs | cancel <id> | shutdown
 //
 // --ssh host: the server on that host (its port and token read there over ssh, an ssh tunnel to its port);
 // else this machine's (~/.cache/pianist-pt-server.token). --ahead: frames asked for at once (default: twice
-// the server's workers). --frames dir: also each frame as PNG there. An odd width or height is padded by one
+// the server's workers). --frames dir: also each frame as PNG there. --temporal R: the frames through a
+// motion-compensated temporal denoiser (tools/temporal-denoise.py, R frames each side; numpy + OpenCV, here)
+// before the encoder. An odd width or height is padded by one
 // row / column for the encoder (yuv420p).
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -115,6 +117,10 @@ if ( cmd === 'video' ) {
 		'-vf', `scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int${ pad }`, ...enc,
 		'-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv', '-movflags', '+faststart', video ], { stdio: [ 'pipe', 'ignore', 'inherit' ] } );
 	const encoded = new Promise( ( ok, bad ) => ff.on( 'close', c => c === 0 ? ok() : bad( new Error( `ffmpeg ${ c }` ) ) ) );
+	// --temporal: frames -> the temporal denoiser -> the encoder
+	const td = flags.temporal ? spawn( process.env.PT_PYTHON ?? 'python3', [ path.join( root, 'tools', 'temporal-denoise.py' ), '--raw', size, '--raw-out', '--radius', String( Number( flags.temporal ) || 2 ) ], { stdio: [ 'pipe', 'pipe', 'inherit' ] } ) : null;
+	if ( td ) { if ( bits !== 8 ) throw new Error( '--temporal: 8 bits only' ); td.stdout.pipe( ff.stdin ); }
+	const sink = td ? td.stdin : ff.stdin;
 	// K frames asked for at once, written in order
 	const inflight = new Map(), t0 = Date.now(), workersSeen = new Map();
 	let next = job.f0, got = 0;
@@ -130,7 +136,7 @@ if ( cmd === 'video' ) {
 			if ( f.data.length !== job.bytes ) throw new Error( `frame ${ next }: ${ f.data.length } bytes, expected ${ job.bytes }` );
 			if ( flags.frames ) spawnSync( 'ffmpeg', [ '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', bits === 10 ? 'rgb48le' : 'rgb24', '-s', size, '-i', '-', '-frames:v', '1',
 				'-pix_fmt', bits === 10 ? 'rgb48be' : 'rgb24', path.join( flags.frames, `${ String( next ).padStart( 5, '0' ) }.png` ) ], { input: f.data } );
-			if ( ! ff.stdin.write( f.data ) ) await new Promise( r => ff.stdin.once( 'drain', r ) );
+			if ( ! sink.write( f.data ) ) await new Promise( r => sink.once( 'drain', r ) );
 			workersSeen.set( f.worker, ( workersSeen.get( f.worker ) ?? 0 ) + 1 );
 			++ next; ++ got;
 			const el = ( Date.now() - t0 ) / 1000, left = Math.round( el / got * ( job.f1 - next ) );
@@ -142,11 +148,11 @@ if ( cmd === 'video' ) {
 
 		console.error( `\n${ e.message }` );
 		await api( 'DELETE', `/jobs/${ job.id }` ).catch( () => {} );
-		ff.stdin.destroy(); ff.kill(); fs.rmSync( tmp, { recursive: true, force: true } );
+		td?.kill(); ff.stdin.destroy(); ff.kill(); fs.rmSync( tmp, { recursive: true, force: true } );
 		done( 1 );
 
 	}
-	ff.stdin.end();
+	sink.end();
 	await encoded;
 	const el = ( Date.now() - t0 ) / 1000;
 	console.log( `\n${ got } frames in ${ el.toFixed( 0 ) } s (${ ( el / got ).toFixed( 1 ) } s/frame overall); by worker: ${ [ ...workersSeen ].map( ( [ w, n ] ) => `${ w } ${ n }` ).join( ', ' ) }` );
