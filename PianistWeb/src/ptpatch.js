@@ -71,11 +71,11 @@ function patchShader( fs ) {
  * same blending (each its alpha the colour's), at the first non-delta surface along the camera path (through
  * glass and near-mirrors: what is seen in them):
  *   1 ptAlbedo   that surface's albedo (diffuse + a specular share, floored) times the path's throughput to it
- *   2 ptNormal   its shading normal (world) and its distance along the path
+ *   2 ptNormal   its shading normal (world) times its distance along the path (the float target: signed)
  *   3 ptDirect   what is not its reflected light: lights and sky seen directly or through delta surfaces,
  *                specular hits on the way, its own emission: added back unfiltered
- *   4 ptStats    the demodulated illumination's luminance and its square (the variance), the count of
- *                samples that found such a surface
+ *   4 ptStats    the demodulated illumination's luminance and its square (the variance), and the share of
+ *                samples that found such a surface (coverage: the filter divides depth and normal by it)
  * The rest (colour − direct) / albedo is the illumination the filter smooths.
  */
 function patchAOV( fs ) {
@@ -141,9 +141,9 @@ function patchAOV( fs ) {
 						float l = luminance( illum );
 						float a = gl_FragColor.a;
 						ptAlbedo = vec4( aovSet ? aovAlbedo : vec3( 0.0 ), a );
-						ptNormal = vec4( aovNormal * 0.5 + 0.5, a );		// (averaged encoded: decoded and renormalised by the filter)
+						ptNormal = vec4( aovSet ? aovNormal * aovDist : vec3( 0.0 ), a );		// (averaged: direction and length / coverage, ptdenoise.js)
 						ptDirect = vec4( direct, a );
-						ptStats = vec4( l, l * l, aovSet ? aovDist : 0.0, a );
+						ptStats = vec4( l, l * l, aovSet ? 1.0 : 0.0, a );
 						if ( any( isnan( ptStats ) ) || any( isinf( ptStats ) ) ) ptStats = vec4( 0.0, 0.0, 0.0, a );
 
 					}
