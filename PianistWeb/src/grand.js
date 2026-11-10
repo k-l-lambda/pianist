@@ -89,7 +89,46 @@ function rimPath() {
 	p.lineTo( - HALF_W, RIM_CURVE[ 0 ][ 1 ] );
 	p.splineThru( RIM_CURVE.slice( 1 ).map( ( [ x, z ] ) => new THREE.Vector2( x, z ) ) );
 	p.lineTo( HALF_W, RIM_START );
-	return p.getSpacedPoints( 240 );
+	return fairOutline( p, 0.045 ).getSpacedPoints( 240 );
+
+}
+
+/**
+ * The path faired: its curvature (the turn per step, densely sampled) smoothed by a gaussian `sigma` m long and
+ * the outline integrated again from its start (the total turn kept: the straights keep their directions; the
+ * few mm it ends off its end spread along it), kept within the case's width. The spline through the measured
+ * points wobbled in curvature (+-4.6 deg per 16 mm step within a few cm): bands in the lacquer's reflections.
+ * At 4.5 cm it stays within ~5 mm of the measured outline.
+ */
+function fairOutline( path, sigma ) {
+
+	const M = 2400, d = path.getSpacedPoints( M ), ds = path.getLength() / M;
+	const head = [], turn = [];
+	for ( let i = 0; i < M; ++ i ) head.push( Math.atan2( d[ i + 1 ].y - d[ i ].y, d[ i + 1 ].x - d[ i ].x ) );
+	for ( let i = 1; i < M; ++ i ) { const t = head[ i ] - head[ i - 1 ]; turn.push( Math.atan2( Math.sin( t ), Math.cos( t ) ) ); }
+	const sd = sigma / ds, R = Math.ceil( 3 * sd ), w = [];
+	for ( let k = - R; k <= R; ++ k ) w.push( Math.exp( - 0.5 * ( k / sd ) ** 2 ) );
+	const ws = w.reduce( ( a, b ) => a + b );
+	const sm = turn.map( ( _, i ) => { let a = 0; for ( let k = - R; k <= R; ++ k ) { const j = i + k; if ( j >= 0 && j < turn.length ) a += w[ k + R ] * turn[ j ]; } return a / ws; } );
+	const tot = turn.reduce( ( a, b ) => a + b ), tots = sm.reduce( ( a, b ) => a + b );
+	const q = [ d[ 0 ].clone() ];
+	let h = head[ 0 ];
+	for ( let i = 0; i < M; ++ i ) {
+
+		if ( i > 0 ) h += sm[ i - 1 ] * tot / tots;
+		q.push( q[ i ].clone().add( new THREE.Vector2( Math.cos( h ), Math.sin( h ) ).multiplyScalar( ds ) ) );
+
+	}
+	const err = d[ M ].clone().sub( q[ M ] );
+	const out = new THREE.Path();
+	for ( let i = 0; i <= M; ++ i ) {
+
+		const v = q[ i ].addScaledVector( err, i / M );
+		v.x = THREE.MathUtils.clamp( v.x, - HALF_W, HALF_W );
+		if ( i === 0 ) out.moveTo( v.x, v.y ); else out.lineTo( v.x, v.y );
+
+	}
+	return out;
 
 }
 
@@ -113,7 +152,12 @@ function offsetPolyline( pts, d ) {
 /** Shape (x, z) -> extruded between y0 and y1. Shape coordinates are (x, z). */
 function extrudeXZ( shape, y0, y1, bevel = 0.003 ) {
 
-	return extrudeTop( shape, y0, y1, { bevel, curveSegments: 64 } );
+	// (smooth along the outline: three's own normals are per face, and on lacquer the rim's 240 facets showed as
+	// vertical bands in its reflections; the caps flat, the bevel rounded, the outline's real corners kept)
+	const g = extrudeTop( shape, y0, y1, { bevel, curveSegments: 64 } ), pos = g.attributes.position;
+	const ez = new Float32Array( pos.count );
+	for ( let i = 0; i < pos.count; ++ i ) ez[ i ] = pos.getY( i ) - y0;
+	return bevelNormals( g, ez, y1 - y0, Math.min( bevel, ( y1 - y0 ) / 2 ) );
 
 }
 
@@ -123,17 +167,29 @@ function extrudeXZ( shape, y0, y1, bevel = 0.003 ) {
  */
 function rimVeneer( pts, y0, y1 ) {
 
-	const pos = [], uv = [];
+	// each point's normal across the polyline (its neighbours' chord), smooth along it; hard where it turns more
+	// than 30° (the corners at the front ends): there each segment keeps its own
+	const seg = i => new THREE.Vector2().subVectors( pts[ i + 1 ], pts[ i ] ).normalize();
+	const across = t => new THREE.Vector2( t.y, - t.x );		// (to the polyline's left in (x, z): the inside)
+	const nrm = ( i, side ) => {		// point i's normal for the segment on `side` (-1: before it, +1: after it)
+
+		const own = seg( side < 0 ? i - 1 : i ), other = side < 0 ? ( i + 1 < pts.length ? seg( i ) : null ) : ( i > 0 ? seg( i - 1 ) : null );
+		const t = other && own.dot( other ) > Math.cos( Math.PI / 6 ) ? own.clone().add( other ).normalize() : own;
+		return across( t );
+
+	};
+	const pos = [], uv = [], nor = [];
 	let u = 0;
 	for ( let i = 1; i < pts.length; ++ i ) {
 
 		const a = pts[ i - 1 ], b = pts[ i ];
-		const du = a.distanceTo( b );
-		const quad = [ [ a, y0, u ], [ b, y0, u + du ], [ b, y1, u + du ], [ a, y0, u ], [ b, y1, u + du ], [ a, y1, u ] ];
-		for ( const [ p, y, uu ] of quad ) {
+		const du = a.distanceTo( b ), na = nrm( i - 1, 1 ), nb = nrm( i, - 1 );
+		const quad = [ [ a, y0, u, na ], [ b, y0, u + du, nb ], [ b, y1, u + du, nb ], [ a, y0, u, na ], [ b, y1, u + du, nb ], [ a, y1, u, na ] ];
+		for ( const [ p, y, uu, n ] of quad ) {
 
 			pos.push( p.x, y, p.y );
 			uv.push( uu, y );
+			nor.push( n.x, 0, n.y );
 
 		}
 
@@ -144,7 +200,10 @@ function rimVeneer( pts, y0, y1 ) {
 	const g = new THREE.BufferGeometry();
 	g.setAttribute( 'position', new THREE.Float32BufferAttribute( pos, 3 ) );
 	g.setAttribute( 'uv', new THREE.Float32BufferAttribute( uv, 2 ) );
+	// (the side the faces show, as the winding has it: the normals turned to match)
 	g.computeVertexNormals();
+	const fn = g.attributes.normal, flip = fn.getX( 0 ) * nor[ 0 ] + fn.getZ( 0 ) * nor[ 2 ] < 0 ? - 1 : 1;
+	g.setAttribute( 'normal', new THREE.Float32BufferAttribute( nor.map( v => v * flip ), 3 ) );
 	return g;
 
 }
@@ -986,7 +1045,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	group.add( keyboard.group );
 
 	// the bench, in the case's lacquer, its front ~0.3 m from the keys
-	const bench = buildBench( M.case, { dark: M.case.color.getHSL( {} ).l < 0.5 } );
+	const bench = buildBench( M.benchFrame ?? M.case, { dark: M.case.color.getHSL( {} ).l < 0.5, metal: M.benchMetal } );		// (the crystal's: its own, src/materials.js)
 	bench.position.set( 0, 0, KEY_FRONT_Z + 0.48 );
 	group.add( bench );
 

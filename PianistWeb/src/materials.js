@@ -145,8 +145,12 @@ export function makeMaterials( baker, style ) {
 			m.foldHinge = phys( { color: '#050506', metalness: 0, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.04, specularIntensity: 1, ior: 1.5 } );
 			m.foldHinge.userData.count = 4;
 			m.foldHinge.userData.rivets = phys( { color: '#e4e6ea', metalness: 1, roughness: 0.15 } );
+			// its own bench: the frame (legs, aprons, the box) clear acrylic as the case (solid 24-45 mm sections),
+			// the scissor bars, the feet and the height knobs the trim's silver-white metal; the leather as the white's
+			m.benchFrame = acrylic( { thickness: 0.035, attenuationDistance: 0.12 } );		// (its 70 mm box under the cushion read dark grey at the case's 23 mm)
+			m.benchMetal = m.foldHinge.userData.rivets;
 			// the clear parts switch with the glass (applyGlass: transmission under GI and the path tracer)
-			m.glass.userData.linked = [ m.rim, m.lid ];
+			m.glass.userData.linked = [ m.rim, m.lid, m.benchFrame ];
 			break;
 
 		}

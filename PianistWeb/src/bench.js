@@ -314,9 +314,11 @@ const SEAT = 0.53;					// top of the cushion
 
 /**
  * @param {THREE.Material} lacquer the piano's case material (legs, aprons, box)
- * @param {{ dark: boolean }} opts dark: a black piano (black leather, black knobs); else white
+ * @param {{ dark: boolean, metal?: THREE.Material }} opts dark: a black piano (black leather, black knobs); else
+ *        white. metal: the scissor bars', the feet's and the knobs' material (the crystal grand's silver-white);
+ *        a clear `lacquer` (userData.clear: the crystal's acrylic frame) casts no shadow, as the case's clear parts
  */
-export function buildBench( lacquer, { dark = true } = {} ) {
+export function buildBench( lacquer, { dark = true, metal: trim = null } = {} ) {
 
 	const group = new THREE.Group();
 	group.name = 'bench';
@@ -330,14 +332,15 @@ export function buildBench( lacquer, { dark = true } = {} ) {
 		clearcoat: 1, clearcoatRoughness: dark ? 0.12 : 0.2, clearcoatNormalMap: grain, clearcoatNormalScale: new THREE.Vector2( 0.08, 0.08 ),
 	} );
 	const button = new THREE.MeshPhysicalMaterial( { color: dark ? '#060607' : '#ddd8cf', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 } );		// covered in the same leather
-	const knobMat = new THREE.MeshPhysicalMaterial( { color: dark ? '#111112' : '#e9dfc9', roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.2 } );		// (lacquered, like the case)
-	const metal = new THREE.MeshStandardMaterial( { color: '#1b1b1d', metalness: 0.8, roughness: 0.45 } );
-	const rubber = new THREE.MeshStandardMaterial( { color: '#111111', roughness: 0.9 } );
+	const knobMat = trim ?? new THREE.MeshPhysicalMaterial( { color: dark ? '#111112' : '#e9dfc9', roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.2 } );		// (lacquered, like the case)
+	const metal = trim ?? new THREE.MeshStandardMaterial( { color: '#1b1b1d', metalness: 0.8, roughness: 0.45 } );
+	const rubber = trim ?? new THREE.MeshStandardMaterial( { color: '#111111', roughness: 0.9 } );
 
 	const mesh = ( geo, mat ) => {
 
 		const m = new THREE.Mesh( geo, mat );
-		m.castShadow = m.receiveShadow = true;
+		m.receiveShadow = true;
+		m.castShadow = ! mat.userData?.clear;
 		group.add( m );
 		return m;
 
