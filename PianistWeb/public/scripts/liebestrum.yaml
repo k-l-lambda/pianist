@@ -2,7 +2,7 @@
 # on the black grand in the Konzerthaus Berlin (its Recital light), filmed by a moving camera round the piano.
 # Load with ?style=grand-black&script=liebestrum.yaml (the style: a query, not a script setting: setting it
 # here would rebuild the piano and load the hall after the script had started); render with
-#   node tools/render-video.mjs liebestrum.yaml --query "style=grand-black" [--to 270]
+#   node tools/render-video.mjs liebestrum.yaml --query "style=grand-black" [--to 272.5]
 # or path traced: tools/pt-client.mjs video liebestrum.yaml --query "style=grand-black" ...
 #
 # The piece (the file's own times; the script plays it from 4 s, so script time = file time + 4):
@@ -13,8 +13,9 @@
 #   ~158-170   the second cadenza                               shot 7: from above, into the strings
 #   174-227    the theme, calm again                            shot 8: from the back of the stage, the hall beyond
 #   227-259    the coda, sparse                                 shot 9: close at the bass end, drawing back
-#   259-266    a long held silence (the pedal, a chord ringing)  shot 10: rising away from the stage; the lights down
-#   (the file is cut at 268 s; the script ends at 270 s, file time 266)
+#   259-266    a long held silence (the pedal, a chord ringing)  shot 10: rising away from the stage
+#   (the file is cut at 268 s; its last chord's pedal lifts at 266.4 (script 270.4); the script ends at 272.5,
+#   the recital light back)
 #
 # The frame: the stage floor y 0, the piano at the origin (its keyboard's front z 0.46, x -0.7..0.7; the bench
 # at z 0.94; the tail at z -1.12; the lid opening towards +x, the audience); the stalls towards +x, the shell
@@ -39,8 +40,12 @@ timeline:
       ease: inOutSine
       path:
         - { position: [ 4.2, 1.45, 1.7 ], target: [ 0, 0.98, -0.25 ], fov: 32 }
-  - at: 4
+  - at: 4          # the playing begins: the hall fades to the spotlight
     midi: liebestraum
+    duration: 4
+    ease: inOutSine
+    set:
+      Lighting/Preset: Spotlight
 
   # 2. the theme: a slow orbit from the audience's side round to the keys
   - at: 9
@@ -81,7 +86,8 @@ timeline:
       path:
         - { position: [ -0.2, 2.2, 1.3 ], target: [ 0, 0.8, -0.1 ], fov: 34 }
 
-  # 6. the climax: from the audience's side, low into the open lid, then a long orbit round the tail
+  # 6. the climax: from the audience's side, low into the open lid, then a long orbit round the tail, sinking at
+  # its end to look up past the lid into the hall (its chandeliers, the galleries)
   - at: 117.5
     camera: { position: [ 3.6, 0.9, -0.4 ], target: [ 0, 1.1, -0.4 ], fov: 34 }
   - at: 117.6
@@ -91,7 +97,7 @@ timeline:
       path:
         - { position: [ 2.6, 1.2, -2.6 ], target: [ 0, 1.0, -0.4 ] }
         - { position: [ 0.4, 1.6, -3.6 ], target: [ 0, 1.0, -0.4 ] }
-        - { position: [ -2.4, 1.8, -2.6 ], target: [ 0, 1.0, -0.4 ], fov: 32 }
+        - { position: [ -2.4, 0.6, -2.6 ], target: [ 1.5, 2.1, -0.2 ], fov: 48 }
 
   # 7. the second cadenza: from high above, into the strings, slowly passing over (oblique: not into the top light's
   # reflection, which blows out straight down)
@@ -103,27 +109,34 @@ timeline:
       path:
         - { position: [ -1.4, 3.0, 1.5 ], target: [ 0, 0.8, -0.35 ], fov: 34 }
 
-  # 8. the theme, calm: from the back of the stage, the piano before the hall
+  # 8. the theme, calm: low at the back of the stage, looking up: the piano before the hall, its chandeliers and
+  # galleries
   - at: 177.5
-    camera: { position: [ -4.5, 1.6, 2.6 ], target: [ 2.0, 1.4, -0.8 ], fov: 38 }
+    camera: { position: [ -4.5, 0.45, 2.6 ], target: [ 3.0, 2.7, -0.8 ], fov: 54 }
   - at: 177.6
     camera:
       duration: 52
       ease: inOutSine
       path:
-        - { position: [ -3.0, 1.5, -2.2 ], target: [ 2.0, 1.3, 0.2 ], fov: 36 }
+        - { position: [ -3.0, 0.5, -2.2 ], target: [ 3.0, 2.6, 0.6 ], fov: 52 }
 
-  # 9. the coda: close at the bass end, drawing back
+  # 9. the coda: low at the bass end, looking up along the keys into the hall, drawing back
   - at: 230.5
-    camera: { position: [ -1.2, 1.0, 0.85 ], target: [ 0.3, 0.82, 0.35 ], fov: 28 }
+    camera: { position: [ -1.2, 0.5, 0.85 ], target: [ 1.5, 1.5, 0.2 ], fov: 44 }
   - at: 230.6
     camera:
       duration: 31
       ease: inOutSine
       path:
-        - { position: [ -2.4, 1.3, 1.9 ], target: [ 0, 0.86, 0.0 ], fov: 30 }
+        - { position: [ -2.4, 0.6, 1.9 ], target: [ 2.0, 1.8, -0.2 ], fov: 46 }
 
-  # 10. the held chord: rising away from the stage, the lights going down
+  - at: 261        # the long held chord (file 257 s): fading back to the recital light
+    duration: 3
+    ease: inOutSine
+    set:
+      Lighting/Preset: Recital
+
+  # 10. the held chord: rising away from the stage
   - at: 262
     camera:
       duration: 8
@@ -131,10 +144,5 @@ timeline:
       path:
         - { position: [ -2.0, 1.8, 2.8 ], target: [ 0, 0.9, -0.3 ] }
         - { position: [ 1.5, 3.0, 4.6 ], target: [ 0, 0.9, -0.3 ], fov: 34 }
-  - at: 264
-    duration: 6
-    set:
-      Lighting/Front spot: 250
-      Lighting/Top light: 140
-  - at: 270
+  - at: 272.5
     midi: stop

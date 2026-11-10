@@ -12,7 +12,7 @@
 //                                  # previous gap event, and everything timed after it, has
 //                                  # *finished* (MIDI / audio / boot / camera move / tween)
 //       set:                       # GUI controls by "Folder/Label" (or label / property name);
-//         Lighting/Preset: Golden hour    # numbers can tween: give `duration` (and `ease`)
+//         Lighting/Preset: Golden hour    # numbers can tween: give `duration` (and `ease`); a preset fades too
 //       camera: { position: [ 0.6, 1.3, 1.6 ], target: [ 0, 0.9, -0.2 ], fov: 36 }   # a cut
 //       defocus: { delay: 0.8, duration: 0.9, amount: 1 }   # the lens loses focus for a moment
 //                                  # and finds it again (depth of field), `delay` s after the
@@ -605,6 +605,7 @@ export class ScriptPlayer {
 		for ( const tw of this._tweens ) {
 
 			const u = tw.ease( THREE.MathUtils.clamp( ( this.time - tw.t0 ) / tw.duration, 0, 1 ) );
+			if ( tw.preset ) { this._presetStep( tw, u ); tw.done = u >= 1; continue; }
 			tw.controller.setValue( tw.from + ( tw.to - tw.from ) * u );
 			if ( u >= 1 || this.time - tw.finished > 0.25 ) {
 
@@ -900,6 +901,17 @@ export class ScriptPlayer {
 			}
 
 			this._tweens = this._tweens.filter( tw => tw.controller !== c );
+			const venue = c.object;
+			if ( duration > 0 && c.property === 'preset' && venue?.presets?.[ value ] && venue.light ) {
+
+				// a lighting preset, faded: its numbers and colours from the light as it is to the preset's; its other
+				// settings (the tone mapping) switched at the darker end (the spotlight's), where a jump shows least
+				const from = { ...venue.light }, to = { ...from, tone: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined, ...venue.presets[ value ] };
+				const bright = l => ( l.env ?? 1 ) * ( l.exposure ?? 1 );
+				this._tweens.push( { controller: c, preset: value, venue, from, to, switchAtStart: bright( to ) > bright( from ), t0: this.time, duration, ease } );
+				continue;
+
+			}
 			if ( duration > 0 && typeof value === 'number' && typeof c.getValue() === 'number' ) {
 
 				this._tweens.push( { controller: c, from: c.getValue(), to: value, t0: this.time, duration, ease, finished: this.time } );
@@ -912,6 +924,31 @@ export class ScriptPlayer {
 			}
 
 		}
+
+	}
+
+	/** A preset fade's step: the venue's light at `u` between the two, relit (every step: no stairs in a render). */
+	_presetStep( tw, u ) {
+
+		const L = tw.venue.light, isColor = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test( v );
+		for ( const k of new Set( [ ...Object.keys( tw.from ), ...Object.keys( tw.to ) ] ) ) {
+
+			const a = tw.from[ k ], b = tw.to[ k ];
+			if ( typeof a === 'number' && typeof b === 'number' ) L[ k ] = a + ( b - a ) * u;
+			else if ( isColor( a ) && isColor( b ) ) L[ k ] = '#' + new THREE.Color( a ).lerp( new THREE.Color( b ), u ).getHexString();
+			else L[ k ] = ( tw.switchAtStart || u >= 1 ) ? b : a;
+
+		}
+		if ( u >= 1 ) { Object.assign( L, tw.to ); tw.venue.preset = tw.preset; }
+		const folder = tw.controller.parent;
+		folder.controllersRecursive().forEach( x => x.updateDisplay() );
+		// relit: through one of the folder's own controls (its onFinishChange: the page's refreshLighting)
+		// (its callback itself: lil-gui's _callOnFinishChange fires only after a change through that control).
+		// Not while skipping to a start (a seek steps the timeline in small steps: a relight each, hundreds in a
+		// burst, lost the GPU context): there only once the fade is done, and the light as it is when going live
+		if ( this._skipping && u < 1 ) { tw.relightLive = true; return; }
+		const x = folder.controllers.find( x => x !== tw.controller && x._onFinishChange );
+		x?._onFinishChange.call( x, x.getValue() );
 
 	}
 
