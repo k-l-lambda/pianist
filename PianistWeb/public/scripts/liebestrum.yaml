@@ -2,7 +2,7 @@
 # on the black grand in the Konzerthaus Berlin (its Recital light), filmed by a moving camera round the piano.
 # Load with ?style=grand-black&script=liebestrum.yaml (the style: a query, not a script setting: setting it
 # here would rebuild the piano and load the hall after the script had started); render with
-#   node tools/render-video.mjs liebestrum.yaml --query "style=grand-black" [--to 300]
+#   node tools/render-video.mjs liebestrum.yaml --query "style=grand-black" [--to 270]
 # or path traced: tools/pt-client.mjs video liebestrum.yaml --query "style=grand-black" ...
 #
 # The piece (the file's own times; the script plays it from 4 s, so script time = file time + 4):
@@ -13,8 +13,8 @@
 #   ~158-170   the second cadenza                               shot 7: from above, into the strings
 #   174-227    the theme, calm again                            shot 8: from the back of the stage, the hall beyond
 #   227-259    the coda, sparse                                 shot 9: close at the bass end, drawing back
-#   259-271    a long held silence (the pedal, a chord ringing)
-#   271-289.5  the last chords                                  shot 10: rising away to the dress circle; the lights down
+#   259-266    a long held silence (the pedal, a chord ringing)  shot 10: rising away from the stage; the lights down
+#   (the file is cut at 268 s; the script ends at 270 s, file time 266)
 #
 # The frame: the stage floor y 0, the piano at the origin (its keyboard's front z 0.46, x -0.7..0.7; the bench
 # at z 0.94; the tail at z -1.12; the lid opening towards +x, the audience); the stalls towards +x, the shell
@@ -123,18 +123,18 @@ timeline:
       path:
         - { position: [ -2.4, 1.3, 1.9 ], target: [ 0, 0.86, 0.0 ], fov: 30 }
 
-  # 10. the last chords: rising away to the dress circle, the lights going down
+  # 10. the held chord: rising away from the stage, the lights going down
   - at: 262
     camera:
-      duration: 36
+      duration: 8
       ease: inOutSine
       path:
-        - { position: [ 2.5, 2.4, 3.6 ], target: [ 0, 0.9, -0.3 ] }
-        - { position: [ 6.5, 6.5, 6.5 ], target: [ 0, 0.9, -0.3 ], fov: 34 }
-  - at: 287
-    duration: 10
+        - { position: [ -2.0, 1.8, 2.8 ], target: [ 0, 0.9, -0.3 ] }
+        - { position: [ 1.5, 3.0, 4.6 ], target: [ 0, 0.9, -0.3 ], fov: 34 }
+  - at: 264
+    duration: 6
     set:
       Lighting/Front spot: 250
       Lighting/Top light: 140
-  - at: 300
+  - at: 270
     midi: stop
