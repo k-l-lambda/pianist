@@ -193,5 +193,5 @@ export const STYLES = [
 	// venue: where it stands (main.js; the uprights in the room)
 	{ id: 'grand-black', name: 'Grand · black lacquer', type: 'grand', venue: 'hall' },
 	{ id: 'grand-white', name: 'Grand · white lacquer', type: 'grand', venue: 'luminara' },
-	{ id: 'grand-crystal', name: 'Grand · crystal', type: 'grand', venue: 'luminara' },		// (for now in Luminara, as the white)
+	{ id: 'grand-crystal', name: 'Grand · crystal', type: 'grand', venue: 'azurea' },		// (Azurea: the seaside hotel lobby, src/azurea.js)
 ];

@@ -15,6 +15,7 @@ import { buildGrand } from './grand.js';
 import { Room } from './room.js';
 import { ConcertHall } from './hall.js';
 import { Luminara, prefetchLuminara, luminaraStatus, luminaraPhase, luminaraProgress, luminaraStatusText } from './luminara.js';
+import { Azurea, prefetchAzurea, azureaStatus, azureaPhase, azureaProgress, azureaStatusText } from './azurea.js';
 import { berlinProgress, berlinStatus, berlinStatusText, prefetchBerlinHall } from './berlinhall.js';
 import { GIProbe } from './gi.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
@@ -47,7 +48,7 @@ await new Promise( r => requestAnimationFrame( () => setTimeout( r, 0 ) ) );
 //   #?gi&grand-black&pathtrace&handheld&screen&script=path/to/scene.yaml
 // Bare words in the hash: a piano style id, `realtime` / `pathtrace`, or a flag (gi, handheld,
 // screen, loading, capture). key=value: style, mode, gi=0|1, exposure, tone=AgX|ACES|Neutral,
-// shadow=vsm, preset, shake, hall=procedural, venue=room|hall|luminara (a grand's, over its style's), script (a name in public/scripts/, a path from the
+// shadow=vsm, preset, shake, hall=procedural, venue=room|hall|luminara|azurea (a grand's, over its style's), script (a name in public/scripts/, a path from the
 // site root, or a URL), at (start the script that far in: 95, 1:35, 1:35.5; the part before runs
 // silently at once). Changing the hash reloads the scene with the new parameters.
 const params = new URLSearchParams( location.search );
@@ -95,6 +96,7 @@ const venueOf = style => style.type === 'grand' ? params.get( 'venue' ) ?? style
 	const style = STYLES.find( s => s.id === settings.style );
 	if ( style && venueOf( style ) === 'hall' && params.get( 'hall' ) !== 'procedural' && ! RENDER ) prefetchBerlinHall();
 	if ( style && venueOf( style ) === 'luminara' ) prefetchLuminara();
+	if ( style && venueOf( style ) === 'azurea' ) prefetchAzurea();
 
 }
 
@@ -129,7 +131,9 @@ const room = new Room( scene, baker );
 const hall = new ConcertHall( scene, baker );
 const luminara = new Luminara( scene, baker );
 if ( HQ_OFFLINE ) luminara.mirrorScale = 1;		// (its floor's reflection at the frame's size)
-const venues = { room, hall, luminara };
+const azurea = new Azurea( scene, baker );
+if ( HQ_OFFLINE ) azurea.mirrorScale = 1;
+const venues = { room, hall, luminara, azurea };
 let venue = room;
 room.activate();
 const probe = new GIProbe( renderer, scene, { size: HQ_OFFLINE ? 512 : 256 } );
@@ -514,6 +518,7 @@ function applyQuality( relight = true ) {
 	room.setQuality( hq );
 	hall.setQuality( hq );
 	luminara.setQuality( hq );
+	azurea.setQuality( hq );
 	keyShadow.setEnabled( hq && ! keyShadow.broken );
 	if ( piano ) applyGlass( piano.materials.glass, hq || venue.mode === 'pathtrace' );
 	shadowsDirty = true;
@@ -529,6 +534,7 @@ function setLightingMode( mode ) {
 	room.setMode( mode );
 	hall.setMode( mode );
 	luminara.setMode( mode );
+	azurea.setMode( mode );
 	if ( piano ) applyGlass( piano.materials.glass, mode === 'pathtrace' || settings.gi );
 	shadowsDirty = true;
 	scene.environment = mode === 'pathtrace' ? venue.environment : probeEnv;
@@ -968,6 +974,7 @@ hall.precompile = async object => {
 
 };
 luminara.precompile = hall.precompile;		// (its shell and its pack compiled before they show)
+azurea.precompile = hall.precompile;
 hall.onModel = () => {		// the shell shown changed (or Berlin finished loading): its presets and lights
 
 	if ( venue === hall ) buildLightFolder();
@@ -1009,6 +1016,26 @@ luminara.onLoad = () => {
 };
 luminara.onBake = luminara.onLoad;		// (a preset's lightmap come: the probe again, lit by it)
 
+// Azurea's viewpoints (the crystal grand's lobby); its pack (furniture, plants, the sea, the marble) shows when loaded
+const fAzurea = gui.addFolder( 'Azurea' ).close().hide();
+const azureaView = { view: 'At the piano' };
+fAzurea.add( azureaView, 'view', [ 'At the piano', ...Object.keys( azurea.views() ) ] ).name( 'View' ).onChange( name => {
+
+	const off = piano.group.position;
+	const v = name === 'At the piano' ? { position: piano.camera.position.clone().add( off ), target: piano.camera.target.clone().add( off ) } : azurea.views()[ name ];
+	camera.position.copy( v.position );
+	controls.target.copy( v.target );
+	controls.update();
+
+} );
+azurea.onLoad = () => {
+
+	if ( venue === azurea && piano ) refreshLighting();
+	shadowsDirty = true;
+	ptDirty = true;
+
+};
+
 /** The venue for the piano's type: its geometry and lights in the scene, its lighting controls. */
 function switchVenue( v ) {
 
@@ -1022,7 +1049,8 @@ function switchVenue( v ) {
 	fRoom.show( venue === room );
 	fHall.show( venue === hall );
 	fLuminara.show( venue === luminara );
-	hallView.view = luminaraView.view = 'At the piano';
+	fAzurea.show( venue === azurea );
+	hallView.view = luminaraView.view = azureaView.view = 'At the piano';
 	fLuminara.controllersRecursive().forEach( c => c.updateDisplay() );
 	fHall.controllersRecursive().forEach( c => c.updateDisplay() );
 	ptDirty = true;
@@ -1485,19 +1513,20 @@ const hallBar = document.getElementById( 'hallbar' ), hallBarFill = hallBar.quer
 
 	const berlinOn = [ 'download', 'build', 'upload', 'compile' ].includes( berlinStatus.phase ) || berlinStatus.phase === 'failed' && hall.model === 'berlin' && venue === hall;
 	const lp = luminaraPhase(), luminaraOn = venue === luminara && [ 'download', 'build', 'compile', 'failed' ].includes( lp );
-	const on = berlinOn || luminaraOn;
+	const azureaOn = venue === azurea && [ 'download', 'build', 'compile', 'failed' ].includes( azureaPhase() );
+	const on = berlinOn || luminaraOn || azureaOn;
 	hallBar.classList.toggle( 'show', on );
 	if ( on ) {
 
-		const f = berlinOn ? berlinProgress() : luminaraProgress();
+		const f = berlinOn ? berlinProgress() : azureaOn ? azureaProgress() : luminaraProgress();
 		hallBarFill.style.transform = `scaleX(${ f.toFixed( 4 ) })`;
 		hallBar.setAttribute( 'aria-valuenow', String( Math.round( 100 * f ) ) );
-		hallBar.setAttribute( 'aria-label', berlinOn ? 'Loading the concert hall' : 'Loading Luminara' );
-		hallBarText.textContent = berlinOn ? berlinStatusText() : luminaraStatusText();
+		hallBar.setAttribute( 'aria-label', berlinOn ? 'Loading the concert hall' : azureaOn ? 'Loading Azurea' : 'Loading Luminara' );
+		hallBarText.textContent = berlinOn ? berlinStatusText() : azureaOn ? azureaStatusText() : luminaraStatusText();
 
 	}
 	// (on until both are done with: the Berlin hall's packs, and Luminara's when it is the venue)
-	if ( berlinStatus.phase !== 'ready' || luminaraStatus.pack !== 'ready' && ! luminaraStatus.failed ) requestAnimationFrame( updateHallBar );
+	if ( berlinStatus.phase !== 'ready' || luminaraStatus.pack !== 'ready' && ! luminaraStatus.failed || venue === azurea && azureaStatus.pack !== 'ready' && ! azureaStatus.failed ) requestAnimationFrame( updateHallBar );
 	else hallBar.classList.remove( 'show' );
 
 } )();
@@ -1621,7 +1650,7 @@ if ( flag( 'handheld' ) ) gui.controllersRecursive().find( c => c._name === 'Han
 if ( flag( 'screen' ) ) setScreenPower( true );
 // the scene's state (src/scenestate.js): saved as JSON from the GUI, set again from it (tools/render-pt.mjs)
 const stateContext = {
-	settings, camera, controls, renderer, venue: () => venue, venues: { room, hall, luminara }, piano: () => piano, roll, handheld, midiPlayer, loadMidi: ( b, n ) => loadMidiBuffer( b, n ),
+	settings, camera, controls, renderer, venue: () => venue, venues: { room, hall, luminara, azurea }, piano: () => piano, roll, handheld, midiPlayer, loadMidi: ( b, n ) => loadMidiBuffer( b, n ),
 	setStyle, setScreenPower, applyQuality, refreshLighting,
 	chosen: { tone: () => toneChosen, bloom: () => bloomChosen, set: ( t, b ) => { toneChosen = t; bloomChosen = b; } },
 	updateGUI: () => gui.controllersRecursive().forEach( c => c.updateDisplay() ),
@@ -1634,7 +1663,7 @@ function downloadState() {
 	setTimeout( () => URL.revokeObjectURL( url ), 10000 );
 
 }
-window.__pianist = { captureState: () => captureState( stateContext ), applyState: st => applyState( stateContext, st ), ptSnapshot, scene, camera, renderer, room, hall, luminara, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
+window.__pianist = { captureState: () => captureState( stateContext ), applyState: st => applyState( stateContext, st ), ptSnapshot, scene, camera, renderer, room, hall, luminara, azurea, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
 if ( RENDER ) startRender(); else requestAnimationFrame( frame );
 
 // ---------------------------------------------------------------------------
@@ -1765,6 +1794,7 @@ function startRender() {
 		};
 		await hall.loading;		// ?hall=berlin: the packs
 		await luminara.loading;		// its pack
+		await azurea.loading;		// its pack
 		await until( () => handheld.person.info, 'the person cut-out' );
 		await until( () => roll.bootAnim?.ready, 'the boot artwork' );
 		await until( () => roll.bootLength !== null, 'the power-on chime' );

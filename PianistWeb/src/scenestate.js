@@ -71,7 +71,7 @@ export async function applyState( ctx, state ) {
 	const venue = ctx.venue();
 	// its assets (the hall's packs: the model shown; Luminara's pack and the preset's lightmap)
 	if ( venue === hall ) { if ( hall.model !== ( state.venue?.model ?? hall.model ) ) hall.setModel( state.venue.model ); await hall.loading; }
-	if ( venue === ctx.venues.luminara ) { if ( ! venue._loadTried ) venue.load(); await venue.loading; }
+	if ( venue === ctx.venues.luminara || venue === ctx.venues.azurea ) { if ( ! venue._loadTried ) venue.load(); await venue.loading; }
 	// the lighting: the preset, then the values as they were (the GUI's changes over it)
 	if ( state.venue?.preset && venue.presets?.[ state.venue.preset ] ) {
 
