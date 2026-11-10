@@ -482,9 +482,9 @@ function setStyle( id ) {
 	roll.attach( piano );
 	scene.updateMatrixWorld( true );
 
-	const off = piano.group.position;
-	camera.position.copy( piano.camera.position ).add( off );
-	controls.target.copy( piano.camera.target ).add( off );
+	// (the piano's own camera, in its frame: placed, and turned if its venue turns it)
+	camera.position.copy( piano.group.localToWorld( piano.camera.position.clone() ) );
+	controls.target.copy( piano.group.localToWorld( piano.camera.target.clone() ) );
 	controls.update();
 
 	probe.position.copy( venue.probePoint( piano ) );
@@ -987,8 +987,7 @@ fHall.add( hall, 'model', { 'Konzerthaus Berlin': 'berlin', 'Procedural': 'proce
 if ( params.get( 'hall' ) === 'procedural' ) hall.model = 'procedural';
 fHall.add( hallView, 'view', [ 'At the piano', ...Object.keys( hall.views() ) ] ).name( 'View' ).onChange( name => {
 
-	const off = piano.group.position;
-	const v = name === 'At the piano' ? { position: piano.camera.position.clone().add( off ), target: piano.camera.target.clone().add( off ) } : hall.views()[ name ];
+	const v = name === 'At the piano' ? { position: piano.group.localToWorld( piano.camera.position.clone() ), target: piano.group.localToWorld( piano.camera.target.clone() ) } : hall.views()[ name ];
 	camera.position.copy( v.position );
 	controls.target.copy( v.target );
 	controls.update();
@@ -1000,8 +999,7 @@ const fLuminara = gui.addFolder( 'Luminara' ).close().hide();
 const luminaraView = { view: 'At the piano' };
 fLuminara.add( luminaraView, 'view', [ 'At the piano', ...Object.keys( luminara.views() ) ] ).name( 'View' ).onChange( name => {
 
-	const off = piano.group.position;
-	const v = name === 'At the piano' ? { position: piano.camera.position.clone().add( off ), target: piano.camera.target.clone().add( off ) } : luminara.views()[ name ];
+	const v = name === 'At the piano' ? { position: piano.group.localToWorld( piano.camera.position.clone() ), target: piano.group.localToWorld( piano.camera.target.clone() ) } : luminara.views()[ name ];
 	camera.position.copy( v.position );
 	controls.target.copy( v.target );
 	controls.update();
@@ -1021,8 +1019,7 @@ const fAzurea = gui.addFolder( 'Azurea' ).close().hide();
 const azureaView = { view: 'At the piano' };
 fAzurea.add( azureaView, 'view', [ 'At the piano', ...Object.keys( azurea.views() ) ] ).name( 'View' ).onChange( name => {
 
-	const off = piano.group.position;
-	const v = name === 'At the piano' ? { position: piano.camera.position.clone().add( off ), target: piano.camera.target.clone().add( off ) } : azurea.views()[ name ];
+	const v = name === 'At the piano' ? { position: piano.group.localToWorld( piano.camera.position.clone() ), target: piano.group.localToWorld( piano.camera.target.clone() ) } : azurea.views()[ name ];
 	camera.position.copy( v.position );
 	controls.target.copy( v.target );
 	controls.update();
@@ -1329,8 +1326,9 @@ fScript.add( scriptState, 'file' ).name( 'Script' ).disable();
 fScript.add( scriptState, 'toggle' ).name( 'Play / stop' );
 fScript.add( scriptState, 'state' ).name( 'State' ).disable();
 
-// A script opened from the URL plays as soon as audio can start. Browsers allow that only after a
-// click on the page (resume() then never settles), so after a moment a Play button asks for one.
+// A script opened from the URL does not start by itself: once loaded, the Play button asks before it does
+// (`go`), so opening a link never launches the performance unasked. Browsers allow sound only after a click
+// on the page anyway (resume() then never settles).
 /** "95", "1:35" or "1:35.5" -> s. */
 function parseClock( text ) {
 
@@ -1352,19 +1350,8 @@ function startWhenAudible() {
 		scriptPlayer.playFrom( at );
 
 	};
-	if ( ctx.state === 'running' ) return go();
 	let started = false;
-	ctx.resume().then( () => {
-
-		if ( ! started ) {
-
-			started = true;
-			go();
-
-		}
-
-	} );
-	setTimeout( () => {
+	const ask = () => {
 
 		if ( started ) return;
 		overlay.querySelector( 'span' ).textContent = scriptPlayer.title ? `Play · ${ scriptPlayer.title }` : 'Play';
@@ -1378,7 +1365,10 @@ function startWhenAudible() {
 
 		};
 
-	}, 300 );
+	};
+	// a script from the URL: wait for the click, however soon audio could start
+	ask();
+	if ( ctx.state === 'running' ) return;
 
 }
 
