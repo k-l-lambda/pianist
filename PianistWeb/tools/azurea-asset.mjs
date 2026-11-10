@@ -5,7 +5,7 @@
 //     its colour and height into its materials (CLASSES; the colour kept per vertex where the material uses it:
 //     the leaves)
 //   pictures and textures, each on a swatch (a small quad, not drawn: src/azurea.js takes its material's map):
-//     the sea outside, the floor's marble (made to tile), the bar's bottle wall
+//     the sea outside (by day, at golden hour, at night), the floor's marble (made to tile), the bar's bottle wall
 // Each a node named by its slug at the origin; src/azurea.js places copies of them.
 //
 //   node tools/azurea-asset.mjs --generated <dir> [--out public/azurea/azurea.glb] [--only a,b]
@@ -184,7 +184,7 @@ const picture = async ( k, look, w, h, q = 84 ) => {
 	say( `${ k }: ${ w }x${ h }, ${ ( b.length / 1024 ).toFixed( 0 ) } KB` );
 
 };
-if ( ! opt.only || opt.only.has( 'sea' ) ) await picture( 'sea', 'sea', 3072, 1024, 82 );
+for ( const k of [ 'sea', 'sea-sunset', 'sea-night' ] ) if ( ! opt.only || opt.only.has( k ) ) await picture( k, 'sea', 3072, 1024, 82 );
 if ( ! opt.only || opt.only.has( 'bottle-wall' ) ) await picture( 'bottle-wall', 'bottles', 1600, 1000, 84 );
 if ( ( ! opt.only || opt.only.has( 'marble' ) ) && fs.existsSync( path.join( G, 'marble-raw.jpg' ) ) ) {
 

@@ -47,7 +47,28 @@ function patchShader( fs ) {
 			`$&
 					ptLightsShare = lights.count == 0u ? 0.0 : ( environmentIntensity == 0.0 || envMapInfo.totalSum == 0.0 ) ? 1.0 : ptLightsShareSet;` ],
 		// camera-only emission for a fixture an area light stands in for (castShadow false)
-		[ 'scatterRec = bsdfSample( - ray.direction, surf );', 'bool ptSeenDirectly = state.firstRay || state.transmissiveRay;\n						scatterRec = bsdfSample( - ray.direction, surf );' ],
+		// a normal-mapped surface's shading normal turned away from the view (a ripple's far side seen grazing): bent
+		// back until the view is just above it. Else the BSDF, in the normal's frame, saw the view from below: its
+		// samples rejected (isDirectionValid), the pool's far half in dark patches growing with the normal map's
+		// strength (the usual fix, as other renderers')
+		[ 'scatterRec = bsdfSample( - ray.direction, surf );', `bool ptSeenDirectly = state.firstRay || state.transmissiveRay;
+						if ( material.normalMap != - 1 ) {
+
+							vec3 ptV = - ray.direction;
+							vec3 ptGN = surf.faceNormal * surfaceHit.side;
+							float ptD = dot( surf.normal, ptV ), ptG = dot( ptGN, ptV );
+							if ( ptG > 0.0 && ptD < 0.25 * ptG ) surf.normal = normalize( surf.normal + ( 0.25 * ptG - ptD ) * ptV );
+							// and its mirror direction kept above the surface too (at a grazing view a ripple's slope sent it
+							// below: the sample rejected, a dark patch): turned towards the geometric normal until it is
+							for ( int k = 0; k < 4 && ptG > 0.0 && dot( reflect( - ptV, surf.normal ), ptGN ) < 0.05 * ptG; k ++ ) surf.normal = normalize( mix( surf.normal, ptGN, 0.5 ) );
+
+						}
+						scatterRec = bsdfSample( - ray.direction, surf );` ],
+		// a refracted ray through a normal-mapped clear surface (a ripple): valid by the true surface alone. It may lie on
+		// the wrong side of the tilted shading normal while truly passing through: the path was dropped, black: the
+		// pool's patches, even with no absorption
+		[ 'if ( scatterRec.pdf <= 0.0 || ! isDirectionValid( scatterRec.direction, surf.normal, surf.faceNormal ) ) {',
+			'if ( scatterRec.pdf <= 0.0 || ( ! isDirectionValid( scatterRec.direction, surf.normal, surf.faceNormal ) && ! ( material.normalMap != - 1 && surf.transmission > 0.0 ) ) ) {' ],
 		[ 'gl_FragColor.rgb += ( surf.emission * state.throughputColor );', 'if ( material.castShadow || ptSeenDirectly ) gl_FragColor.rgb += ( surf.emission * state.throughputColor );' ],
 	];
 	for ( const [ from, to ] of edits ) {

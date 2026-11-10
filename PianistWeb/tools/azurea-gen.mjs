@@ -35,6 +35,16 @@ export const ASSETS = {
 	'sea': { kind: 'texture', size: '3840x1280', prompt: 'A very wide panoramic photograph from a seaside terrace at eye level: a calm turquoise and deep blue ocean ' +
 		'stretching to the horizon, gentle distant mountains and green headlands on the left and right horizon fading blue in the haze, a clear bright blue sky with a few soft white clouds, ' +
 		'bright midday sunlight, the horizon a third of the way up from the bottom, no buildings, no people, no boats, no birds, no foreground objects, no railings, photorealistic, high detail' },
+	// the same view at golden hour and at night (image to image from the day's: one coastline); no sun or moon drawn
+	// in them, no glitter path: src/azurea.js draws the disc and its path on the sea where the light's direction puts them
+	'sea-sunset': { kind: 'texture', size: '3840x1280', ref: 'sea', prompt: 'The very same panoramic seaside view as in the reference image, unchanged in its layout: ' +
+		'the same horizon line, the same mountains and headlands in the same places, now at golden hour just before sunset: a warm sky graded from pale gold and apricot at the horizon ' +
+		'to soft dusky blue above, a few thin clouds lit pink and gold from below, the sea a deep calm blue with warm reflections of the sky, the mountains soft violet silhouettes in the haze, ' +
+		'the sun itself just out of the picture (no sun disc visible, no bright sun reflection on the water), no buildings, no people, no boats, photorealistic, high detail' },
+	'sea-night': { kind: 'texture', size: '3840x1280', ref: 'sea', prompt: 'The very same panoramic seaside view as in the reference image, unchanged in its layout: ' +
+		'the same horizon line, the same mountains and headlands in the same places, now at night under a clear moonlit sky: a deep navy blue sky, darker towards the top, ' +
+		'a faint glow at the horizon, a few faint stars, the sea dark blue-black with soft cool silvery moonlight on its gentle swell, the mountains dark silhouettes, ' +
+		'a few tiny warm lights of a distant coastal village on one headland, the moon itself out of the picture (no moon visible, no moon path on the water), no people, no boats, photorealistic, high detail' },
 	'marble': { kind: 'texture', prompt: 'Seamless tileable texture of polished pale white marble seen straight from above, flat and evenly lit, ' +
 		'very soft pearl grey and faint icy blue veins, calm and subtle, no tiles, no seams, no reflections, no shadows, high detail, photographic' },
 	'bottle-wall': { kind: 'texture', size: '2560x1600', prompt: 'A backlit hotel bar display wall seen exactly from the front, orthographic, filling the whole image: ' +
@@ -69,8 +79,9 @@ if ( process.argv[ 1 ] && path.resolve( process.argv[ 1 ] ) === fileURLToPath( i
 			try {
 
 				const t = Date.now();
-				fs.writeFileSync( file, await generate( a.prompt, null, a.size ?? '2048x2048' ) );
-				meta[ slug ] = { kind: a.kind, prompt: a.prompt, size: a.size ?? '2048x2048', generated: new Date().toISOString() };
+				const ref = a.ref ? fs.readFileSync( path.join( opt.generated, `${ a.ref }-raw.jpg` ) ) : null;		// (image to image: the ref's own photo)
+				fs.writeFileSync( file, await generate( a.prompt, ref, a.size ?? '2048x2048' ) );
+				meta[ slug ] = { kind: a.kind, prompt: a.prompt, ref: a.ref, size: a.size ?? '2048x2048', generated: new Date().toISOString() };
 				console.log( `${ slug }: ${ ( ( Date.now() - t ) / 1000 ).toFixed( 0 ) } s` );
 				break;
 
