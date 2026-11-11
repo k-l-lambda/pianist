@@ -115,7 +115,7 @@ export function applyPoolTiles( azurea, {
 		if ( ! m ) continue;
 		m.attenuationDistance = attenuationDistance;
 		m.attenuationColor.set( attenuationColor );
-		m.thickness = 0.9;			// (the water's depth: the tile is ~0.9 m below the surface on average)
+		m.thickness = 1.8;			// (the water's depth: the tile is ~1.8 m below the surface on average; the pool 2.4 m deep)
 		m.roughness = 0.02; m.metalness = 0;
 		m.needsUpdate = true;
 

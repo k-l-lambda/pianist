@@ -44,9 +44,9 @@ const BAR = { cx: - 3.0, cz: 4.2 };				// the bar's arc (its front towards +z), 
 const STAIRS = { cx: - 8.8, cz: 5.0, r0: 0.9, r1: 2.6, rise: 5.2, steps: 25, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
 const MEZZ = { x0: WALL.x0, x1: - 11.2, z0: - 2.0, z1: WALL.z1, y: 5.2 };
 const COVE = { cx: - 0.5, cz: 4.0, r: 5.0, soffit: 3.3 };
-// the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 6.35 m wide,
-// its far side (6.7 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
-const POOL = { x0: - 16, x1: 13, w: 6.35, coping: 0.35, water: - 0.12, depth: 1.2, deck: - 0.03 };
+// the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
+// and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
+const POOL = { x0: - 16, x1: 13, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
 POOL.r0 = GLASS.r + POOL.coping; POOL.r1 = POOL.r0 + POOL.w;
 POOL.a0 = - Math.acos( ( POOL.x0 - GLASS.cx ) / POOL.r0 ); POOL.a1 = - Math.acos( ( POOL.x1 - GLASS.cx ) / POOL.r0 );
 const PIANO_GAP = 1.6;		// (m: the piano's nearest point to the glass)
