@@ -301,11 +301,22 @@ export class ConcertHall {
 
 	}
 
-	/** The offline sound's shoebox (tools/spatialise.py, room `hall`): the stage's back wall to the
-	 * hall's, wall to wall, the stage floor to the ceiling (world; the parquet below the stage's
-	 * floor, the shell's lower ceiling and the tiers are in its surfaces, not its shape). */
+	/** The offline sound's shoebox (tools/spatialise.py): the Berlin hall's (room `berlin`) when it is the
+	 * model, else the procedural hall's (room `hall`: the stage's back wall to the hall's, wall to wall, the
+	 * stage floor to the ceiling; world; the parquet below the stage's floor, the shell's lower ceiling and
+	 * the tiers are in its surfaces, not its shape). */
 	acousticBox() {
 
+		if ( this.model === 'berlin' ) {
+
+			// the Konzerthaus's Großer Saal (the packs, measured: wall to wall x ±11 m at 3-9 m up, the organ's
+			// end z -14.3 to the back gallery's wall 24.8, the stalls floor y 0 to the coffered ceiling 16.2;
+			// ~14,000 m³: the hall's own ~15,000 less the galleries' fronts); minY: the stalls floor (world),
+			// below the stage's front strip the piano stands on (spatialise.py room `berlin`)
+			const a = this.fromBerlin( - 11, 0, - 14.3 ), b = this.fromBerlin( 11, 16.2, 24.8 );
+			return { minX: Math.min( a.x, b.x ), maxX: Math.max( a.x, b.x ), minZ: Math.min( a.z, b.z ), maxZ: Math.max( a.z, b.z ), minY: a.y, height: b.y - a.y, acoustics: 'berlin' };
+
+		}
 		const H = HALL, a = this.toWorld( - H.width / 2, 0, - H.stageDepth ), b = this.toWorld( H.width / 2, 0, H.length );
 		return { minX: Math.min( a.x, b.x ), maxX: Math.max( a.x, b.x ), minZ: Math.min( a.z, b.z ), maxZ: Math.max( a.z, b.z ), height: H.ceiling, acoustics: 'hall' };
 
