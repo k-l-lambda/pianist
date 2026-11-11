@@ -61,7 +61,7 @@ import { fileURLToPath } from 'url';
 import sharp from 'sharp';
 import { NodeIO, PropertyType } from '@gltf-transform/core';
 import { EXTMeshoptCompression, EXTTextureWebP, KHRMaterialsSheen, KHRMeshQuantization } from '@gltf-transform/extensions';
-import { cloneDocument, join, prune, quantize, reorder, simplifyPrimitive, weldPrimitive } from '@gltf-transform/functions';
+import { cloneDocument, compactPrimitive, join, prune, quantize, reorder, simplifyPrimitive, weldPrimitive } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import { detailTexture, DETAIL_RAW } from './floor-detail.mjs';
 import { GRILLES, grilleItems, grilleRaw, grilleTextures } from './floor-grille.mjs';
@@ -959,6 +959,7 @@ for ( const [ m, e ] of mats ) {
 		if ( ! s ) continue;
 		const sb = e.islands.length ? sizeFor( needOf( e, pk, 'far' ), D.w, cap ) : s;
 		sizes[ pack ] = sb === s ? `${ s }` : `${ sb || '-' }/${ s }`;
+		e.texSize = Math.max( e.texSize ?? 0, sb || s );		// (its densest base texture: the UVs' weight in the simplifier, step 4)
 		const half = Math.max( MIN_TEXTURE, s / 2 );
 		const img = async ( buf, size, q, name ) => {
 
@@ -1009,7 +1010,31 @@ log.push( ...texLog.map( s => '  ' + s ) );
 for ( const t of used ) t.dispose();
 if ( opt.originals ) say( `near atlases (within ${ opt.near } m, ${ opt.nearBudget } Mtexel budget): ${ ( nearTexels / 1e6 ).toFixed( 2 ) } Mtexels, ${ [ ...mats.values() ].filter( e => e.nearTexture ).length } materials` );
 
-// 4. bands, simplified by distance (UVs kept: a seam is a border the simplifier keeps); grouped by pack
+/**
+ * `prim` simplified to `error` (meshopt's: relative to the primitive's extent) with its UVs weighed: a collapse
+ * that moves the texture by a texel of a `texSize` texture counts as much as one that moves the surface by the
+ * error. (meshopt scales the positions to the unit box, the attributes as they are: a UV error of 1 / texSize,
+ * times the weight error x texSize, is the error.) As gltf-transform's simplifyPrimitive, but with the UVs.
+ */
+function simplifyUV( prim, error, texSize, lockBorder ) {
+
+	const P = prim.getAttribute( 'POSITION' ), U = prim.getAttribute( 'TEXCOORD_0' ), I = prim.getIndices();
+	const pos = P.getArray() instanceof Float32Array ? P.getArray() : Float32Array.from( P.getArray() );
+	const uv = U.getArray() instanceof Float32Array ? U.getArray() : Float32Array.from( U.getArray() );
+	const w = error * texSize;
+	const [ out ] = MeshoptSimplifier.simplifyWithAttributes( Uint32Array.from( I.getArray() ), pos, 3, uv, 2, [ w, w ], null, 0, error, lockBorder ? [ 'LockBorder' ] : [] );
+	prim.setIndices( I.clone().setArray( out ) );
+	if ( I.listParents().length === 1 ) I.dispose();
+	compactPrimitive( prim );
+	if ( prim.getAttribute( 'POSITION' ).getCount() <= 65534 ) prim.getIndices().setArray( Uint16Array.from( prim.getIndices().getArray() ) );
+
+}
+
+// 4. bands, simplified by distance (UVs kept: a seam is a border the simplifier keeps); grouped by pack.
+// The simplifier weighs the UVs too (simplifyUV): with the positions alone a flat run of a band collapsed
+// to one long triangle whose corners' UVs were the same texel, the texture one line stretched over metres
+// (the back gallery's parapet fascia, bruestung-zwei-low: 9.8 m of it at 0.002 UV; the ceiling, the
+// gallery floors, the grey plinth: 4-91 % of their area). The source has none of it.
 const groups = {};
 const group = name => groups[ name ] ??= ( () => { const g = doc.createNode( name ); scene.addChild( g ); return g; } )();
 let before = 0, after = 0; const perLook = {};
@@ -1047,7 +1072,7 @@ for ( const node of scene.listChildren().filter( n => n.getMesh() ) ) {
 
 				const d = Math.max( 0.3, boxDistance( { min: lo, max: hi }, CAMERA_ZONE ) );
 				const ext = Math.max( ...[ 0, 1, 2 ].map( k => hi[ k ] - lo[ k ] ), 1e-3 );
-				simplifyPrimitive( primitive, { simplifier: MeshoptSimplifier, ratio: 0, error: opt.errorPx * PX_PER_M * d / ext, lockBorder: opt.lockBorder } );
+				simplifyUV( primitive, opt.errorPx * PX_PER_M * d / ext, e.texSize ?? opt.maxTexture, opt.lockBorder );
 
 			}
 			after += primitive.getIndices().getCount() / 3; perLook[ look ][ 1 ] += primitive.getIndices().getCount() / 3;
