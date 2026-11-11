@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { withToneMix } from './tonemix.js';
 
 const VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }';
 
@@ -75,7 +76,7 @@ export class OfflineFrame {
 					gl_FragColor = vec4( sum / max( alpha, 1e-6 ), 1.0 );
 				}`,
 		} ) );
-		this.output = new OutputPass();
+		this.output = withToneMix( new OutputPass() );
 		// the watermark (src/main.js WATERMARK: its rect, px from the top-left), then the quantisation; the
 		// rows flipped (the encoder's first row is the top)
 		this.finishQuad = new FullScreenQuad( new THREE.ShaderMaterial( {

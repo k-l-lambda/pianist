@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toneMix, TONE_ID, withToneMix } from './tonemix.js';		// (first: it patches three's tone mapping chunk)
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -281,7 +282,7 @@ const gtaoPass = new GTAOPass( scene, camera, 1, 1 );
 excludeFromGTAO( gtaoPass );		// the additive MIDI roll must not occlude
 gtaoPass.output = GTAOPass.OUTPUT.Default;
 const bloomPass = new UnrealBloomPass( new THREE.Vector2( 1, 1 ), settings.bloom, 0.6, 0.92 );
-const outputPass = new OutputPass();
+const outputPass = withToneMix( new OutputPass() );
 composer.addPass( renderPass );
 composer.addPass( gtaoPass );
 // HDR sanitising before bloom and depth of field: the sun's glare in the glossy screen reaches
@@ -574,6 +575,14 @@ function refreshLighting() {
 	venue.updateLights();
 	renderer.toneMappingExposure = settings.exposure * venue.light.exposure;
 	renderer.toneMapping = TONE[ toneChosen ? settings.toneMapping : venue.light.tone ?? settings.toneMapping ];		// (a venue's preset may ask for one)
+	// a preset's fade between two tone mappings (script.js): the two curves mixed (tonemix.js)
+	const tf = venue.light.toneFade;
+	if ( ! toneChosen && tf && tf.t >= 0 && tf.t < 1 ) {		// (from u 0: else its first step drew the new curve alone)
+
+		const a = tf.from ?? settings.toneMapping, b = venue.light.tone ?? settings.toneMapping;
+		if ( a !== b && TONE_ID[ a ] && TONE_ID[ b ] ) { toneMix.value.set( TONE_ID[ a ], TONE_ID[ b ], tf.t ); renderer.toneMapping = THREE.CustomToneMapping; }
+
+	}
 	hdrClamp.uniforms.uSaturation.value = venue.light.saturation ?? 1;
 	applyBloom();
 	probe.bounces = settings.gi ? settings.giBounces : 1;
@@ -919,7 +928,7 @@ function buildLightFolder() {
 	for ( const c of [ ...fLight.controllers ] ) c.destroy();
 	fLight.add( venue, 'preset', Object.keys( venue.presets ) ).name( 'Preset' ).onChange( name => {
 
-		Object.assign( venue.light, { tone: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined }, venue.presets[ name ] );
+		Object.assign( venue.light, { tone: undefined, toneFade: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined }, venue.presets[ name ] );
 		fLight.controllersRecursive().forEach( c => c.updateDisplay() );
 		refreshLighting();
 
@@ -1191,6 +1200,8 @@ fMidi.add( roll, 'particles' ).name( 'Particles' );
 
 const scriptPlayer = new ScriptPlayer( {
 	camera, controls, gui, setScreenPower,
+	// what a preset leaves unset is (for a fade's numbers: the Berlin hall's Recital sets them, its Spotlight not)
+	lightDefaults: () => ( { saturation: 1, bloom: settings.gi ? settings.bloom : 0, bloomThreshold: 0.92 } ),
 	setRollMode: mode => roll.setMode( mode ),
 	setSubtitle: text => roll.setSubtitle( text ),
 	setStatus: ( status, level ) => roll.setStatus( status, level ),

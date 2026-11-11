@@ -904,11 +904,13 @@ export class ScriptPlayer {
 			const venue = c.object;
 			if ( duration > 0 && c.property === 'preset' && venue?.presets?.[ value ] && venue.light ) {
 
-				// a lighting preset, faded: its numbers and colours from the light as it is to the preset's; its other
-				// settings (the tone mapping) switched at the darker end (the spotlight's), where a jump shows least
-				const from = { ...venue.light }, to = { ...from, tone: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined, ...venue.presets[ value ] };
-				const bright = l => ( l.env ?? 1 ) * ( l.exposure ?? 1 );
-				this._tweens.push( { controller: c, preset: value, venue, from, to, switchAtStart: bright( to ) > bright( from ), t0: this.time, duration, ease } );
+				// a lighting preset, faded: its numbers and colours from the light as it is to the preset's, what one of
+				// them leaves unset at its default (saturation, bloom: the Berlin hall's Recital sets them, its Spotlight
+				// not); the tone mapping crossfaded (light.toneFade: the page mixes the two curves, tonemix.js); its other
+				// settings switched at the end. (The tone mapping, saturation and bloom threshold switched at once at the
+				// fade's start: the Liebestraum's 4 s, its midtones a third brighter from one frame to the next)
+				const { toneFade: _, ...from } = venue.light, to = { ...from, tone: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined, ...venue.presets[ value ] };
+				this._tweens.push( { controller: c, preset: value, venue, from, to, t0: this.time, duration, ease } );
 				continue;
 
 			}
@@ -931,15 +933,20 @@ export class ScriptPlayer {
 	_presetStep( tw, u ) {
 
 		const L = tw.venue.light, isColor = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test( v );
+		const D = this.ctx.lightDefaults?.() ?? {};
 		for ( const k of new Set( [ ...Object.keys( tw.from ), ...Object.keys( tw.to ) ] ) ) {
 
-			const a = tw.from[ k ], b = tw.to[ k ];
-			if ( typeof a === 'number' && typeof b === 'number' ) L[ k ] = a + ( b - a ) * u;
+			if ( k === 'tone' ) continue;
+			const a = tw.from[ k ] ?? D[ k ], b = tw.to[ k ] ?? D[ k ];
+			if ( typeof a === 'number' && typeof b === 'number' ) L[ k ] = u >= 1 ? tw.to[ k ] : a + ( b - a ) * u;
 			else if ( isColor( a ) && isColor( b ) ) L[ k ] = '#' + new THREE.Color( a ).lerp( new THREE.Color( b ), u ).getHexString();
-			else L[ k ] = ( tw.switchAtStart || u >= 1 ) ? b : a;
+			else L[ k ] = u >= 1 ? tw.to[ k ] : tw.from[ k ];
 
 		}
-		if ( u >= 1 ) { Object.assign( L, tw.to ); tw.venue.preset = tw.preset; }
+		// the tone mapping: the preset's own from the start, the old one's curve mixed in until the end
+		L.tone = tw.to.tone;
+		L.toneFade = u < 1 && tw.from.tone !== tw.to.tone ? { from: tw.from.tone, t: u } : undefined;
+		if ( u >= 1 ) { Object.assign( L, tw.to ); delete L.toneFade; tw.venue.preset = tw.preset; }
 		const folder = tw.controller.parent;
 		folder.controllersRecursive().forEach( x => x.updateDisplay() );
 		// relit: through one of the folder's own controls (its onFinishChange: the page's refreshLighting)

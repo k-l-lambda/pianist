@@ -990,6 +990,8 @@ export class PianoRoll {
 			this.points = new THREE.Points( geo, new THREE.ShaderMaterial( { vertexShader: PART_VS, fragmentShader: PART_FS, uniforms: this.partUniforms, ...common } ) );
 			this.points.frustumCulled = false;
 			this.points.renderOrder = 12;
+			// the attributes are uploaded before an object's onBeforeRender: what was pending is on the GPU now
+			this.points.onBeforeRender = () => { this.pDirtyCount = 0; };
 			this.group.add( this.points );
 			this.pNext = 0;
 			this.pDirtyFrom = - 1;
@@ -1915,7 +1917,9 @@ export class PianoRoll {
 
 		}
 
-		this.pDirtyCount = 0;
+		// (pending until a draw has uploaded them: the ranges were cleared and restarted every step, so the particles
+		// born in steps that drew nothing (a path-traced render's skipped frames: each worker draws one frame in
+		// eight) never reached the GPU, and the screen showed an eighth of its embers, a different eighth each frame)
 
 	}
 

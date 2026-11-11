@@ -76,7 +76,7 @@ export async function applyState( ctx, state ) {
 	if ( state.venue?.preset && venue.presets?.[ state.venue.preset ] ) {
 
 		venue.preset = state.venue.preset;
-		Object.assign( venue.light, { tone: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined }, venue.presets[ state.venue.preset ] );
+		Object.assign( venue.light, { tone: undefined, toneFade: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined }, venue.presets[ state.venue.preset ] );
 
 	}
 	Object.assign( venue.light, state.venue?.light ?? {} );

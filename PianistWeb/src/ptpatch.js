@@ -16,6 +16,9 @@
 import * as THREE from 'three';
 import { getLights } from 'three-gpu-pathtracer/src/core/utils/sceneUpdateUtils.js';
 
+// one sample's light after the first rough surface, capped (its luminance; 0: off; ?ptclamp= to try others): see patchAOV
+const INDIRECT_MAX = ( () => { const v = typeof location !== 'undefined' ? new URLSearchParams( location.search ).get( 'ptclamp' ) : null; return v !== null && Number.isFinite( Number( v ) ) ? Number( v ) : 64; } )();
+
 const POWER_MIX = 0.75;		// (the power-weighted part of a light's pick; the rest uniform)
 
 function patchShader( fs ) {
@@ -103,6 +106,7 @@ function patchAOV( fs ) {
 
 	const edits = [
 		[ 'float lightsDenom;', `float lightsDenom;
+				uniform float ptIndirectMax;
 				#if PT_AOV
 				layout( location = 1 ) out highp vec4 ptAlbedo;
 				layout( location = 2 ) out highp vec4 ptNormal;
@@ -111,7 +115,7 @@ function patchAOV( fs ) {
 				#endif` ],
 		[ 'gl_FragColor = vec4( 0, 0, 0, 1 );', `gl_FragColor = vec4( 0, 0, 0, 1 );
 					// the first non-delta surface: not yet found; its albedo, normal, path distance; the light before it
-					bool aovSet = false, aovSkip = false;
+					bool aovSet = false, aovSkip = false, aovMirror = false;
 					vec3 aovAlbedo = vec3( 0.0 ), aovNormal = vec3( 0.0 ), aovPre = vec3( 0.0 ), aovPost = vec3( 0.0 ), aovEmit = vec3( 0.0 );
 					float aovDist = 0.0, aovPath = 0.0;` ],
 		// at a surface, before its next-event estimation: is it the first non-delta one?
@@ -140,6 +144,7 @@ function patchAOV( fs ) {
 								aovPre = gl_FragColor.rgb;
 								aovSet = true;
 								aovMark = true;
+								aovMirror = darkMirror || delta;
 
 							}
 
@@ -156,6 +161,18 @@ function patchAOV( fs ) {
 			`if ( material.castShadow || ptSeenDirectly ) gl_FragColor.rgb += ( surf.emission * state.throughputColor );
 						if ( aovMark ) aovEmit = gl_FragColor.rgb - aovPost;` ],
 		[ 'gl_FragColor.a *= opacity;', `gl_FragColor.a *= opacity;
+					// fireflies: the light found after the first rough surface (its own lights' and emission kept as they are),
+					// one sample's capped at ptIndirectMax in luminance (Cycles' clamp indirect). One rare path (a glossy bounce
+					// into a bulb, a lamp) brought ~1000x a pixel's light in one sample in 2048: a speck the bloom spread over the
+					// frame for one frame. Not after a mirror-like first surface (the screen, the black lacquer): what they reflect
+					// is a sharp image (the sun's glare in the screen ~7000), not noise
+					if ( aovSet && ! aovMirror && ptIndirectMax > 0.0 ) {
+
+						vec3 kept = aovPost + aovEmit, ind = max( gl_FragColor.rgb - kept, vec3( 0.0 ) );
+						float li = luminance( ind );
+						if ( li > ptIndirectMax ) gl_FragColor.rgb = kept + ind * ( ptIndirectMax / li );
+
+					}
 					#if PT_AOV
 					{
 
@@ -224,7 +241,7 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 	for ( const m of mats ) {
 
 		m.fragmentShader = patched;
-		Object.assign( m.uniforms, { ptLightCdf: { value: cdf }, ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 } } );
+		Object.assign( m.uniforms, { ptLightCdf: { value: cdf }, ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 }, ptIndirectMax: { value: INDIRECT_MAX } } );
 		m.defines.PT_AOV = 0;
 		m.needsUpdate = true;
 

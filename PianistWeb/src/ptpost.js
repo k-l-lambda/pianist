@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { withToneMix } from './tonemix.js';
 import { PhysicalCamera } from 'three-gpu-pathtracer';
 
 const VERTEX = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }';
@@ -48,7 +49,7 @@ export class PTPost {
 		// 256: 0.43x, 1024: 0.70x, 4096: 0.87x): the sun's glow visibly weaker than in the raster renders)
 		this.clamp = makeHDRClamp( 4096 );
 		this.bloom = new UnrealBloomPass( new THREE.Vector2( 1, 1 ), 0, 0.6, 0.92 );
-		this.output = new OutputPass();
+		this.output = withToneMix( new OutputPass() );
 		// triangular dither, ±1 step of 8 bits, on the sRGB image (the steps of a slow gradient: the walls, the sky)
 		this.dither = new ShaderPass( {
 			uniforms: { tDiffuse: { value: null }, uOn: { value: 1 }, uSeed: { value: 0 } },

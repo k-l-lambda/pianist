@@ -237,7 +237,7 @@ export class ConcertHall {
 	_shellChanged( was ) {
 
 		this._showModel();
-		if ( this.berlinShown !== was ) Object.assign( this.light, { tone: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined }, this.presets[ this.preset ] );		// the preset, in this shell
+		if ( this.berlinShown !== was ) Object.assign( this.light, { tone: undefined, toneFade: undefined, saturation: undefined, bloom: undefined, bloomThreshold: undefined }, this.presets[ this.preset ] );		// the preset, in this shell
 		this.updateLights();
 		this.onModel?.();
 
