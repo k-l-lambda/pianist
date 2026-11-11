@@ -29,6 +29,9 @@ export const RENDER_OPTS = RENDER ? {
 	hq: get( 'hq' ) === '1',		// the offline quality profile: the mirrors at full size, a finer probe, more AO samples
 	pt: Math.max( 0, Math.round( Number( get( 'pt' ) ?? 0 ) ) ),		// path traced: samples per pixel a frame (0: the raster)
 	denoise: get( 'dn' ) === '1',		// the path tracer's image denoised (ptdenoise.js)
+	// path traced: the open sea's samples across a shutter open this part of the frame (0: its time held at the
+	// frame's; src/azurea.js _ptSeaAttach): the glints' motion blur
+	ptShutter: Math.min( 1, Math.max( 0, Number( get( 'pts' ) ?? 0 ) ) ),
 } : null;
 
 // a render is reproducible: Math.random (wood grain offsets in geometry.js, ...) seeded

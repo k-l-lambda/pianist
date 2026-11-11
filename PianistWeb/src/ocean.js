@@ -301,6 +301,19 @@ const RESOLVE = /* glsl */`
 	}
 `;
 
+// the path tracer's sea: per cascade (a layer) the slopes and the height at mip 0, in world axes: (sx, sz, h)
+const RESOLVE_PT = /* glsl */`
+	precision highp float; precision highp sampler2D;
+	uniform sampler2D uIn;
+	uniform vec2 uRot;
+	out vec4 o;
+	void main() {
+		vec4 v = texelFetch( uIn, ivec2( gl_FragCoord.xy ), 0 );
+		vec2 s = v.xy, sw = vec2( uRot.x * s.x - uRot.y * s.y, uRot.y * s.x + uRot.x * s.y );
+		o = vec4( sw, v.z, 1.0 );
+	}
+`;
+
 export class Ocean {
 
 	constructor( params = {} ) {
@@ -320,12 +333,24 @@ export class Ocean {
 		this.qSpec = raw( SPECTRUM, { uH0: { value: null }, uW: { value: null }, uL: { value: 1 }, uT: { value: 0 } } );
 		this.qFFT = raw( BUTTERFLY, { uIn: { value: null }, uNs: { value: 1 }, uDir: { value: 0 } } );
 		this.qRes = raw( RESOLVE, { uIn: { value: null }, uRot: { value: new THREE.Vector2( 1, 0 ) } } );
+		this.qResPT = raw( RESOLVE_PT, { uIn: { value: null }, uRot: { value: new THREE.Vector2( 1, 0 ) } } );
+		// the path tracer's own copy (an array, a layer a cascade: one sampler there), drawn only when it asks
+		// (updatePT: its time held while it accumulates, its own per sample with a shutter)
+		this.pt = new THREE.WebGLArrayRenderTarget( N, N, CASCADES.length, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, generateMipmaps: false } );
+		Object.assign( this.pt.texture, { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, colorSpace: THREE.NoColorSpace } );
+		this.tPT = null;
 		// the shader's uniforms (shared: the materials that read the sea take this object's entries)
 		this.uniforms = {
 			uOcA: { value: this.moments.map( m => m.textures[ 0 ] ) }, uOcB: { value: this.moments.map( m => m.textures[ 1 ] ) },
 			uOcRot: { value: CASCADES.map( c => new THREE.Vector4( Math.cos( c.angle ), Math.sin( c.angle ), 1 / c.L, 0 ) ) },
 			uOcTail: { value: new THREE.Vector3() },		// (the slopes' variance finer than the cascades: xx, zz, xz)
 			uSeaFacet: { value: 1e-4 },		// (m²: one facet of the shortest ripples left, (2 / k_d)², for the glints' count)
+		};
+		// the path tracer's (src/ptpatch.js): the array, the cascades' axes, the slab's half-thickness (m: ~4.5 σ of
+		// the height), the GGX α of what is finer than the cascades (from the tail's slope variance)
+		this.ptUniforms = {
+			ptOcTex: { value: this.pt.texture }, ptOcRot: this.uniforms.uOcRot,
+			ptOcSlab: { value: 0.05 }, ptOcAlpha: { value: 0.004 },
 		};
 		this.t = null;
 		this.set( params );
@@ -350,11 +375,35 @@ export class Ocean {
 		const tv = this.tail = tailVariance( state );
 		this.uniforms.uOcTail.value.set( tv.xx, tv.zz, tv.xz );
 		this.uniforms.uSeaFacet.value = Math.min( Math.max( ( 2 / state.kd ) ** 2, 1e-5 ), 1e-3 );
-		this.t = null;
+		const vh = this.stats.reduce( ( a, v ) => a + v.h, 0 );
+		this.ptUniforms.ptOcSlab.value = Math.max( 4.5 * Math.sqrt( vh ), 0.01 );
+		// (Beckmann's mss = α² for GGX's α to first order; floored: the cascades' finest texel is bilinear, not a facet)
+		this.ptUniforms.ptOcAlpha.value = Math.max( Math.sqrt( Math.max( tv.xx + tv.zz, 0 ) ), 0.004 );
+		this.t = null; this.tPT = null;
 
 	}
 
-	/** The surface at time t (s, the render clock). */
+	/** Cascade ci's spectrum at tm (s, mod REPEAT) and its inverse FFT: the ping target that holds it. */
+	_fft( renderer, ci, tm ) {
+
+		const c = CASCADES[ ci ];
+		let u = this.qSpec.material.uniforms;
+		u.uH0.value = this.h0[ ci ]; u.uW.value = this.w[ ci ]; u.uL.value = c.L; u.uT.value = tm;
+		renderer.setRenderTarget( this.ping[ 0 ] ); this.qSpec.render( renderer );
+		let cur = 0;
+		u = this.qFFT.material.uniforms;
+		for ( const dir of [ 0, 1 ] ) for ( let ns = 1; ns < N; ns *= 2 ) {
+
+			u.uIn.value = this.ping[ cur ].texture; u.uNs.value = ns; u.uDir.value = dir;
+			renderer.setRenderTarget( this.ping[ 1 - cur ] ); this.qFFT.render( renderer );
+			cur = 1 - cur;
+
+		}
+		return this.ping[ cur ];
+
+	}
+
+	/** The surface at time t (s, the render clock): the raster's moments. */
 	update( renderer, t ) {
 
 		if ( t === this.t ) return;
@@ -364,21 +413,29 @@ export class Ocean {
 		const tm = ( ( t % REPEAT ) + REPEAT ) % REPEAT;
 		CASCADES.forEach( ( c, ci ) => {
 
-			let u = this.qSpec.material.uniforms;
-			u.uH0.value = this.h0[ ci ]; u.uW.value = this.w[ ci ]; u.uL.value = c.L; u.uT.value = tm;
-			renderer.setRenderTarget( this.ping[ 0 ] ); this.qSpec.render( renderer );
-			let cur = 0;
-			u = this.qFFT.material.uniforms;
-			for ( const dir of [ 0, 1 ] ) for ( let ns = 1; ns < N; ns *= 2 ) {
-
-				u.uIn.value = this.ping[ cur ].texture; u.uNs.value = ns; u.uDir.value = dir;
-				renderer.setRenderTarget( this.ping[ 1 - cur ] ); this.qFFT.render( renderer );
-				cur = 1 - cur;
-
-			}
-			u = this.qRes.material.uniforms;
-			u.uIn.value = this.ping[ cur ].texture; u.uRot.value.set( Math.cos( c.angle ), Math.sin( c.angle ) );
+			const src = this._fft( renderer, ci, tm ), u = this.qRes.material.uniforms;
+			u.uIn.value = src.texture; u.uRot.value.set( Math.cos( c.angle ), Math.sin( c.angle ) );
 			renderer.setRenderTarget( this.moments[ ci ] ); this.qRes.render( renderer );		// (its mipmaps: three's, after the draw)
+
+		} );
+		renderer.setRenderTarget( prev );
+		renderer.autoClear = auto;
+
+	}
+
+	/** The path tracer's copy at time t (s): its slopes and height, mip 0. */
+	updatePT( renderer, t ) {
+
+		if ( t === this.tPT ) return;
+		this.tPT = t;
+		const prev = renderer.getRenderTarget(), auto = renderer.autoClear;
+		renderer.autoClear = false;
+		const tm = ( ( t % REPEAT ) + REPEAT ) % REPEAT;
+		CASCADES.forEach( ( c, ci ) => {
+
+			const src = this._fft( renderer, ci, tm ), u = this.qResPT.material.uniforms;
+			u.uIn.value = src.texture; u.uRot.value.set( Math.cos( c.angle ), Math.sin( c.angle ) );
+			renderer.setRenderTarget( this.pt, ci ); this.qResPT.render( renderer );		// (layer ci)
 
 		} );
 		renderer.setRenderTarget( prev );
@@ -388,9 +445,9 @@ export class Ocean {
 
 	dispose() {
 
-		for ( const t of [ ...this.ping, ...this.moments ] ) t.dispose();
+		for ( const t of [ ...this.ping, ...this.moments, this.pt ] ) t.dispose();
 		for ( const t of [ ...this.h0, ...this.w ] ) t.dispose();
-		this.qSpec.dispose(); this.qFFT.dispose(); this.qRes.dispose();
+		this.qSpec.dispose(); this.qFFT.dispose(); this.qRes.dispose(); this.qResPT.dispose();
 
 	}
 
@@ -421,5 +478,34 @@ export const OCEAN_GLSL = /* glsl */`
 			height += b.x;
 		}` ).join( '\n' ) }
 		cov = max( m2, vec3( 0.0, 0.0, - 1.0 ) ) + uOcTail;
+	}
+`;
+
+/**
+ * GLSL for the path tracer (src/ptpatch.js): `vec3 ptOceanSample( vec2 xz )`: the slopes (x, z) and the height
+ * at a point of the sea (world xz, m), every cascade at mip 0 (a path is a point sample: the pixel's average is
+ * the samples'); `ptOceanHeight( xz )`: the height alone (the three coarser cascades: the finest's is ~mm).
+ */
+export const OCEAN_PT_GLSL = /* glsl */`
+	uniform sampler2DArray ptOcTex;
+	uniform vec4 ptOcRot[ ${ CASCADES.length } ];
+	uniform float ptOcSlab, ptOcAlpha;
+	vec3 ptOceanSample( vec2 xz ) {
+		vec3 r = vec3( 0.0 );
+		for ( int i = 0; i < ${ CASCADES.length }; i ++ ) {
+			vec4 c = ptOcRot[ i ];
+			vec2 q = mat2( c.x, - c.y, c.y, c.x ) * xz * c.z;
+			r += textureLod( ptOcTex, vec3( fract( q ), float( i ) ), 0.0 ).xyz;
+		}
+		return r;
+	}
+	float ptOceanHeight( vec2 xz ) {
+		float h = 0.0;
+		for ( int i = 0; i < ${ CASCADES.length - 1 }; i ++ ) {
+			vec4 c = ptOcRot[ i ];
+			vec2 q = mat2( c.x, - c.y, c.y, c.x ) * xz * c.z;
+			h += textureLod( ptOcTex, vec3( fract( q ), float( i ) ), 0.0 ).z;
+		}
+		return h;
 	}
 `;
