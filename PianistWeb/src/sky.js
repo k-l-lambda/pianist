@@ -311,6 +311,7 @@ export const SKY_GLSL = /* glsl */`
 export const DISC_GLSL = /* glsl */`
 	uniform sampler2D uMoonTex;
 	uniform float uSunCore;		// (the sun's disc core × this: its brightness against the sky; the halo and the sea's glitter not)
+	uniform float uMoonCore;		// (the moon's disc × this: low enough that its face is not tone-mapped to a flat white)
 	vec3 skyDisc( vec3 vd, vec3 L, vec3 color, float moon ) {
 		float ang = acos( clamp( dot( vd, L ), - 1.0, 1.0 ) );
 		float R = moon > 0.5 ? 0.0115 : 0.0135, aa = 0.0009;
@@ -319,9 +320,12 @@ export const DISC_GLSL = /* glsl */`
 			// the moon: its near side (NASA SVS's LROC map, public domain: public/azurea/moon.png, mean 0.5), north up
 			vec3 t1 = normalize( cross( L, vec3( 0.0, 1.0, 0.0 ) ) ), t2 = cross( t1, L );
 			vec2 q = vec2( - dot( vd, t1 ), dot( vd, t2 ) ) / R;
-			float alb = disc > 0.0 ? texture( uMoonTex, q * 0.5 + 0.5 ).r * 2.0 : 1.0;
+			// (its albedo as mapped: the maria ~0.6 of the highlands; a full moon is near uniform to the limb, the
+			// opposition surge: a little darkening only)
+			// (its contrast raised: the tone curve's shoulder compresses the face's top; × 1.5 in log, mean ~ kept)
+			float alb = disc > 0.0 ? pow( max( texture( uMoonTex, q * 0.5 + 0.5 ).r * 2.0, 0.0 ), 1.5 ) * 1.04 : 1.0;
 			float limb = sqrt( max( 1.0 - dot( q, q ), 0.0 ) );
-			return color * ( disc * 9.0 * ( 0.82 + 0.18 * limb ) * mix( 1.0, alb, 0.85 ) + 0.5 * exp( - ang / 0.02 ) + 0.12 * exp( - ang / 0.12 ) );
+			return color * ( disc * 9.0 * uMoonCore * ( 0.88 + 0.12 * limb ) * alb + 0.5 * exp( - ang / 0.02 ) + 0.12 * exp( - ang / 0.12 ) );
 		}
 		return color * ( disc * 14.0 * uSunCore + 1.2 * exp( - ang / 0.02 ) + 0.35 * exp( - ang / 0.09 ) + 0.06 * exp( - ang / 0.30 ) );
 	}
@@ -345,7 +349,7 @@ export class Sky {
 		this.uniforms = {
 			uSkyView: { value: this.view.texture }, uSkyTrans: { value: this.trans.texture },
 			uSkyLight: { value: new THREE.Vector3( 0, 1, 0 ) }, uSkyScale: { value: new THREE.Vector3( 1, 1, 1 ) }, uAirglow: { value: new THREE.Vector3() },
-			uStars: { value: 0 }, uClouds: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 },
+			uStars: { value: 0 }, uClouds: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 }, uMoonCore: { value: 1 },
 			uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
 		};
 		this.params = null; this._built = null; this.dirty = true;
