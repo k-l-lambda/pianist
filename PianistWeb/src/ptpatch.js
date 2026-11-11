@@ -103,7 +103,7 @@ function seaUniforms() {
 	return {
 		ptSeaOn: { value: 0 }, ptSeaY: { value: 0 }, ptSeaPhotoDep: { value: 0.012 }, ptSeaExtScale: { value: 1 }, ptSunOmc: { value: 0 },
 		ptSeaHole: { value: new THREE.Vector3( 0, 0, 0 ) }, ptSeaColor: { value: new THREE.Color( 0, 0, 0 ) }, ptSeaExt: { value: new THREE.Vector3() },
-		ptSeaTint: { value: new THREE.Color( 1, 1, 1 ) }, ptSunSeaGain: { value: new THREE.Vector3( 1, 1, 1 ) },
+		ptSeaTint: { value: new THREE.Color( 1, 1, 1 ) }, ptSunSeaGain: { value: new THREE.Vector3( 1, 1, 1 ) }, ptSeaVis: { value: 25 },
 		ptOcTex: { value: tex }, ptOcRot: { value: CASCADES.map( () => new THREE.Vector4( 1, 0, 1, 0 ) ) }, ptOcSlab: { value: 0.05 }, ptOcAlpha: { value: 0.004 },
 	};
 
@@ -126,7 +126,8 @@ function patchSea( fs ) {
 
 	const edits = [
 		[ 'float lightsDenom;', `float lightsDenom;
-				uniform float ptSeaOn, ptSeaY, ptSeaPhotoDep, ptSeaExtScale, ptSunOmc;
+				uniform float ptSeaOn, ptSeaY, ptSeaPhotoDep, ptSeaExtScale, ptSunOmc, ptSeaVis;
+				float ptSeaAirT = 1.0; vec3 ptSeaAirL = vec3( 0.0 );		// (the air from the eye to the sea hit: its transmittance, its light)
 				uniform vec3 ptSeaHole, ptSeaColor, ptSeaExt, ptSeaTint, ptSunSeaGain;
 				bool ptSeaHit = false, ptLastSea = false;
 				vec3 ptSeaN = vec3( 0.0, 1.0, 0.0 );
@@ -203,6 +204,11 @@ function patchSea( fs ) {
 
 						#if FEATURE_FOG` ],
 		[ 'SurfaceRecord surf;\n', 'ptLastSea = ptSeaHit;\n						SurfaceRecord surf;\n' ],
+		// the air before a sea hit (ptSeaSurface: ptSeaAirT, ptSeaAirL): its light added, all that follows (the sea's
+		// next-event light, its emission, its reflection) through its transmittance
+		[ 'scatterRec = bsdfSample( - ray.direction, surf );',
+			`if ( ptSeaHit ) { gl_FragColor.rgb += ptSeaAirL * state.throughputColor; state.throughputColor *= ptSeaAirT; }
+						scatterRec = bsdfSample( - ray.direction, surf );` ],
 		[ /getSurfaceRecord\(\s*material, surfaceHit, attributesArray, state\.accumulatedRoughness,\s*surf\s*\) == SKIP_SURFACE/,
 			'( ptSeaHit ? ptSeaSurface( ray, surfaceHit, state.accumulatedRoughness, surf ) : getSurfaceRecord( material, surfaceHit, attributesArray, state.accumulatedRoughness, surf ) ) == SKIP_SURFACE' ],
 		// the disc's light after a sea bounce: the raster's glitter strength
@@ -294,6 +300,12 @@ function patchSea( fs ) {
 					T = mix( T, T * ptSeaColor * 1.6, 0.35 );
 					float lit = clamp( ptSeaColor.g * 3.0, 0.25, 1.35 );
 					surf.emission = ptSeaColor * T * lit * ptSeaTint * ( 1.0 - fres );
+					// the air between the eye and the sea (the marine haze, as the raster's: Koschmieder): the sea's light
+					// (its body, its reflection, the disc's glitter) × its transmittance, plus the haze's own: the
+					// environment's light just above the horizon in this direction (the main loop applies them)
+					ptSeaAirT = exp( - 3.912 * dist / ( 1000.0 * ptSeaVis ) );
+					vec3 hzd = normalize( vec3( vd.x, 0.01, vd.z ) );
+					ptSeaAirL = environmentIntensity * sampleEquirectColor( envMapInfo.map, envRotation3x3 * hzd ) * ( 1.0 - ptSeaAirT );
 					return HIT_SURFACE;
 
 				}

@@ -310,6 +310,7 @@ export const SKY_GLSL = /* glsl */`
 /** The disc of the sun or the moon (and its halo) in direction d, drawn as before (sizes kept); the moon's face mapped. */
 export const DISC_GLSL = /* glsl */`
 	uniform sampler2D uMoonTex;
+	uniform float uSunCore;		// (the sun's disc core × this: its brightness against the sky; the halo and the sea's glitter not)
 	vec3 skyDisc( vec3 vd, vec3 L, vec3 color, float moon ) {
 		float ang = acos( clamp( dot( vd, L ), - 1.0, 1.0 ) );
 		float R = moon > 0.5 ? 0.0115 : 0.0135, aa = 0.0009;
@@ -322,7 +323,7 @@ export const DISC_GLSL = /* glsl */`
 			float limb = sqrt( max( 1.0 - dot( q, q ), 0.0 ) );
 			return color * ( disc * 9.0 * ( 0.82 + 0.18 * limb ) * mix( 1.0, alb, 0.85 ) + 0.5 * exp( - ang / 0.02 ) + 0.12 * exp( - ang / 0.12 ) );
 		}
-		return color * ( disc * 14.0 + 1.2 * exp( - ang / 0.02 ) + 0.35 * exp( - ang / 0.09 ) + 0.06 * exp( - ang / 0.30 ) );
+		return color * ( disc * 14.0 * uSunCore + 1.2 * exp( - ang / 0.02 ) + 0.35 * exp( - ang / 0.09 ) + 0.06 * exp( - ang / 0.30 ) );
 	}
 `;
 
@@ -344,7 +345,7 @@ export class Sky {
 		this.uniforms = {
 			uSkyView: { value: this.view.texture }, uSkyTrans: { value: this.trans.texture },
 			uSkyLight: { value: new THREE.Vector3( 0, 1, 0 ) }, uSkyScale: { value: new THREE.Vector3( 1, 1, 1 ) }, uAirglow: { value: new THREE.Vector3() },
-			uStars: { value: 0 }, uClouds: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey },
+			uStars: { value: 0 }, uClouds: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 },
 			uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
 		};
 		this.params = null; this._built = null; this.dirty = true;
