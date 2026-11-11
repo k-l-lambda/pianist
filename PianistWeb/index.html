@@ -51,6 +51,20 @@
 		@keyframes ld-flow { 0%, 39% { transform: translateX( 12.5% ); opacity: 0 } 45%, 75% { opacity: 1 } 81%, 100% { transform: translateX( 212% ); opacity: 0 } }
 		@keyframes ld-breathe { 0%, 100% { opacity: .82 } 50% { opacity: 1 } }
 		@media ( prefers-reduced-motion: reduce ) { #loading .lane i, #loading .base, #loading .played b { animation: none; } }
+		/* an error while the scene is built: its message and a reload in place of the label (the boot stops there:
+		   the loading screen stayed up, spinning, with nothing said); kept up if the boot hides the screen after it */
+		#loading .err { display: none; max-width: min( 86vw, 620px ); text-align: center; }
+		#loading.failed .err { display: grid; gap: 14px; justify-items: center; }
+		#loading.failed .label { display: none; }
+		#loading.failed .lane i, #loading.failed .base, #loading.failed .played b { animation: none; }
+		#loading.failed .base { opacity: .35; }
+		#loading.failed.hidden { opacity: 1; visibility: visible; }
+		#loading .err h2 { margin: 0; font: 500 12px/1 system-ui, sans-serif; letter-spacing: .3em; text-transform: uppercase; color: #ee8a7a; }
+		#loading .err pre { margin: 0; max-height: 34vh; overflow: auto; padding: 10px 12px; border-radius: 6px; background: #ffffff0d; color: #e9e4dacc; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; text-align: left; user-select: text; }
+		#loading .err .row { display: flex; gap: 10px; }
+		#loading .err button { padding: 9px 22px; border-radius: 20px; border: 1px solid #d9b26f99; background: transparent; color: #f2efe8; font: 500 13px/1 system-ui, sans-serif; letter-spacing: .05em; cursor: pointer; }
+		#loading .err button:hover, #loading .err button:focus-visible { border-color: #d9b26f; background: #d9b26f1f; outline: none; }
+		#loading .err button.quiet { border-color: #ffffff33; color: #e9e4da99; }
 		/* the concert hall's loading bar (src/main.js): over the loading screen or the scene; the sheen a
 		   compositor animation, so it moves while the main thread is busy */
 		#hallbar { position: fixed; left: 50%; bottom: 9vh; z-index: 2001; width: min( 70vw, 320px ); transform: translateX( -50% ); display: grid; gap: 9px; justify-items: center; opacity: 0; visibility: hidden; transition: opacity .4s ease, visibility 0s .4s; pointer-events: none; }
@@ -142,12 +156,46 @@
 			<div class="lane flow"><i></i></div>
 		</div>
 		<div class="label">Building scene</div>
+		<div class="err" role="alert"><h2>The scene failed to load</h2><pre></pre><div class="row"><button type="button" class="reload">Reload</button><button type="button" class="quiet dismiss">Dismiss</button></div></div>
 	</div>
 	<div id="hallbar" role="progressbar" aria-label="Loading the concert hall" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="track"><i></i><b></b></div><span></span></div>
 	<div id="hud"></div>
 	<button id="power" type="button" title="Screen power (`)" aria-label="Screen power" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M6.6 7.1a7.5 7.5 0 1 0 10.8 0"/></svg></button>
 	<div id="drop">Drop a MIDI file to play it</div>
 	<div id="start"><button type="button"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg><span>Play</span></button></div>
+	<script>
+		// errors while the scene is built (before src/main.js hides the loading screen): shown on it, with a reload.
+		// A plain script before the module, so it also sees the module failing to load or to parse
+		( () => {
+
+			const box = document.getElementById( 'loading' ), pre = box.querySelector( '.err pre' ), seen = [];
+			const building = () => ! box.classList.contains( 'hidden' ) || box.classList.contains( 'failed' );
+			const show = ( what ) => {
+
+				if ( ! building() || seen.length >= 6 ) return;
+				let text = what instanceof Error ? `${ what.name }: ${ what.message }${ what.stack ? '\n' + what.stack.split( '\n' ).filter( l => ! l.startsWith( what.name ) ).slice( 0, 6 ).join( '\n' ) : '' }` : String( what );
+				if ( seen.includes( text ) ) return;
+				seen.push( text );
+				pre.textContent = seen.join( '\n\n' );
+				if ( ! box.classList.contains( 'failed' ) ) { box.classList.add( 'failed' ); box.setAttribute( 'aria-label', 'The scene failed to load' ); box.querySelector( '.reload' ).focus(); }
+
+			};
+			box.querySelector( '.reload' ).onclick = () => location.reload();
+			box.querySelector( '.dismiss' ).onclick = () => { box.classList.remove( 'failed' ); box.classList.add( 'hidden' ); };
+			// (a script or module that does not load: an error on its element, seen only while capturing)
+			addEventListener( 'error', e => {
+
+				if ( e.target instanceof HTMLScriptElement ) show( `${ e.target.src || 'a script' } did not load` );
+				else if ( e.target === window || e.target === document || ! e.target ) show( e.error ?? `${ e.message }${ e.filename ? `\n  at ${ e.filename }:${ e.lineno }:${ e.colno }` : '' }` );
+
+			}, true );
+			addEventListener( 'unhandledrejection', e => show( e.reason ?? 'a promise was rejected' ) );
+			// three reports a shader that does not compile on the console only (the scene then draws black or not at all)
+			const err = console.error.bind( console );
+			console.error = ( ...a ) => { err( ...a ); if ( typeof a[ 0 ] === 'string' && /Shader Error|shader is not compiled|Program Info Log/i.test( a[ 0 ] ) ) show( a.join( ' ' ).slice( 0, 2000 ) ); };
+
+		} )();
+	</script>
 	<script type="module" src="/src/main.js"></script>
 </body>
 </html>
