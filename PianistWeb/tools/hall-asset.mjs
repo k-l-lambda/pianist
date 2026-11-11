@@ -219,8 +219,8 @@ function maskedBlur( a, m, w, h, sigma ) {
 	return am;
 
 }
-/** The texels the triangles cover (UVs in [0, 1], v down the image as glTF), dilated by 2. */
-function rasterMask( uv, w, h ) {
+/** The texels the triangles cover (UVs in [0, 1], v down the image as glTF), dilated by `dilate` (2). */
+function rasterMask( uv, w, h, dilate = 2 ) {
 
 	let m = new Uint8Array( w * h );
 	for ( let t = 0; t < uv.length; t += 6 ) {
@@ -239,7 +239,7 @@ function rasterMask( uv, w, h ) {
 		}
 
 	}
-	for ( let p = 0; p < 2; ++ p ) {		// dilate (the edge texels a sampler still reads)
+	for ( let p = 0; p < dilate; ++ p ) {		// dilate (the edge texels a sampler still reads)
 
 		const o = m.slice();
 		for ( let y = 0; y < h; ++ y ) for ( let x = 0; x < w; ++ x ) if ( ! m[ y * w + x ] && ( ( x > 0 && m[ y * w + x - 1 ] ) || ( x < w - 1 && m[ y * w + x + 1 ] ) || ( y > 0 && m[ ( y - 1 ) * w + x ] ) || ( y < h - 1 && m[ ( y + 1 ) * w + x ] ) ) ) o[ y * w + x ] = 1;
@@ -247,6 +247,90 @@ function rasterMask( uv, w, h ) {
 
 	}
 	return m;
+
+}
+
+/**
+ * Edge padding, in place (`data`: sRGB bytes, 3 a texel; `inside`: the texels the triangles cover). The bake runs
+ * to black at its islands' edges, 1-4 texels of it, at the border and inside a mitred end, and nothing is laid
+ * outside: at a border between two islands (the back gallery's fascia, where its middle meets its sides) the
+ * sampler's bilinear taps and mips pulled the black in, and the normals' Sobel (derive) made a ridge of it, a
+ * line lit across the band. Texels within PAD_EDGE of an island's edge darker than PAD_DARK of their
+ * neighbourhood, and every texel outside, are filled from the good ones (push-pull: each from the mean of the
+ * good ones round it, at the scale they are found).
+ */
+const PAD_EDGE = 4, PAD_DARK = 0.6;
+// The bake also darkens some islands towards their edges, over ~6 texels (an end of the fascia's side parts: to
+// 0.55 of its plateau; the middle part's end not): the source's own, but the normals (a high-pass of it, DETAIL_SIGMA
+// ~5 texels) read the ramp as a slope, a ridge lit across the band at the junction (3x the step of the albedo
+// alone). So the relief fades out over EDGE_FADE texels towards an island's edge: flat at the edge itself.
+const EDGE_FADE = 6;
+/** Per texel 0 at an island's edge (or outside) .. 1 at `n` texels in (`inside`: the covered texels). */
+function edgeFade( inside, w, h, n ) {
+
+	const f = new Float32Array( w * h );
+	let core = inside;
+	for ( let p = 1; p <= n; ++ p ) {
+
+		const o = core.slice();
+		for ( let y = 0; y < h; ++ y ) for ( let x = 0; x < w; ++ x ) { const i = y * w + x; if ( core[ i ] && ( x === 0 || ! core[ i - 1 ] || x === w - 1 || ! core[ i + 1 ] || y === 0 || ! core[ i - w ] || y === h - 1 || ! core[ i + w ] ) ) o[ i ] = 0; }
+		for ( let i = 0; i < w * h; ++ i ) if ( core[ i ] && ! o[ i ] ) f[ i ] = ( p - 1 ) / n;
+		core = o;
+
+	}
+	for ( let i = 0; i < w * h; ++ i ) if ( core[ i ] ) f[ i ] = 1;
+	return f;
+
+}
+function padIslands( data, inside, w, h ) {
+
+	const n = w * h, Y = new Float32Array( n );
+	for ( let i = 0; i < n; ++ i ) Y[ i ] = 0.2126 * data[ 3 * i ] + 0.7152 * data[ 3 * i + 1 ] + 0.0722 * data[ 3 * i + 2 ];
+	let core = inside;		// eroded PAD_EDGE times: the texels well inside
+	for ( let p = 0; p < PAD_EDGE; ++ p ) {
+
+		const o = core.slice();
+		for ( let y = 0; y < h; ++ y ) for ( let x = 0; x < w; ++ x ) { const i = y * w + x; if ( core[ i ] && ( x === 0 || ! core[ i - 1 ] || x === w - 1 || ! core[ i + 1 ] || y === 0 || ! core[ i - w ] || y === h - 1 || ! core[ i + w ] ) ) o[ i ] = 0; }
+		core = o;
+
+	}
+	const local = maskedBlur( Y, inside, w, h, 3 );
+	const good = new Float32Array( n );
+	for ( let i = 0; i < n; ++ i ) good[ i ] = inside[ i ] && ( core[ i ] || Y[ i ] >= PAD_DARK * local[ i ] ) ? 1 : 0;
+	// push: means of the good texels, halving; pull: the bad ones from the level above, bilinear
+	const levels = [ { c: Float32Array.from( data ), a: Float32Array.from( good ), w, h } ];		// (a copy: the pull sets it to 1)
+	while ( levels.at( - 1 ).w > 1 || levels.at( - 1 ).h > 1 ) {
+
+		const L = levels.at( - 1 ), W2 = Math.ceil( L.w / 2 ), H2 = Math.ceil( L.h / 2 ), c = new Float32Array( 3 * W2 * H2 ), a = new Float32Array( W2 * H2 );
+		for ( let y = 0; y < L.h; ++ y ) for ( let x = 0; x < L.w; ++ x ) { const i = y * L.w + x, j = ( y >> 1 ) * W2 + ( x >> 1 ), q = L.a[ i ]; if ( q > 0 ) { a[ j ] += q; for ( let k = 0; k < 3; ++ k ) c[ 3 * j + k ] += L.c[ 3 * i + k ] * q; } }
+		for ( let j = 0; j < a.length; ++ j ) if ( a[ j ] > 0 ) { for ( let k = 0; k < 3; ++ k ) c[ 3 * j + k ] /= a[ j ]; a[ j ] = Math.min( 1, a[ j ] ); }
+		levels.push( { c, a, w: W2, h: H2 } );
+
+	}
+	for ( let l = levels.length - 2; l >= 0; -- l ) {
+
+		const L = levels[ l ], P = levels[ l + 1 ];
+		for ( let y = 0; y < L.h; ++ y ) for ( let x = 0; x < L.w; ++ x ) {
+
+			const i = y * L.w + x, q = L.a[ i ];
+			if ( q >= 1 ) continue;
+			const fx = Math.min( P.w - 1, Math.max( 0, ( x + 0.5 ) / 2 - 0.5 ) ), fy = Math.min( P.h - 1, Math.max( 0, ( y + 0.5 ) / 2 - 0.5 ) );
+			const x0 = Math.floor( fx ), y0 = Math.floor( fy ), x1 = Math.min( P.w - 1, x0 + 1 ), y1 = Math.min( P.h - 1, y0 + 1 ), ax = fx - x0, ay = fy - y0;
+			for ( let k = 0; k < 3; ++ k ) {
+
+				const v = ( P.c[ 3 * ( y0 * P.w + x0 ) + k ] * ( 1 - ax ) + P.c[ 3 * ( y0 * P.w + x1 ) + k ] * ax ) * ( 1 - ay ) + ( P.c[ 3 * ( y1 * P.w + x0 ) + k ] * ( 1 - ax ) + P.c[ 3 * ( y1 * P.w + x1 ) + k ] * ax ) * ay;
+				L.c[ 3 * i + k ] = L.c[ 3 * i + k ] * q + v * ( 1 - q );
+
+			}
+			L.a[ i ] = 1;
+
+		}
+
+	}
+	const c = levels[ 0 ].c;
+	let filled = 0;
+	for ( let i = 0; i < n; ++ i ) if ( ! good[ i ] ) { ++ filled; for ( let k = 0; k < 3; ++ k ) data[ 3 * i + k ] = Math.round( Math.min( 255, Math.max( 0, c[ 3 * i + k ] ) ) ); }
+	return filled;
 
 }
 
@@ -270,6 +354,9 @@ async function derive( image, uv, look ) {
 	const { data, info } = await sharp( image ).removeAlpha().raw().toBuffer( { resolveWithObject: true } );
 	const w = info.width, h = info.height, n = w * h, L = LOOKS[ look ];
 	const mask = rasterMask( uv, w, h );
+	const inside = rasterMask( uv, w, h, 0 );
+	padIslands( data, inside, w, h );
+	const edge = edgeFade( inside, w, h, EDGE_FADE );		// (the normals' relief, faded out towards an island's edge)
 	let covered = 0; for ( let i = 0; i < n; ++ i ) covered += mask[ i ];
 	const lin = new Float32Array( 3 * n ), Y = new Float32Array( n ), M = new Float32Array( n );
 	for ( let i = 0; i < n; ++ i ) {
@@ -337,7 +424,7 @@ async function derive( image, uv, look ) {
 		const at = ( dx, dy ) => { const xx = Math.min( w - 1, Math.max( 0, x + dx ) ), yy = Math.min( h - 1, Math.max( 0, y + dy ) ), j = yy * w + xx; return mask[ j ] ? H[ j ] - Hs[ j ] : hp; };
 		const gx = ( at( 1, - 1 ) + 2 * at( 1, 0 ) + at( 1, 1 ) - at( - 1, - 1 ) - 2 * at( - 1, 0 ) - at( - 1, 1 ) ) / 8;
 		const gy = ( at( - 1, 1 ) + 2 * at( 0, 1 ) + at( 1, 1 ) - at( - 1, - 1 ) - 2 * at( 0, - 1 ) - at( 1, - 1 ) ) / 8;
-		let nx = - k * gx, ny = k * gy, nz = 1;
+		let nx = - k * gx * edge[ i ], ny = k * gy * edge[ i ], nz = 1;
 		const l = Math.hypot( nx, ny, nz ); nx /= l; ny /= l; nz /= l;
 		nor[ 3 * i ] = Math.round( 127.5 * ( nx + 1 ) ); nor[ 3 * i + 1 ] = Math.round( 127.5 * ( ny + 1 ) ); nor[ 3 * i + 2 ] = Math.round( 127.5 * ( nz + 1 ) );
 
