@@ -978,8 +978,9 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		steel.push( rod( v3( 0.05, RODS_Y, - 0.395 ), v3( 0.205, RODS_Y, - 0.99 ), 0.006, 8 ) );
 		steel.push( rod( v3( 0.205, RODS_Y, - 0.99 ), v3( 0.205, RIM_BOTTOM - 0.03, - 0.99 ), 0.006, 8 ) );
 
-		// control box under the keybed, treble side (Figs. 2, 7)
-		caseParts.push( woodBox( v3( 0.325, FRONT_BOTTOM - 0.054, - 0.242 ), v3( 0.60, FRONT_BOTTOM, - 0.028 ), { noUV: true, radius: 0.004 } ) );
+		// control box under the keybed, treble side (Figs. 2, 7): 21.6 mm thick (0.4 of the 54 mm it was), its top
+		// against the keybed's underside
+		caseParts.push( woodBox( v3( 0.325, FRONT_BOTTOM - 0.0216, - 0.242 ), v3( 0.60, FRONT_BOTTOM, - 0.028 ), { noUV: true, radius: 0.004 } ) );
 
 		// belly braces under the bottom board (Fig. 7): two from the trapwork block towards the
 		// tail, two out to the bentside, and the cross beam in front of the tail leg
