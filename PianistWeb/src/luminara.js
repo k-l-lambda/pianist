@@ -159,12 +159,12 @@ const BOOK_ROWS = {
 // Neutral white (about 4000 K) by day and at the blue hour, warm (2700-3000 K) at night. Bloom faint (a bright room: more reads overexposed). ACES keeps the contrast.
 // The windows lead: their sky bright, the room's own light in the bake scaled by `bakeInterior` (the day's most).
 export const LUMINARA_PRESETS = {
-	'Afternoon': { sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.55, shelf: 1.0, outside: 'day', sky: 1.8, cove: 1.6, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 5, sconceColor: '#fff0dc', niche: 1.0, nicheColor: '#ffe4c2', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.56, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Golden hour': { sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.6, shelf: 1.1, outside: 'sunset', sky: 1.6, cove: 1.8, coveColor: '#ffdcb0', dome: 120, downColor: '#ffe2c2', sconce: 5.5, sconceColor: '#ffe4c4', niche: 1.1, nicheColor: '#ffd6a8', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffdcb2', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
-	'Blue hour': { sunCore: 10, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.75, shelf: 1.2, outside: 'dusk', sky: 1.2, sun: 16, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, cove: 2.0, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 6, sconceColor: '#fff0dc', niche: 1.2, nicheColor: '#ffe4c2', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.6, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
-	'Night': { sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.85, shelf: 1.3, outside: 'night', sky: 0.5, moon: 1, moonLight: 0.7, stars: 1, clouds: 0.55, cove: 2.2, coveColor: '#ffc283', dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.62, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Afternoon': { skySat: 2.8, sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.55, shelf: 1.0, outside: 'day', sky: 1.6, cove: 1.6, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 5, sconceColor: '#fff0dc', niche: 1.0, nicheColor: '#ffe4c2', led: 12, ledWall: 2.8, ledFloor: 1.1, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.75, exposure: 0.56, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Golden hour': { skySat: 1, sunCore: 10, sun: 16, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.6, shelf: 1.1, outside: 'sunset', sky: 1.6, cove: 1.8, coveColor: '#ffdcb0', dome: 120, downColor: '#ffe2c2', sconce: 5.5, sconceColor: '#ffe4c4', niche: 1.1, nicheColor: '#ffd6a8', led: 13, ledWall: 3, ledFloor: 1.2, ledColor: '#ffdcb2', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.7, exposure: 0.58, tone: 'ACES', saturation: 1.0, bloom: 0.1, bloomThreshold: 8 },
+	'Blue hour': { skySat: 1, sunCore: 1, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.75, shelf: 1.2, outside: 'dusk', sky: 1.2, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, cove: 2.0, coveColor: '#ffe8cc', dome: 130, downColor: '#fff1e2', sconce: 6, sconceColor: '#fff0dc', niche: 1.2, nicheColor: '#ffe4c2', led: 14, ledWall: 3.2, ledFloor: 1.3, ledColor: '#ffe9cf', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.6, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
+	'Night': { skySat: 1, sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.85, shelf: 1.3, outside: 'night', sky: 0.5, moon: 1, moonLight: 0.7, stars: 1, clouds: 0.55, cove: 2.2, coveColor: '#ffc283', dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.62, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
 	// the house down, the piano under a single spot from the dome's crown
-	'Recital': { sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.9, shelf: 0.45, outside: 'night', sky: 0.32, moon: 0.8, moonLight: 0.35, stars: 0.8, clouds: 0.55, cove: 0.5, coveColor: '#ffc283', dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
+	'Recital': { skySat: 1, sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.9, shelf: 0.45, outside: 'night', sky: 0.32, moon: 0.8, moonLight: 0.35, stars: 0.8, clouds: 0.55, cove: 0.5, coveColor: '#ffc283', dome: 0, downColor: '#ffcd95', sconce: 1.6, sconceColor: '#ffd6a4', niche: 0.4, nicheColor: '#ffc07a', led: 4, ledWall: 1.1, ledFloor: 0.5, ledColor: '#ffc283', top: 900, topColor: '#fff0dc', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
 };
 export const LUMINARA_DEFAULT = 'Afternoon';
 export const LUMINARA_OUTSIDE = [ 'day', 'sunset', 'dusk', 'night' ];
@@ -377,6 +377,8 @@ const MOON = { az: 194, el: 6.0 };
 // the sky photo by direction (at infinity, as the moon and the stars: no parallax as the eye moves): the
 // cylinder's own mapping as seen from SKY_EYE high on its axis
 const SKY_EYE = 1.5;
+// the skies' panoramas (tools/luminara-skies.mjs): 180° (the windows' half), 32:9 (7680x2160), the horizon 51 % down
+const SKY_PANO = { arc: Math.PI, aspect: 32 / 9, horizon: 0.51 };
 /** A direction (unit) by azimuth (as φ: outward's) and elevation, in degrees. */
 const dirOf = ( az, el ) => { const a = THREE.MathUtils.degToRad( az ), e = THREE.MathUtils.degToRad( el ); return new THREE.Vector3( Math.sin( a ) * Math.cos( e ), Math.sin( e ), Math.cos( a ) * Math.cos( e ) ); };
 
@@ -441,7 +443,7 @@ function addNightSky( material, U ) {
 			varying vec3 vSkyWorld;
 			uniform sampler2D uCloud;
 			uniform vec3 uMoonDir, uSunDir, uSunColor;
-			uniform float uMoon, uStars, uClouds, uSun, uTime, uCloudTiles, uCloudV, uSunCore;
+			uniform float uMoon, uStars, uClouds, uSun, uTime, uCloudTiles, uCloudV, uSunCore, uSkySat;
 			uniform vec2 uDrift;
 			uniform float uSkyEye, uSkyR, uSkyY0, uSkyH;
 			#ifdef USE_MAP
@@ -462,6 +464,9 @@ function addNightSky( material, U ) {
 				float skyY = uSkyEye + uSkyR * skyD.y / max( length( skyD.xz ), 1e-3 );
 				#ifdef USE_MAP
 					diffuseColor *= texture2D( map, ( mapTransform * vec3( skyPhi / 6.28318, ( skyY - uSkyY0 ) / uSkyH, 1.0 ) ).xy );
+					// (its saturation raised before the tone mapping, its luminance kept: bright, the curve's shoulder takes
+					// the colour out (ACES: the city at 1.8 from S 41 to 14); the sky's own, uSkySat, the preset's skySat)
+					diffuseColor.rgb = max( mix( vec3( dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) ), diffuseColor.rgb, uSkySat ), 0.0 );
 				#endif` )
 			.replace( '#include <opaque_fragment>', `{
 				vec3 d = skyD;
@@ -1209,7 +1214,7 @@ export class Luminara {
 			const tex = new THREE.DataTexture( Uint8Array.from( cloudNoise, v => Math.round( 255 * Math.min( 1, Math.max( 0, v ) ) ) ), CLOUD_N, CLOUD_N, THREE.RedFormat );
 			tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
 			this.skyU = { uCloud: { value: tex }, uMoonDir: { value: dirOf( MOON.az, MOON.el ) }, uSunDir: { value: new THREE.Vector3( 0, 1, 0 ) }, uSunColor: { value: new THREE.Color() },
-				uMoon: { value: 0 }, uStars: { value: 0 }, uClouds: { value: 0 }, uSun: { value: 0 }, uSunCore: { value: 1 }, uTime: { value: 0 },
+				uMoon: { value: 0 }, uStars: { value: 0 }, uClouds: { value: 0 }, uSun: { value: 0 }, uSunCore: { value: 1 }, uSkySat: { value: 1 }, uTime: { value: 0 },
 				uSkyEye: { value: SKY_EYE }, uSkyR: { value: 11 }, uSkyY0: { value: - 4 }, uSkyH: { value: 14 },
 				uCloudTiles: { value: CLOUD.tiles }, uCloudV: { value: CLOUD.vScale }, uDrift: { value: new THREE.Vector2( ...CLOUD.drift ) } };
 			addNightSky( this.materials.sky, this.skyU );
@@ -1362,7 +1367,7 @@ export class Luminara {
 	 */
 	skyEnvironment( width = 4096 ) {
 
-		const L = this.light, S = this.skyU, key = JSON.stringify( [ L.outside, L.sky, L.sun, L.sunColor, L.sunAz, L.sunEl, L.moon, L.stars, L.clouds, Math.round( S.uTime.value / 10 ), M_skyMap( this ), width ] );
+		const L = this.light, S = this.skyU, key = JSON.stringify( [ L.outside, L.sky, L.skySat, L.sun, L.sunColor, L.sunAz, L.sunEl, L.moon, L.stars, L.clouds, Math.round( S.uTime.value / 10 ), M_skyMap( this ), width ] );
 		if ( this._skyEnv?.key === key ) { this.scene.userData.ptEnvPower = this._skyEnv.power; return this._skyEnv.texture; }
 		const r = this.baker.renderer, face = width / 4;
 		const rt = new THREE.WebGLCubeRenderTarget( face, { type: THREE.HalfFloatType, generateMipmaps: false } );
@@ -1443,7 +1448,7 @@ export class Luminara {
 			[ 'led', 0, 40, 0.1, 'Ceiling lines' ], [ 'ledWall', 0, 20, 0.1, 'Wall lines' ], [ 'ledFloor', 0, 10, 0.1, 'Floor lines' ], [ 'ledColor', 'color', 'Line color' ],
 			[ 'top', 0, 2000, 10, 'Recital spot' ], [ 'topColor', 'color', 'Recital spot color' ], [ 'topAngle', 5, 40, 0.5, 'Recital spot cone (°)' ],
 			[ 'env', 0, 1.5, 0.01, 'Ambient (probe)' ],
-			[ 'sun', 0, 30, 0.1, 'Sun (through a window)' ], [ 'sunCore', 1, 60, 0.5, 'Sun disc brightness' ], [ 'sunColor', 'color', 'Sun color' ], [ 'sunAz', 0, 360, 0.5, 'Sun azimuth (°)' ], [ 'sunEl', 2, 60, 0.1, 'Sun elevation (°)' ],
+			[ 'sun', 0, 30, 0.1, 'Sun (through a window)' ], [ 'sunCore', 1, 60, 0.5, 'Sun disc brightness' ], [ 'skySat', 0, 3, 0.01, 'Sky saturation' ], [ 'sunColor', 'color', 'Sun color' ], [ 'sunAz', 0, 360, 0.5, 'Sun azimuth (°)' ], [ 'sunEl', 2, 60, 0.1, 'Sun elevation (°)' ],
 			[ 'moon', 0, 2, 0.01, 'Moon' ], [ 'moonLight', 0, 4, 0.01, 'Moonlight' ], [ 'stars', 0, 3, 0.01, 'Stars' ], [ 'clouds', 0, 1, 0.01, 'Clouds' ],
 		];
 
@@ -1611,10 +1616,23 @@ export class Luminara {
 			this.sky.name = 'luminara:sky';
 			this.sky.userData.noAO = true;
 			this.group.add( this.sky );
-			this.skyReps = reps;
 			this.skyU.uSkyR.value = rs; this.skyU.uSkyY0.value = yb; this.skyU.uSkyH.value = ext;		// (the photo by direction: this cylinder's mapping)
-			// the photo between top - h and top: v' = 1 - ( yb + ext v - ( top - h ) ) / h (flipped: glTF's)
-			this.skyV = { repeat: - ext / h, offset: 1 - ( yb - top + h ) / h };
+			// a photo on it (u: the azimuth, φ / 2π; v: the height, ( y - yb ) / ext), its image not flipped (glTF's, and the
+			// skies' own: v down). `arc`: the azimuth it covers (2π / 4: the pack's old 3:1 skies, four times round, mirrored;
+			// π: the panoramas, once over the windows' half, φ 90..270, the middle at φ 180, its left at the viewer's left
+			// (φ 270), mirrored over the doors' half); `aspect` its width / height; `horizon` the row of its horizon (0 top),
+			// put at the eye (SKY_EYE)
+			this.skyMap = ( t, { arc, aspect, horizon } ) => {
+
+				const w = arc * rs, hh = w / aspect, top = SKY_EYE + horizon * hh;
+				const k = 2 * Math.PI / arc;		// (photos round)
+				t.wrapS = THREE.MirroredRepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
+				if ( arc < Math.PI ) t.repeat.set( k, - ext / hh ), t.offset.set( 0.5, 1 - ( yb - top + hh ) / hh );		// (as before: φ 0 the doors at a photo's middle)
+				else t.repeat.set( - k, - ext / hh ), t.offset.set( 0.75 * k, 1 - ( yb - top + hh ) / hh );		// (u' = 1.5 - 2 u: φ 270 -> 0, φ 90 -> 1)
+				t.needsUpdate = true;
+
+			};
+			this.skyOld = { arc: 2 * Math.PI / reps, aspect: 3, horizon: 1 - ( h * 0.62 + 1.55 - SKY_EYE ) / h };		// (the pack's skies: top at h 0.62 + 1.55)
 
 		}
 		if ( this.pack ) this.group.add( this.pack );
@@ -2009,7 +2027,7 @@ export class Luminara {
 		} );
 		// a warm light in each niche (on its shelves and reliefs)
 		this.nicheLights = [];
-		// the low sun through a window (Blue hour), or the moon (night): a directional light, its shadow over
+		// the low sun through a window (Golden hour), or the moon (night): a directional light, its shadow over
 		// the room (the walls round the windows cast it), soft
 		this.sun = new THREE.DirectionalLight( '#ffffff', 0 );
 		this.sun.castShadow = true;
@@ -2041,6 +2059,7 @@ export class Luminara {
 		// than the drawn disc, the reflection outshone the sun; the path tracer's capture keeps 1: its light is the
 		// directional's, the disc there only what the camera sees)
 		S.uSunCore.value = L.sunCore ?? 1;
+		S.uSkySat.value = L.skySat ?? 1;
 		S.uMoon.value = L.moon ?? 0; S.uStars.value = L.stars ?? 0; S.uClouds.value = moonOn ? L.clouds ?? 0 : 0;
 		const sunDir = sunOn ? S.uSunDir.value : S.uMoonDir.value;
 		this.sun.position.copy( sunDir ).multiplyScalar( 20 );
@@ -2283,11 +2302,13 @@ export class Luminara {
 		this.loading = ( async () => {
 
 			const [ buf ] = await Promise.all( [ prefetchLuminara(), this.building ] );		// (the pack's pieces go where the shell says)
+			const skies = this._loadSkies();		// (the panoramas, fetched while the pack is parsed)
 			S.pack = 'build';
 			await nextFrame();
 			const gltf = await new GLTFLoader().setMeshoptDecoder( MeshoptDecoder ).parseAsync( buf, url.href );
 			await nextFrame();
 			const pack = this._build( gltf );
+			await skies;
 			await this._needBake( this.preset );		// (its light from the start: the probe then sees the room lit as it will be)
 			// its shaders before it shows (a long freeze at its first frame else); its lamp's light in the scene: every lit program again
 			S.pack = 'compile';
@@ -2306,6 +2327,28 @@ export class Luminara {
 
 	}
 
+	/**
+	 * The skies' panoramas (tools/luminara-skies.mjs: public/luminara/skies/<hour>.webp, 7680x2160 over the windows'
+	 * 180°: SKY_PANO), each in place of the pack's sky for its hour where there is one (after _build: this.skyMap).
+	 */
+	async _loadSkies() {
+
+		const got = await Promise.all( LUMINARA_OUTSIDE.map( hour => new THREE.TextureLoader().loadAsync( new URL( `skies/${ hour }.webp`, packDir() ).href ).then( t => [ hour, t ], () => null ) ) );
+		for ( const e of got ) {
+
+			if ( ! e ) continue;		// (none for this hour: the pack's)
+			const [ hour, t ] = e;
+			Object.assign( t, { colorSpace: THREE.SRGBColorSpace, flipY: false, anisotropy: 16 } );
+			this.skyMap( t, SKY_PANO );
+			if ( this.skies[ hour ] && this.skies[ hour ] !== t ) this.skies[ hour ].dispose();
+			this.skies[ hour ] = t;
+
+		}
+		const M = this.materials;
+		M.sky.map = this.skies[ this.light.outside ] ?? Object.values( this.skies )[ 0 ] ?? null; M.sky.needsUpdate = true;
+
+	}
+
 	_build( gltf ) {
 
 		const M = this.materials, nodes = {};
@@ -2320,8 +2363,8 @@ export class Luminara {
 
 			const sky = mapOf( name );
 			if ( ! sky || this.skies[ hour ] ) continue;
-			// (glTF images are not flipped: v down; the cylinder's v is up)
-			sky.colorSpace = THREE.SRGBColorSpace; sky.wrapS = THREE.MirroredRepeatWrapping; sky.wrapT = THREE.ClampToEdgeWrapping; sky.repeat.set( this.skyReps, this.skyV.repeat ); sky.offset.set( 0.5, this.skyV.offset ); sky.needsUpdate = true;		// (half a photo round: its mirrored joins at 45° + k 90°, between the windows, not in window M)
+			// (the pack's: a 3:1 photo four times round, mirrored; its joins at 45° + k 90°, between the windows)
+			sky.colorSpace = THREE.SRGBColorSpace; this.skyMap( sky, this.skyOld );
 			this.skies[ hour ] = sky;
 
 		}
