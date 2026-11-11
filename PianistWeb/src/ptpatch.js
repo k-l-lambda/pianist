@@ -22,6 +22,8 @@ import { getLights } from 'three-gpu-pathtracer/src/core/utils/sceneUpdateUtils.
 import { OCEAN_PT_GLSL, CASCADES } from './ocean.js';
 
 // one sample's light after the first rough surface, capped (its luminance; 0: off; ?ptclamp= to try others): see patchAOV
+// ?ptsea=0: the path tracer's shader without the sea (patchSea): to tell a GPU / driver that cannot compile it
+const SEA_PATCH = typeof location === 'undefined' || new URLSearchParams( location.search ).get( 'ptsea' ) !== '0';
 const INDIRECT_MAX = ( () => { const v = typeof location !== 'undefined' ? new URLSearchParams( location.search ).get( 'ptclamp' ) : null; return v !== null && Number.isFinite( Number( v ) ) ? Number( v ) : 64; } )();
 
 const POWER_MIX = 0.75;		// (the power-weighted part of a light's pick; the rest uniform)
@@ -32,24 +34,35 @@ function patchShader( fs ) {
 		// the CDF's declarations, before the light sampling (and the share beside lightsDenom)
 		[ 'float lightsDenom;', `float lightsDenom;
 			float ptLightsShare;
-			uniform sampler2D ptLightCdf;		// ( cdf, p ) per light, in the lights' order
 			uniform float ptLightsShareSet;
-			uniform uint ptCdfCount;
-			// (the CDF has as many bins as the lights uploaded: updateLights; the lights' own struct is declared later)
-			float ptLightProb( uint l ) { return texelFetch( ptLightCdf, ivec2( int( l ), 0 ), 0 ).y; }
-			uint ptPickLight( float u ) {
+			uniform uint ptCdfCount, ptCdfOffset;
+			// the CDF: ( cdf, p ) per light, in the lights' order, in the lights' own texture after their data
+			// (texel ptCdfOffset + l: updateLights). Not a sampler of its own: the shader already has the 16 a
+			// fragment shader may have on many GPUs (MAX_TEXTURE_IMAGE_UNITS); one more and it does not compile
+			vec2 ptCdfAt( sampler2D t, uint l ) { return texelFetch1D( t, ptCdfOffset + l ).xy; }
+			float ptLightProb( sampler2D t, uint l ) { return ptCdfAt( t, l ).y; }
+			uint ptPickLight( sampler2D t, float u ) {
 				uint lo = 0u, hi = max( ptCdfCount, 1u ) - 1u;
-				for ( int k = 0; k < 16 && lo < hi; k ++ ) { uint mid = ( lo + hi ) / 2u; if ( texelFetch( ptLightCdf, ivec2( int( mid ), 0 ), 0 ).x > u ) hi = mid; else lo = mid + 1u; }
+				for ( int k = 0; k < 16 && lo < hi; k ++ ) { uint mid = ( lo + hi ) / 2u; if ( ptCdfAt( t, mid ).x > u ) hi = mid; else lo = mid + 1u; }
 				return lo;
 			}` ],
+		// no IES profiles (no venue has an IES light): their sampler out of the shader, a spot's photometric
+		// attenuation 1 (the 16-sampler limit, as the CDF above)
+		[ 'uniform sampler2DArray iesProfiles;', '' ],
+		[ /float getPhotometricAttenuation\( sampler2DArray iesProfiles, int iesProfile, vec3 posToLight, vec3 lightDir, vec3 u, vec3 v \) \{[\s\S]*?return texture2D\( iesProfiles, vec3\( angle, 0\.0, iesProfile \) \)\.r;\s*\}/,
+			'float getPhotometricAttenuation( int iesProfile, vec3 posToLight, vec3 lightDir, vec3 u, vec3 v ) { return 1.0; }' ],
+		[ 'LightRecord randomSpotLightSample( Light light, sampler2DArray iesProfiles, vec3 rayOrigin, vec2 ruv ) {', 'LightRecord randomSpotLightSample( Light light, vec3 rayOrigin, vec2 ruv ) {' ],
+		[ 'getPhotometricAttenuation( iesProfiles, light.iesProfile,', 'getPhotometricAttenuation( light.iesProfile,' ],
+		[ 'LightRecord randomLightSample( sampler2D lights, sampler2DArray iesProfiles, uint lightCount, vec3 rayOrigin, vec3 ruv ) {', 'LightRecord randomLightSample( sampler2D lights, uint lightCount, vec3 rayOrigin, vec3 ruv ) {' ],
+		[ 'result = randomSpotLightSample( light, iesProfiles, rayOrigin, ruv.yz );', 'result = randomSpotLightSample( light, rayOrigin, ruv.yz );' ],
 		// the pick: by the CDF
-		[ 'uint l = uint( ruv.x * float( lightCount ) );', 'uint l = ptPickLight( ruv.x );' ],
+		[ 'uint l = uint( ruv.x * float( lightCount ) );', 'uint l = ptPickLight( lights, ruv.x );' ],
 		// the share: lights or the environment
 		[ 'if( lightsDenom != 0.0 && rand( 5 ) < float( lights.count ) / lightsDenom ) {', 'if( lightsDenom != 0.0 && rand( 5 ) < ptLightsShare ) {' ],
 		// the pdfs: the light's pick and the share, the environment's share
-		[ 'float lightPdf = lightRec.pdf / lightsDenom;', 'float lightPdf = lightRec.pdf * ptLightsShare * ptLightProb( ptPickLight( pickU ) );' ],
-		[ 'LightRecord lightRec = randomLightSample( lights.tex, iesProfiles, lights.count, rayOrigin, rand3( 6 ) );', 'vec3 pickR = rand3( 6 ); float pickU = pickR.x;\n			LightRecord lightRec = randomLightSample( lights.tex, iesProfiles, lights.count, rayOrigin, pickR );' ],
-		[ 'float misWeight = misHeuristic( scatterRec.pdf, lightRec.pdf / lightsDenom );', 'float misWeight = misHeuristic( scatterRec.pdf, lightRec.pdf * ptLightsShare * ptLightProb( i ) );' ],
+		[ 'float lightPdf = lightRec.pdf / lightsDenom;', 'float lightPdf = lightRec.pdf * ptLightsShare * ptLightProb( lights.tex, ptPickLight( lights.tex, pickU ) );' ],
+		[ 'LightRecord lightRec = randomLightSample( lights.tex, iesProfiles, lights.count, rayOrigin, rand3( 6 ) );', 'vec3 pickR = rand3( 6 ); float pickU = pickR.x;\n			LightRecord lightRec = randomLightSample( lights.tex, lights.count, rayOrigin, pickR );' ],
+		[ 'float misWeight = misHeuristic( scatterRec.pdf, lightRec.pdf / lightsDenom );', 'float misWeight = misHeuristic( scatterRec.pdf, lightRec.pdf * ptLightsShare * ptLightProb( lights.tex, i ) );' ],
 		// the share, set where lightsDenom is
 		[ /lightsDenom =\s*\(\s*environmentIntensity == 0\.0 \|\| envMapInfo\.totalSum == 0\.0 \) && lights\.count != 0u \?\s*float\( lights\.count \) :\s*float\( lights\.count \+ 1u \);/,
 			`$&
@@ -449,7 +462,7 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 	let patched;
 	try {
 
-		patched = patchShader( patchSea( mats[ 0 ].fragmentShader ) );
+		patched = patchShader( SEA_PATCH ? patchSea( mats[ 0 ].fragmentShader ) : mats[ 0 ].fragmentShader );
 
 	} catch ( e ) {
 
@@ -457,16 +470,10 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 		return false;
 
 	}
-	// the CDF: a new texture whenever the number of lights changes (three allocates a texture's storage once,
-	// at its first upload, immutable: a larger image after that is not uploaded, the old size kept, and the
-	// pick read past its end: with a light more than at the first build, the room's sun went dark; two more,
-	// the image black)
-	const makeCdf = ( data, n ) => Object.assign( new THREE.DataTexture( data, n, 1, THREE.RGFormat, THREE.FloatType ), { needsUpdate: true } );
-	let cdf = makeCdf( new Float32Array( [ 1, 1 ] ), 1 );
 	for ( const m of mats ) {
 
 		m.fragmentShader = patched;
-		Object.assign( m.uniforms, { ptLightCdf: { value: cdf }, ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 }, ptIndirectMax: { value: INDIRECT_MAX } }, seaUniforms() );
+		Object.assign( m.uniforms, { ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 }, ptCdfOffset: { value: 0 }, ptIndirectMax: { value: INDIRECT_MAX } }, seaUniforms() );
 		m.defines.PT_AOV = 0;
 		m.needsUpdate = true;
 
@@ -521,13 +528,29 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 		const lightsShare = env !== undefined && sum > 0 && env < 0.1 * sum ? 0.85 : share;
 		for ( const m of mats ) m.uniforms.ptLightsShareSet.value = lightsShare;
 		pt.lightsShareNow = lightsShare;
-		if ( cdf.image.width === Math.max( n, 1 ) ) { cdf.image.data = data; cdf.needsUpdate = true; } else {
+		// the CDF into the lights' own texture, after their data (texel 6 n on: LightsInfoUniformStruct's 6 a
+		// light), the square grown if it must be (three allocates a texture's storage at its first upload: a
+		// larger image is a new one, the old disposed, as the library does; the next updateFrom shrinks it back
+		// and this grows it again)
+		for ( const S of new Set( mats.map( m => m.uniforms.lights.value ) ) ) {
 
-			cdf.dispose();
-			cdf = makeCdf( data, Math.max( n, 1 ) );
+			const tex = S.tex, off = 6 * n, need = off + Math.max( n, 1 ), dim = Math.ceil( Math.sqrt( need ) );
+			if ( tex.image.width < dim ) {
+
+				const old = tex.image.data, w0 = tex.image.width;
+				tex.dispose();
+				const d = new Float32Array( dim * dim * 4 );
+				// (texel index i: the library reads it as ( i % w, i / w ): copy by index, not by row)
+				d.set( old.subarray( 0, Math.min( old.length, 4 * w0 * w0 ) ) );
+				Object.assign( tex.image, { data: d, width: dim, height: dim } );
+
+			}
+			const d = tex.image.data;
+			for ( let i = 0; i < Math.max( n, 1 ); ++ i ) { d[ 4 * ( off + i ) ] = n ? data[ 2 * i ] : 1; d[ 4 * ( off + i ) + 1 ] = n ? data[ 2 * i + 1 ] : 1; d[ 4 * ( off + i ) + 2 ] = 0; d[ 4 * ( off + i ) + 3 ] = 0; }
+			tex.needsUpdate = true;
 
 		}
-		for ( const m of mats ) { m.uniforms.ptLightCdf.value = cdf; m.uniforms.ptCdfCount.value = n; }
+		for ( const m of mats ) { m.uniforms.ptCdfCount.value = n; m.uniforms.ptCdfOffset.value = 6 * n; }
 
 	};
 	pt.lightsShare = v => { for ( const m of mats ) m.uniforms.ptLightsShareSet.value = v; pt.reset(); };

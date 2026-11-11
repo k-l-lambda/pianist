@@ -497,6 +497,9 @@ function keySpecular( material, u ) {
 
 	chainCompile( material, sh => {
 
+		// (once per program: a material reached twice — a clone sharing its compile hook, the clear glass's own
+		// chain — would declare the uniform twice and not compile)
+		if ( sh.fragmentShader.includes( 'uniform float uKeySpec;' ) ) return;
 		sh.uniforms.uKeySpec = u;
 		// (three's chunk: a snapshot of the specular before the point lights' loop, before the spots', and before the
 		// suns' / directionals'; then the key light (a spot) scaled by u, the point lights' (the chandelier's: a lamp
@@ -599,7 +602,7 @@ export class Azurea {
 		// punctual light, made a broad white blob as bright as the moon itself; keySpecGlass on the glass: its
 		// reflection of the key light, a lamp's blown blob where a real moon's own small reflection should be)
 		this.keySpec = { value: 1 }; this.keySpecGlass = { value: 1 };
-		for ( const [ m, u ] of [ [ M.floor, this.keySpec ], [ M.marble, this.keySpec ], [ M.glass, this.keySpecGlass ] ] ) keySpecular( m, u );
+		for ( const [ m, u ] of [ [ M.floor, this.keySpec ], [ M.marble, this.keySpec ], [ M.glass, this.keySpecGlass ] ] ) if ( ! m.userData.azureaSpec ) { m.userData.azureaSpec = true; keySpecular( m, u ); }		// (once: rebuild() runs again, its chain would declare uKeySpec twice)
 		this._buildLights();
 		this._built = false;
 
