@@ -295,29 +295,6 @@ const VERT = /* glsl */`
 `;
 
 /**
- * The sea's waves as GLSL: `vec2 seaSlope( vec2 xz, float t, float footprint )` (∂h/∂x, ∂h/∂z at a point of the sea,
- * metres, at time t; components finer than the footprint (m) faded out). Sixteen directional deep-water waves
- * (ω² = g k), wavelengths 0.4..30 m round the wind, incommensurate: nothing repeats.
- */
-export const SEA_WAVES = /* glsl */`
-	vec2 seaSlope( vec2 xz, float t, float footprint, vec2 wind ) {
-		vec2 s = vec2( 0.0 );
-		float wa = atan( wind.y, wind.x );
-		for ( int k = 0; k < 16; ++ k ) {
-			float fk = float( k );
-			float lambda = 30.0 * pow( 0.72, fk );		// (30 m .. 0.2 m)
-			float kk = 6.2832 / lambda, om = sqrt( 9.81 * kk );
-			float ang = wa + 0.9 * sin( fk * 2.399 + 0.7 ) * ( 0.4 + 0.6 * fract( fk * 0.618 ) );
-			vec2 d = vec2( cos( ang ), sin( ang ) );
-			float steep = 0.11 * ( 0.6 + 0.4 * fract( fk * 0.381 + 0.2 ) );		// (slope amplitude: a k)
-			float fade = 1.0 - smoothstep( 0.6, 2.0, footprint / lambda * 2.0 );
-			s += d * ( steep * fade * cos( kk * dot( d, xz ) - om * t + fk * 1.7 ) );
-		}
-		return s;
-	}
-`;
-
-/**
  * The raster's pool water (an opaque surface: three has no cheap refraction) made to show its floor: per pixel the
  * view refracted through the rippled surface (n 1.33) down to the floor, the tiles there (their texture, planar in
  * world xz) lit by the caustic (the normal map's alpha at that point of the floor), dimmed by the water's
@@ -425,47 +402,3 @@ export function patchPoolWater( material, { water, tiles, tileScale = 1 / 0.96, 
 	return material;
 
 }
-
-/**
- * The sea seen at infinity (a photo looked up by the view's direction, as Azurea's backdrop): GLSL for its motion.
- * `SeaPoint seaAt( vec3 vd, float t, float camH, vec2 wind, vec3 L )`: vd the view direction (unit), the point of the
- * sea it meets from `camH` above the water, the waves' slope there (SEA_WAVES, filtered by the pixel's footprint);
- * returned: `shift` (a direction offset for the photo's lookup: its shimmer), `factor` (brighter where the surface
- * faces the sky higher up), `glint` (the reflection's closeness to the light L: pow it for a glitter). Above the
- * horizon: no change (shift 0, factor 1, glint 0).
- */
-/** The unresolved ripple slopes' variance at a footprint (Beckmann's σ²: the sea's glare lobe's width), as seaSlope's. */
-/** The unresolved ripple slopes' variance at a footprint (Beckmann's σ²: the sea's glare lobe's width), as seaSlope's. */
-export const SEA_SLOPE_VAR = /* glsl */`
-	float seaSlopeVar( vec2 xz, float t, float footprint, vec2 wind ) {
-		float v = 0.0;
-		float wa = atan( wind.y, wind.x );
-		for ( int k = 0; k < 16; ++ k ) {
-			float fk = float( k );
-			float lambda = 30.0 * pow( 0.72, fk );
-			float steep = 0.11 * ( 0.6 + 0.4 * fract( fk * 0.381 + 0.2 ) );
-			float fade = 1.0 - smoothstep( 0.6, 2.0, footprint / lambda * 2.0 );
-			v += 0.5 * steep * steep * fade * fade;		// (a sinusoid's mean square slope)
-		}
-		return v;
-	}
-`;
-
-export const SEA_SURFACE = SEA_WAVES + SEA_SLOPE_VAR + /* glsl */`
-	struct SeaPoint { vec2 shift; float factor; float glint; float near; };
-	SeaPoint seaAt( vec3 vd, float t, float camH, vec2 wind, vec3 L ) {
-		SeaPoint o = SeaPoint( vec2( 0.0 ), 1.0, 0.0, 0.0 );
-		float hl = length( vd.xz ), below = - vd.y / max( hl, 1e-4 );
-		if ( below < 0.0003 ) return o;
-		float dist = camH / below;
-		vec2 xz = vd.xz / hl * dist;
-		float foot = dist * ( length( fwidth( vd ) ) / max( below, 1e-3 ) ) + 1e-3;		// (a pixel's reach on the water: grows as 1 / below²)
-		vec2 sl = seaSlope( xz, t, foot, wind );
-		vec3 n = normalize( vec3( - sl.x, 1.0, - sl.y ) ), R = reflect( vd, n );
-		o.near = clamp( below * 5.0, 0.0, 1.0 );
-		o.shift = sl * ( 0.006 * o.near );
-		o.factor = 1.0 + 0.5 * ( R.y - abs( vd.y ) ) * mix( 0.35, 1.0, o.near );
-		o.glint = max( dot( R, normalize( L ) ), 0.0 );
-		return o;
-	}
-`;
