@@ -4,21 +4,27 @@
 // render-video.mjs, steps the same simulated clock frame by frame without capturing, and logs the
 // phone camera every frame. Then:
 //   --room off      the live sound track (src/renderaudio.js renderAudio: what render-video.mjs muxes);
-//   --room living | bare | hall   the dry stems (piano without FluidSynth's reverb and chorus, speech) and
-//                   the pose log go to tools/spatialise.py (shoebox room of the scene, the image
-//                   following the phone; --stereo ab: two omnis 14 cm apart along the phone, or
-//                   mono), and its mix comes back through the live output stage (master gain ->
-//                   compressor). Default: the venue's (the room: living, the concert hall: hall).
+//   --room living | bare | hall | berlin   the dry stems (piano without FluidSynth's reverb and chorus,
+//                   speech) and the pose log go to tools/spatialise.py (shoebox room of the scene, the
+//                   image following the camera; --stereo ab: two omnis --spacing apart along the camera's
+//                   right axis (default 14 cm with the phone held, 20 cm for a camera alone), ortf: two
+//                   cardioids 17 cm apart turned ±55° from its view, or mono), and its mix comes back
+//                   through the live output stage (master gain -> compressor). Default: the venue's (the
+//                   room: living, the concert hall: hall, the Berlin hall: berlin). The camera is the one
+//                   the frames are drawn from (the script's own shots; the phone's when handheld): its
+//                   cuts are found in the pose log and crossfaded (spatialise.py).
 // --mux: put the sound track on a rendered video (its frames copied as they are).
 //
 //   node tools/render-audio.mjs <script.yaml> [--fps 25] [--from 0] [--to <s>] [--out track.wav]
-//        [--room living|bare|hall|off] [--stereo ab|mono] [--absorption 1] [--keep]
-//        [--mux video.mp4 --video-out out.mp4] [--size 640x360] [--url http://localhost:5184/]
+//        [--room living|bare|hall|berlin|off] [--stereo ab|ortf|mono] [--spacing 0.2] [--absorption 1]
+//        [--query "style=grand-black"] [--keep] [--mux video.mp4 --video-out out.mp4] [--size 640x360]
+//        [--url http://localhost:5184/]
 //
 // --fps / --from / --to as given to render-video.mjs for the video (same timeline). --keep: keep
 // the intermediate files next to --out (<out>.piano.wav, .speech.wav: dry stems; .pose.json;
 // .room.wav: the room mix before the output; .room.json: RT60 / DRR report; .room.piano.wav,
-// .room.speech.wav). --absorption: times the room's absorption (1.5: living RT60 ~0.4 s).
+// .room.speech.wav). --absorption: times the room's absorption (1.5: living RT60 ~0.4 s). --query: page
+// parameters, as render-video.mjs's (style, preset: the same scene as the video).
 // Python with pyroomacoustics 0.10.1: ROOM_PYTHON (default ../.venv-audio/bin/python). GPU and
 // browser: as render-video.mjs (PLAYWRIGHT_CORE, CHROME, __EGL_VENDOR_LIBRARY_FILENAMES).
 
@@ -33,7 +39,7 @@ const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..
 
 // ---- arguments ----
 const argv = process.argv.slice( 2 );
-const opt = { fps: 25, from: 0, to: null, out: null, size: '640x360', url: null, room: null, stereo: 'ab', absorption: 1, keep: false, mux: null, videoOut: null };
+const opt = { fps: 25, from: 0, to: null, out: null, size: '640x360', url: null, room: null, stereo: 'ab', spacing: null, absorption: 1, keep: false, mux: null, videoOut: null, query: '' };
 let script = null;
 for ( let i = 0; i < argv.length; ++ i ) {
 
@@ -52,13 +58,15 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--url' ) opt.url = val();
 	else if ( a === '--room' ) opt.room = val();
 	else if ( a === '--stereo' ) opt.stereo = val();
+	else if ( a === '--spacing' ) opt.spacing = Number( val() );
+	else if ( a === '--query' ) opt.query = val();
 	else if ( a === '--absorption' ) opt.absorption = Number( val() );
 	else if ( a === '--keep' ) opt.keep = true;
 	else if ( a === '--mux' ) opt.mux = val();
 	else if ( a === '--video-out' ) opt.videoOut = val();
 	else if ( a === '-h' || a === '--help' ) {
 
-		console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 26 ).join( '\n' ) );
+		console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 33 ).join( '\n' ) );
 		process.exit( 0 );
 
 	} else if ( ! a.startsWith( '--' ) && ! script ) script = a;
@@ -66,13 +74,14 @@ for ( let i = 0; i < argv.length; ++ i ) {
 
 }
 
-if ( ! script ) throw new Error( 'usage: node tools/render-audio.mjs <script.yaml> [--fps 25] [--from 0] [--to s] [--out track.wav] [--room living|bare|hall|off] [--stereo ab|mono]' );
+if ( ! script ) throw new Error( 'usage: node tools/render-audio.mjs <script.yaml> [--fps 25] [--from 0] [--to s] [--out track.wav] [--room living|bare|hall|berlin|off] [--stereo ab|ortf|mono] [--query ...]' );
 const [ W, H ] = opt.size.split( 'x' ).map( Number );
 if ( ! ( W > 0 && H > 0 ) ) throw new Error( `--size ${ opt.size }: give WxH` );
 if ( ! ( opt.fps > 0 ) || ! ( opt.from >= 0 ) || ( opt.to !== null && ! ( opt.to > opt.from ) ) ) throw new Error( 'bad --fps / --from / --to' );
-if ( opt.room !== null && ! [ 'off', 'living', 'bare', 'hall' ].includes( opt.room ) ) throw new Error( `--room ${ opt.room }: off, living, bare or hall` );
-if ( opt.stereo === 'hrtf' ) throw new Error( '--stereo hrtf: not implemented (ab or mono)' );
-if ( ! [ 'ab', 'mono' ].includes( opt.stereo ) ) throw new Error( `--stereo ${ opt.stereo }: ab or mono` );
+if ( opt.room !== null && ! [ 'off', 'living', 'bare', 'hall', 'berlin' ].includes( opt.room ) ) throw new Error( `--room ${ opt.room }: off, living, bare, hall or berlin` );
+if ( opt.stereo === 'hrtf' ) throw new Error( '--stereo hrtf: not implemented (ab, ortf or mono)' );
+if ( ! [ 'ab', 'ortf', 'mono' ].includes( opt.stereo ) ) throw new Error( `--stereo ${ opt.stereo }: ab, ortf or mono` );
+if ( opt.spacing !== null && ! ( opt.spacing > 0 && opt.spacing < 2 ) ) throw new Error( `--spacing ${ opt.spacing }: metres, 0..2` );
 if ( ! ( opt.absorption > 0 ) ) throw new Error( 'bad --absorption' );
 if ( opt.mux && ! opt.videoOut ) throw new Error( '--mux: give --video-out' );
 const roomPython = process.env.ROOM_PYTHON ?? path.resolve( root, '../.venv-audio/bin/python' );
@@ -133,7 +142,10 @@ async function stepFrames( n ) {
 	for ( let k = 0; k < n; ++ k ) {
 
 		const s = await window.__render.step( { draw: false } ), c = P.camera;		// the timeline only: nothing on the GPU
-		const pose = { t: s.time, frame: s.frame, state: s.state, p: c.position.toArray(), q: c.quaternion.toArray(), mouth: null };
+		// (the camera's axes too, for the log: right +x, up +y, forward -z of its quaternion)
+		const ax = v => v.applyQuaternion( c.quaternion ).toArray().map( x => + x.toFixed( 6 ) );
+		const pose = { t: s.time, frame: s.frame, state: s.state, p: c.position.toArray(), q: c.quaternion.toArray(),
+			right: ax( new c.position.constructor( 1, 0, 0 ) ), up: ax( new c.position.constructor( 0, 1, 0 ) ), forward: ax( new c.position.constructor( 0, 0, - 1 ) ), mouth: null };
 		const h = P.handheld, info = h?.person?.info;
 		if ( h?.enabled && h.showPerson && info ) {
 
@@ -172,7 +184,10 @@ function sceneSources() {
 	} );
 	const at = ( fx, fy, fz ) => [ lo[ 0 ] + fx * ( hi[ 0 ] - lo[ 0 ] ), lo[ 1 ] + fy * ( hi[ 1 ] - lo[ 1 ] ), lo[ 2 ] + fz * ( hi[ 2 ] - lo[ 2 ] ) ];
 	const grand = P.settings.style.startsWith( 'grand' );
-	const piano = grand ? { bass: at( 0.3, 0.7, 0.35 ), treble: at( 0.7, 0.7, 0.65 ) } : { bass: at( 0.25, 0.65, 0.2 ), treble: at( 0.75, 0.65, 0.2 ) };
+	// (a grand's: the soundboard's height over its feet, ~0.72 m, not a share of the bounds: its open lid
+	// raises those to ~1.6 m; the strings' plane is what radiates, under the lid)
+	const board = grand ? Math.min( 1, ( 0.72 ) / Math.max( 0.1, hi[ 1 ] - lo[ 1 ] ) ) : 0.65;
+	const piano = grand ? { bass: at( 0.3, board, 0.35 ), treble: at( 0.7, board, 0.65 ) } : { bass: at( 0.25, board, 0.2 ), treble: at( 0.75, board, 0.2 ) };
 	const { acoustics, ...room } = P.venue.acousticBox();
 	return {
 		room, acoustics,
@@ -217,7 +232,9 @@ try {
 	// the timeline only: the scene is drawn small (frames are not captured); ss 1
 	const hash = new URLSearchParams( { render: script, fps: opt.fps, from: opt.from, ss: 1 } );
 	if ( opt.to !== null ) hash.set( 'to', opt.to );
-	await page.goto( new URL( '#?' + hash, opt.url ).href, { waitUntil: 'commit' } );
+	const baseUrl = new URL( opt.url );
+	if ( opt.query ) baseUrl.search = opt.query;		// (the scene's parameters: style, preset, as the video's)
+	await page.goto( new URL( '#?' + hash, baseUrl ).href, { waitUntil: 'commit' } );
 	await page.waitForFunction( () => window.__render, null, { timeout: 120000 } );
 	await page.evaluate( () => window.__render.ready );
 	// no --room: the venue's (the piano's style picks it: uprights in the room, grands in the hall)
@@ -241,7 +258,7 @@ try {
 		for ( const p of batch ) {
 
 			if ( p.frame !== f ) throw new Error( `frame ${ p.frame }, expected ${ f }` );
-			poses.push( { t: p.t, p: p.p, q: p.q, mouth: p.mouth } );
+			poses.push( { t: p.t, p: p.p, q: p.q, right: p.right, up: p.up, forward: p.forward, mouth: p.mouth } );
 			++ f;
 			// no --to: stop 2 s after the script finished (as render-video.mjs)
 			if ( opt.to === null && ! p.state ) endAt ??= p.frame + 2 * opt.fps;
@@ -301,8 +318,10 @@ try {
 		if ( voices.length ) fs.writeFileSync( side( 'voices.json' ), JSON.stringify( voices, null, 1 ) );
 		const pose = side( 'pose.json' ), mix = side( 'room.wav' );
 		fs.writeFileSync( pose, JSON.stringify( { fps: opt.fps, ...await page.evaluate( sceneSources ), frames: poses } ) );
+		// (the pair's spacing: the phone's 14 cm when the phone is the camera, else 20 cm: a camera's own pair)
+		opt.spacing ??= poses.some( p => p.mouth ) ? 0.14 : 0.20;
 		const args = [ path.join( root, 'tools/spatialise.py' ), '--piano', stems.piano, '--speech', stems.speech, '--pose', pose, '--out', mix,
-			'--room', opt.room, '--stereo', opt.stereo, '--absorption', String( opt.absorption ), '--report', side( 'room.json' ) ];
+			'--room', opt.room, '--stereo', opt.stereo, '--spacing', String( opt.spacing ), '--absorption', String( opt.absorption ), '--report', side( 'room.json' ) ];
 		if ( voices.length ) args.push( '--voices', side( 'voices.json' ) );
 		if ( opt.keep ) args.push( '--stems', side( 'room' ) );
 		await run( roomPython, args );
@@ -315,7 +334,7 @@ try {
 
 	}
 
-	console.log( `sound track: room ${ opt.room }${ opt.room !== 'off' ? `, ${ opt.stereo }` : '' }, peak ${ res.peak.toFixed( 3 ) }${ res.peak > 1 ? ', clipped' : '' }, ${ ( ( Date.now() - ta ) / 1000 ).toFixed( 1 ) } s` );
+	console.log( `sound track: room ${ opt.room }${ opt.room !== 'off' ? `, ${ opt.stereo }${ opt.stereo !== 'mono' ? ` ${ opt.stereo === 'ortf' ? 0.17 : opt.spacing } m` : '' }` : '' }, peak ${ res.peak.toFixed( 3 ) }${ res.peak > 1 ? ', clipped' : '' }, ${ ( ( Date.now() - ta ) / 1000 ).toFixed( 1 ) } s` );
 	console.log( `wrote ${ path.resolve( opt.out ) }` );
 
 	if ( opt.mux ) {
