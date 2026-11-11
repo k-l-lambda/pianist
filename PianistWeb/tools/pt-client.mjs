@@ -3,7 +3,7 @@
 // encoded, and given their sound (a raster pass of the range here: tools/render-video.mjs).
 //
 //   node tools/pt-client.mjs [--ssh host] video <script.yaml> --from A --to B [--fps 25] [--size 640x360]
-//        [--pt 1024] [--denoise] [--bits 8|10] [--crf 18] [--wm off] [--query "style=..."] [--no-audio]
+//        [--pt 1024] [--pt-shutter 0.5] [--denoise] [--bits 8|10] [--crf 18] [--wm off] [--query "style=..."] [--no-audio]
 //        [--frames dir] [--ahead K] [--temporal R] [--out file.mp4]
 //   node tools/pt-client.mjs [--ssh host] still <state.json> [--spp 4096] [--size WxH] [--denoise] [--out file.png]
 //   node tools/pt-client.mjs [--ssh host] status | jobs | cancel <id> | shutdown
@@ -106,7 +106,7 @@ if ( cmd === 'video' ) {
 	if ( flags.frames ) fs.mkdirSync( flags.frames, { recursive: true } );
 	const st = await api( 'GET', '/status' ), K = Number( flags.ahead ?? 2 * st.workers.length );
 	const job = await api( 'POST', '/jobs', { type: 'frames', script, from: Number( flags.from ), to: Number( flags.to ), fps, size, pt: flags.pt ? Number( flags.pt ) : 0, denoise: !! flags.denoise, bits,
-		wm: flags.wm, query: flags.query } );
+		wm: flags.wm, query: flags.query, ptShutter: flags[ 'pt-shutter' ] ? Number( flags[ 'pt-shutter' ] ) : undefined } );
 	console.log( `job ${ job.id }: frames ${ job.f0 }-${ job.f1 - 1 } (${ job.f1 - job.f0 }) on ${ st.workers.length } worker(s), ${ K } at once` );
 	// the encoder here: raw sRGB in, BT.709 tv out, tagged; an odd size padded by one (yuv420p)
 	const tmp = fs.mkdtempSync( path.join( os.tmpdir(), 'pt-client-' ) ), video = flags[ 'no-audio' ] ? out : path.join( tmp, 'video.mp4' );

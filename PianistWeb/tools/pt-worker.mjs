@@ -90,7 +90,7 @@ async function openPage( href, width, height ) {
 
 }
 
-const jobKey = j => JSON.stringify( [ j.script, j.fps, j.size, j.pt, !! j.denoise, j.ss, j.sub, j.bits, j.dither, j.filter, !! j.hq, j.wm ?? null, j.query ?? '' ] );
+const jobKey = j => JSON.stringify( [ j.script, j.fps, j.size, j.pt, !! j.denoise, j.ss, j.sub, j.bits, j.dither, j.filter, !! j.hq, j.wm ?? null, j.query ?? '', j.ptShutter ?? 0 ] );
 
 async function frameTask( { url, job, frame } ) {
 
@@ -103,6 +103,7 @@ async function frameTask( { url, job, frame } ) {
 		if ( job.wm ) hash.set( 'wm', job.wm );
 		if ( job.pt ) hash.set( 'pt', job.pt );
 		if ( job.denoise ) hash.set( 'dn', 1 );
+		if ( job.ptShutter ) hash.set( 'pts', job.ptShutter );
 		const base = new URL( url );
 		if ( job.query ) base.search = job.query;
 		const t0 = Date.now();

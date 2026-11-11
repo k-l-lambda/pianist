@@ -23,7 +23,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
-import { clock } from './rendermode.js';
+import { clock, RENDER_OPTS } from './rendermode.js';
 import { PoolWater, patchPoolWater } from './water.js';
 import { Ocean, OCEAN_GLSL } from './ocean.js';
 import { applyPoolTiles } from './pooltiles.js';
@@ -551,6 +551,7 @@ export class Azurea {
 		if ( ! this._built ) { this.rebuild(); this._built = true; }
 		this.scene.add( this.group );
 		if ( ! this._loadTried ) this.load();
+		this._ptSeaAttach();
 		this.updateLights();
 
 	}
@@ -560,6 +561,7 @@ export class Azurea {
 		this.active = false;
 		this.scene.remove( this.group, this.lights );
 		delete this.scene.userData.ptEnvPower;		// (the path tracer's share: another venue's own)
+		delete this.scene.userData.ptSea; delete this.scene.userData.ptSun;		// (its sea and disc: src/ptpatch.js)
 
 	}
 
@@ -841,8 +843,14 @@ export class Azurea {
 		sun.shadow.mapSize.set( 4096, 4096 );
 		sun.shadow.bias = - 0.0001; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
 		sun.shadow.camera.near = 40; sun.shadow.camera.far = 120;
-		sun.radius = 0.4;		// (path tracer: the sun's disc, soft shadows)
+		sun.radius = 0.4;
 		this.lights.add( sun, sun.target );
+		// the path tracer's sun (or moon): a directional light, its disc the drawn one's (the backdrop's R: 0.0135
+		// rad the sun, 0.0115 the moon), sampled in its cone (src/ptpatch.js patchSea): the sea outside the spot's
+		// cone lit too, the lobby's shadows as soft as the disc is wide. The raster's spot is hidden there
+		const sunPT = this.sunPT = new THREE.DirectionalLight( '#ffffff', 1 );
+		sunPT.visible = false; sunPT.castShadow = false;
+		this.lights.add( sunPT, sunPT.target );
 		// the glass's sky as an area light (raster; the path tracer samples the environment through the glass)
 		const portal = this.portal = new THREE.RectAreaLight( '#cfe8ff', 2, 2 * GLASS.r * Math.sin( ( GLASS.a1 - GLASS.a0 ) / 2 ), H - 0.4 );
 		portal.position.set( GLASS.cx, H / 2, glassZ( GLASS.cx ) + 0.3 );
@@ -868,7 +876,10 @@ export class Azurea {
 		const aim = V( - 1, 0.5, 2 ), dir = this.sunDirection();
 		this.sun.position.copy( aim ).addScaledVector( dir, 70 );
 		this.sun.target.position.copy( aim );
-		this.sun.color.set( L.sunColor ); this.sun.intensity = L.sun; this.sun.visible = L.sun > 0;
+		this.sun.color.set( L.sunColor ); this.sun.intensity = L.sun; this.sun.visible = L.sun > 0 && this.mode !== 'pathtrace';
+		this.sunPT.position.copy( aim ).addScaledVector( dir, 70 ); this.sunPT.target.position.copy( aim );
+		this.sunPT.color.set( L.sunColor ); this.sunPT.intensity = L.sun; this.sunPT.visible = L.sun > 0 && this.mode === 'pathtrace';
+		this.sunPT.updateMatrixWorld(); this.sunPT.target.updateMatrixWorld();
 		this.sun.shadow.camera.updateProjectionMatrix();
 		this.portal.color.set( L.skyColor ).lerp( new THREE.Color( '#ffffff' ), 0.6 );
 		this.portal.intensity = L.portal * L.sky;
@@ -889,6 +900,7 @@ export class Azurea {
 			this.ocean.set( this._seaState() );
 			U.uDiscColor.value.set( L.moon ? '#dfe8ff' : L.sunColor );
 			if ( ! L.moon ) U.uDiscColor.value.lerp( new THREE.Color( '#fff2dc' ), 0.35 );		// (the disc whiter than its light)
+			this._ptSeaLight( L );
 
 		}
 		if ( this.dome ) {
@@ -910,7 +922,7 @@ export class Azurea {
 			c.needsUpdate = true;
 
 		}
-		if ( this.active ) this.scene.background = this.mode === 'pathtrace' ? this.skyEnvironment() : this.background;
+		if ( this.active ) this.scene.background = this.mode === 'pathtrace' ? ( this.skyEnvironment(), this._skyEnv?.background ?? this.background ) : this.background;
 		// the water reflects the sky and the sea (the probe, taken in the lobby, showed its white walls in it)
 		if ( this.pack && this.mode !== 'pathtrace' ) {
 
@@ -972,7 +984,66 @@ export class Azurea {
 
 		}
 		if ( ! pt ) delete this.scene.userData.ptEnvPower;
+		if ( pt && this._renderer ) this.ocean.updatePT( this._renderer, clock.now() / 1000 );		// (the path tracer's sea now; per sample: _ptSeaAttach)
 		this.updateLights();
+
+	}
+
+	/**
+	 * The path tracer's open sea (src/ptpatch.js patchSea: scene.userData.ptSea) and the disc (ptSun), while this
+	 * venue is active. The sea's time, per sample (beforeSample( k ), k the sample about to be drawn):
+	 *   live (the page path traces)   held while it accumulates, taken anew when it starts over (k 0: a camera
+	 *                                 move, a rebuild): the image converges on one instant of the sea
+	 *   offline (#?pt=…, a frame)     the frame's time (the render clock: every worker the same sea); with
+	 *                                 #?pts=<s> (tools/render-video.mjs --pt-shutter) each sample its own time
+	 *                                 across a shutter open s of the frame, ending at it (a golden-ratio
+	 *                                 sequence: any prefix spread over it): the glints' motion blur
+	 */
+	_ptSeaAttach() {
+
+		const U = this.materials.backdrop.userData.u, oc = this.ocean;
+		const P = POOL;
+		this._ptSeaU ??= {
+			...oc.ptUniforms,
+			ptSeaY: { value: SKY.seaY }, ptSeaPhotoDep: { value: SKY.photoDep ?? 0.012 },
+			// (the venue's own water and floors: the far wall's outer face, round the glass's centre)
+			ptSeaHole: { value: new THREE.Vector3( GLASS.cx, GLASS.cz, P.r1 + 0.25 ) },
+			ptSeaColor: U.uSeaColor, ptSeaExt: U.uSeaExt, ptSeaExtScale: U.uSeaExtScale,
+			ptSeaTint: { value: this.materials.backdrop.color },		// (the backdrop's colour: its tint × sky, as the raster's)
+			ptSunSeaGain: { value: new THREE.Vector3( 1, 1, 1 ) },
+		};
+		let t0 = 0;
+		const shutter = RENDER_OPTS?.ptShutter ?? 0, dt = RENDER_OPTS ? 1 / RENDER_OPTS.fps : 0;
+		this.scene.userData.ptSea = {
+			uniforms: this._ptSeaU,
+			beforeSample: k => {
+
+				const r = this._renderer;
+				if ( ! r ) return;
+				const now = clock.now() / 1000;
+				let t;
+				if ( RENDER_OPTS ) t = shutter > 0 ? now - shutter * dt * ( 1 - ( ( 0.5 + k * 0.6180339887498949 ) % 1 ) ) : now;
+				else { if ( k === 0 ) t0 = now; t = t0; }
+				oc.updatePT( r, t );
+
+			},
+		};
+		this.scene.userData.ptSun = { omc: 0 };
+
+	}
+
+	/** The disc's size and its glitter's strength for the path tracer (updateLights). */
+	_ptSeaLight( L ) {
+
+		const sun = this.scene.userData.ptSun;
+		if ( ! sun || ! this._ptSeaU ) return;
+		const R = L.moon ? 0.0115 : 0.0135;		// (the backdrop's drawn disc: its R)
+		sun.omc = 1 - Math.cos( R );
+		// after a sea bounce the disc's light × this: the raster's glitter (src/azurea.js backdrop: uGlitter × the
+		// drawn disc's irradiance π R² × 14 (9 the moon) × its colour) over the light's own (intensity × colour)
+		const U = this.materials.backdrop.userData.u, d = U.uDiscColor.value, c = this.sunPT.color, I = Math.max( this.sunPT.intensity, 1e-6 );
+		const k = ( L.glitter ?? 0 ) * Math.PI * R * R * ( L.moon ? 9 : 14 ) / I;
+		this._ptSeaU.ptSunSeaGain.value.set( k * d.r / Math.max( c.r, 1e-4 ), k * d.g / Math.max( c.g, 1e-4 ), k * d.b / Math.max( c.b, 1e-4 ) );
 
 	}
 
@@ -993,7 +1064,14 @@ export class Azurea {
 		let sum = 0, n = 0;
 		if ( d ) for ( let y = Math.floor( Hh / 3 ); y < Math.floor( 2 * Hh / 3 ); y += 4 ) for ( let x = 0; x < W; x += 8 ) { const i = 4 * ( y * W + x ); sum += 0.2126 * f( d[ i ] ) + 0.7152 * f( d[ i + 1 ] ) + 0.0722 * f( d[ i + 2 ] ); n ++; }
 		const area = GLASS.r * ( GLASS.a1 - GLASS.a0 ) * ( H - 0.16 );
-		this._skyEnv = { key, texture: env, power: sum / Math.max( n, 1 ) * Math.PI * area };
+		this._skyEnv?.background?.dispose();
+		// the background (camera rays, and through glass: the sky as drawn, the disc in it) and the environment
+		// (what a bounce finds: the disc's light is the directional light's now, its core taken out, the halo
+		// kept; below the horizon the sea itself, path traced: nothing there, so the environment's sampling
+		// spends nothing on it)
+		const bg = Object.assign( new THREE.DataTexture( d.slice(), W, Hh, THREE.RGBAFormat, THREE.HalfFloatType ), { minFilter: env.minFilter, magFilter: env.magFilter, wrapS: env.wrapS, wrapT: env.wrapT, mapping: env.mapping, needsUpdate: true } );
+		if ( d ) this._ptEnvEdit( env );
+		this._skyEnv = { key, texture: env, background: bg, power: sum / Math.max( n, 1 ) * Math.PI * area };
 		this.scene.userData.ptEnvPower = this._skyEnv.power;
 		return env;
 
@@ -1004,6 +1082,54 @@ export class Azurea {
 
 		const L = this.light ?? {}, q = ( v, d, st ) => Math.round( ( v ?? d ) / st ) * st;
 		return { wind: q( L.wind, 3, 0.1 ), windDir: q( L.windDir, 90, 1 ) * D, swell: q( L.swell, 0, 0.01 ), swellDir: q( L.swellDir, 90, 1 ) * D, swellPeriod: q( L.swellPeriod, 9, 0.1 ) };
+
+	}
+
+	/**
+	 * The path tracer's environment from the capture (half floats, in place): below the horizon black, and the
+	 * drawn disc's core (its R and a texel) filled from just outside it, radially (the halo's falloff continued).
+	 * Rows: v = 1 - acos( y ) / π, row 0 the bottom (three-gpu-pathtracer's equirectDirectionToUv).
+	 */
+	_ptEnvEdit( env ) {
+
+		const d = env.image.data, W = env.image.width, Hh = env.image.height, f = THREE.DataUtils.fromHalfFloat, h = THREE.DataUtils.toHalfFloat;
+		const zero = h( 0 );
+		for ( let y = 0; y < Math.floor( Hh / 2 ); ++ y ) for ( let x = 0; x < W; ++ x ) { const i = 4 * ( y * W + x ); d[ i ] = d[ i + 1 ] = d[ i + 2 ] = zero; }
+		const L = this.light;
+		if ( ! ( ( L.disc ?? 0 ) > 0 ) ) { env.needsUpdate = true; return; }
+		const s = this.sunDirection().normalize(), R = ( L.moon ? 0.0115 : 0.0135 ) + 2 * Math.PI / W;
+		const dirOf = ( x, y ) => {
+
+			const u = ( x + 0.5 ) / W, v = ( y + 0.5 ) / Hh, ph = ( u - 0.5 ) * 2 * Math.PI, th = ( 1 - v ) * Math.PI;
+			return V( Math.sin( th ) * Math.cos( ph ), Math.cos( th ), Math.sin( th ) * Math.sin( ph ) );
+
+		};
+		const texOf = v => {
+
+			const u = Math.atan2( v.z, v.x ) / ( 2 * Math.PI ) + 0.5, w = 1 - Math.acos( THREE.MathUtils.clamp( v.y, - 1, 1 ) ) / Math.PI;
+			return [ Math.min( W - 1, Math.max( 0, Math.floor( u * W ) ) ), Math.min( Hh - 1, Math.max( 0, Math.floor( w * Hh ) ) ) ];
+
+		};
+		const [ cx, cy ] = texOf( s ), span = Math.ceil( R / ( Math.PI / Hh ) ) + 2, spanX = Math.ceil( span / Math.max( Math.sqrt( 1 - s.y * s.y ), 0.05 ) );
+		const out = V(), axis = V();
+		for ( let y = cy - span; y <= cy + span; ++ y ) {
+
+			if ( y < 0 || y >= Hh ) continue;
+			for ( let xx = cx - spanX; xx <= cx + spanX; ++ xx ) {
+
+				const x = ( ( xx % W ) + W ) % W, dv = dirOf( x, y ), a = Math.acos( THREE.MathUtils.clamp( dv.dot( s ), - 1, 1 ) );
+				if ( a >= R ) continue;
+				// (the same bearing from the disc's centre, just outside its edge)
+				axis.crossVectors( s, dv ); if ( axis.lengthSq() < 1e-12 ) axis.set( 0, 1, 0 ).cross( s );
+				axis.normalize();
+				out.copy( s ).applyAxisAngle( axis, R * 1.08 );
+				const [ ox, oy ] = texOf( out ), j = 4 * ( oy * W + ox ), i = 4 * ( y * W + x );
+				for ( let c = 0; c < 3; ++ c ) d[ i + c ] = h( f( d[ j + c ] ) );
+
+			}
+
+		}
+		env.needsUpdate = true;
 
 	}
 

@@ -12,9 +12,14 @@
 //                              in for: ptLights) emits only to rays from the camera (or through glass); a
 //                              bounce finds its light through the area light, not twice. Such a mesh is
 //                              no occluder either (castShadow false: the library's own meaning).
+//   the open sea               (patchSea) a venue's sea as an analytic height field (src/ocean.js's FFT, its
+//                              own copy for the path tracer), intersected in traceScene beside the BVH: a
+//                              water surface (ior 1.333, GGX), its body as the raster's; the sun or the moon
+//                              a directional light with a disc (cone sampling, MIS with the BSDF).
 
 import * as THREE from 'three';
 import { getLights } from 'three-gpu-pathtracer/src/core/utils/sceneUpdateUtils.js';
+import { OCEAN_PT_GLSL, CASCADES } from './ocean.js';
 
 // one sample's light after the first rough surface, capped (its luminance; 0: off; ?ptclamp= to try others): see patchAOV
 const INDIRECT_MAX = ( () => { const v = typeof location !== 'undefined' ? new URLSearchParams( location.search ).get( 'ptclamp' ) : null; return v !== null && Number.isFinite( Number( v ) ) ? Number( v ) : 64; } )();
@@ -87,6 +92,214 @@ function patchShader( fs ) {
 	fs = fs.split( 'envPdf /= lightsDenom;' ).join( 'envPdf *= 1.0 - ptLightsShare;' );
 	// the selection's pdf: randomLightSample's record times its pick's probability (the light's own pdf: the area's)
 	return patchAOV( fs );
+
+}
+
+/** The sea's and the disc's uniforms (patchSea): their defaults, none (a venue sets scene.userData.ptSea / ptSun). */
+function seaUniforms() {
+
+	const tex = new THREE.DataArrayTexture( new Uint16Array( 4 * CASCADES.length ), 1, 1, CASCADES.length );
+	Object.assign( tex, { format: THREE.RGBAFormat, type: THREE.HalfFloatType, needsUpdate: true } );
+	return {
+		ptSeaOn: { value: 0 }, ptSeaY: { value: 0 }, ptSeaPhotoDep: { value: 0.012 }, ptSeaExtScale: { value: 1 }, ptSunOmc: { value: 0 },
+		ptSeaHole: { value: new THREE.Vector3( 0, 0, 0 ) }, ptSeaColor: { value: new THREE.Color( 0, 0, 0 ) }, ptSeaExt: { value: new THREE.Vector3() },
+		ptSeaTint: { value: new THREE.Color( 1, 1, 1 ) }, ptSunSeaGain: { value: new THREE.Vector3( 1, 1, 1 ) },
+		ptOcTex: { value: tex }, ptOcRot: { value: CASCADES.map( () => new THREE.Vector4( 1, 0, 1, 0 ) ) }, ptOcSlab: { value: 0.05 }, ptOcAlpha: { value: 0.004 },
+	};
+
+}
+
+/**
+ * The open sea (scene.userData.ptSea, a venue's: src/azurea.js) and the sun's disc (scene.userData.ptSun):
+ *   traceScene   the BVH's hit, or the sea's if nearer: the plane y = ptSeaY plus the FFT height (src/ocean.js),
+ *                marched in its slab (± ptOcSlab: ~4.5 σ of the height; 24 steps, 10 bisections), not inside
+ *                the venue's own water (ptSeaHole: a disc, the pool and the lobby); its normal the slopes'
+ *   the surface  water: a GGX mirror (metalness 1 over F0 0.0204 of n 1.333: all its samples the reflection; its
+ *                roughness the cascades' unresolved slopes), its body (the light from below the surface) as the
+ *                raster's drawn sea (the same colour, extinction and tint: src/azurea.js), × ( 1 − Fresnel )
+ *   occlusion    a shadow ray that meets the sea is blocked (the sun below the crests)
+ *   the disc     a directional light with ptSunOmc > 0 (1 − cos of its angular radius): sampled in its cone,
+ *                hit by rays in it (MIS); its light after a sea bounce × ptSunSeaGain (the raster's own glitter
+ *                strength: the art's, not the photometric ratio)
+ */
+function patchSea( fs ) {
+
+	const edits = [
+		[ 'float lightsDenom;', `float lightsDenom;
+				uniform float ptSeaOn, ptSeaY, ptSeaPhotoDep, ptSeaExtScale, ptSunOmc;
+				uniform vec3 ptSeaHole, ptSeaColor, ptSeaExt, ptSeaTint, ptSunSeaGain;
+				bool ptSeaHit = false, ptLastSea = false;
+				vec3 ptSeaN = vec3( 0.0, 1.0, 0.0 );
+				${ OCEAN_PT_GLSL }` ],
+		[ '#define NO_HIT 0', `// the sea: where the ray meets it (its distance, or -1), ptSeaN its normal there
+				float ptSeaIntersect( vec3 ro, vec3 rd, float maxDist ) {
+					if ( ptSeaOn < 0.5 || rd.y > - 1e-5 ) return - 1.0;
+					float top = ptSeaY + ptOcSlab, bot = ptSeaY - ptOcSlab;
+					float s0 = max( ( top - ro.y ) / rd.y, 0.0 ), s1 = ( bot - ro.y ) / rd.y;
+					if ( s1 <= 0.0 || s0 >= maxDist ) return - 1.0;
+					// (far off, the cascades' coordinates lose their fraction in single precision: a flat sea there)
+					if ( s0 > 4000.0 ) {
+						float s = ( ptSeaY - ro.y ) / rd.y;
+						if ( s >= maxDist ) return - 1.0;
+						ptSeaN = vec3( 0.0, 1.0, 0.0 ); return s;
+					}
+					s1 = min( s1, maxDist );
+					float a = s0;
+					vec3 p = ro + rd * a;
+					float fa = p.y - ( ptSeaY + ptOceanHeight( p.xz ) );
+					if ( fa < 0.0 ) return - 1.0;		// (starting under it: no hit, the ray leaves)
+					float b = - 1.0;
+					const int STEPS = 24;
+					for ( int k = 1; k <= STEPS; k ++ ) {
+						float s = s0 + ( s1 - s0 ) * float( k ) / float( STEPS );
+						p = ro + rd * s;
+						float f = p.y - ( ptSeaY + ptOceanHeight( p.xz ) );
+						if ( f < 0.0 ) { b = s; break; }
+						a = s;
+					}
+					if ( b < 0.0 ) return - 1.0;
+					for ( int k = 0; k < 10; k ++ ) {
+						float m = 0.5 * ( a + b );
+						p = ro + rd * m;
+						if ( p.y - ( ptSeaY + ptOceanHeight( p.xz ) ) < 0.0 ) b = m; else a = m;
+					}
+					float s = 0.5 * ( a + b );
+					p = ro + rd * s;
+					if ( distance( p.xz, ptSeaHole.xy ) < ptSeaHole.z ) return - 1.0;		// (the venue's own water and floors)
+					vec3 o = ptOceanSample( p.xz );
+					ptSeaN = normalize( vec3( - o.x, 1.0, - o.y ) );
+					return s;
+				}
+
+				#define NO_HIT 0` ],
+		// the scene's hit, or the sea's
+		[ 'bool hit = bvhIntersectFirstHit( bvh, ray.origin, ray.direction, surfaceHit.faceIndices, surfaceHit.faceNormal, surfaceHit.barycoord, surfaceHit.side, surfaceHit.dist );',
+			`bool hit = bvhIntersectFirstHit( bvh, ray.origin, ray.direction, surfaceHit.faceIndices, surfaceHit.faceNormal, surfaceHit.barycoord, surfaceHit.side, surfaceHit.dist );
+			ptSeaHit = false;
+			{
+				float sd = ptSeaIntersect( ray.origin, ray.direction, hit ? surfaceHit.dist : INFINITY );
+				if ( sd > 0.0 ) {
+					hit = true; ptSeaHit = true;
+					surfaceHit.dist = sd; surfaceHit.faceNormal = ptSeaN; surfaceHit.side = 1.0;
+					surfaceHit.faceIndices = uvec4( 0u ); surfaceHit.barycoord = vec3( 1.0, 0.0, 0.0 );
+				}
+			}` ],
+		// a shadow ray: the sea blocks it
+		[ '} else if ( hitType == SURFACE_HIT ) {\n\n				float totalDist = distance( startPoint, ray.origin + ray.direction * surfaceHit.dist );',
+			`} else if ( hitType == SURFACE_HIT ) {
+
+				if ( ptSeaHit ) { result = distance( startPoint, ray.origin + ray.direction * surfaceHit.dist ) <= rayDist; break; }
+				float totalDist = distance( startPoint, ray.origin + ray.direction * surfaceHit.dist );` ],
+		// the main loop: the sea's hit has no material of its own (face 0's read): an opaque, plain one
+		[ 'uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;\n						Material material = readMaterialInfo( materials, materialIndex );\n\n						#if FEATURE_FOG',
+			`uint materialIndex = uTexelFetch1D( materialIndexAttribute, surfaceHit.faceIndices.x ).r;
+						Material material = readMaterialInfo( materials, materialIndex );
+						if ( ptSeaHit ) {
+
+							material.matte = false; material.castShadow = true; material.fogVolume = false; material.normalMap = - 1;
+							material.transparent = false; material.alphaTest = 0.0; material.side = 0.0; material.transmission = 0.0;
+
+						}
+
+						#if FEATURE_FOG` ],
+		[ 'SurfaceRecord surf;\n', 'ptLastSea = ptSeaHit;\n						SurfaceRecord surf;\n' ],
+		[ /getSurfaceRecord\(\s*material, surfaceHit, attributesArray, state\.accumulatedRoughness,\s*surf\s*\) == SKIP_SURFACE/,
+			'( ptSeaHit ? ptSeaSurface( ray, surfaceHit, state.accumulatedRoughness, surf ) : getSurfaceRecord( material, surfaceHit, attributesArray, state.accumulatedRoughness, surf ) ) == SKIP_SURFACE' ],
+		// the disc's light after a sea bounce: the raster's glitter strength
+		[ 'gl_FragColor.rgb += lightRec.emission * state.throughputColor * misWeight;',
+			'gl_FragColor.rgb += lightRec.emission * ( ptLastSea && lightRec.type == DIR_LIGHT_TYPE ? ptSunSeaGain : vec3( 1.0 ) ) * state.throughputColor * misWeight;' ],
+		[ 'result = attenuatedColor * lightRec.emission * state.throughputColor * sampleColor * misWeight / lightPdf;',
+			'result = attenuatedColor * lightRec.emission * ( ptLastSea && lightRec.type == DIR_LIGHT_TYPE ? ptSunSeaGain : vec3( 1.0 ) ) * state.throughputColor * sampleColor * misWeight / lightPdf;' ],
+		// the disc: its own MIS (a directional light with a size is no delta light)
+		[ 'float misWeight = lightRec.type == SPOT_LIGHT_TYPE || lightRec.type == DIR_LIGHT_TYPE || lightRec.type == POINT_LIGHT_TYPE ? 1.0 : misHeuristic( lightPdf, lightMaterialPdf );',
+			'float misWeight = lightRec.type == SPOT_LIGHT_TYPE || ( lightRec.type == DIR_LIGHT_TYPE && ptSunOmc <= 0.0 ) || lightRec.type == POINT_LIGHT_TYPE ? 1.0 : misHeuristic( lightPdf, lightMaterialPdf );' ],
+		// its sample: a direction in its cone (pdf 1 / solid angle; the radiance its irradiance over that)
+		[ /rec\.dist = 1e10;\s*rec\.direction = light\.u;\s*rec\.pdf = 1\.0;\s*rec\.emission = light\.color \* light\.intensity;/,
+			`rec.dist = 1e10;
+			rec.direction = light.u;
+			rec.pdf = 1.0;
+			rec.emission = light.color * light.intensity;
+			if ( ptSunOmc > 0.0 ) {
+
+				float omc = ptSunOmc * ruv.y, ct = 1.0 - omc, st = sqrt( max( omc * ( 2.0 - omc ), 0.0 ) ), ph = 6.28318530718 * ruv.z;
+				mat3 B = getBasisFromNormal( normalize( light.u ) );
+				rec.direction = normalize( B * vec3( st * cos( ph ), st * sin( ph ), ct ) );
+				rec.pdf = 1.0 / ( 6.28318530718 * ptSunOmc );
+				rec.emission = light.color * light.intensity * rec.pdf;
+
+			}` ],
+		// a ray into its cone hits it
+		[ 'bool didHit = false;\n		Light light = readLightInfo( lights, l );',
+			`bool didHit = false;
+		Light light = readLightInfo( lights, l );
+		if ( light.type == DIR_LIGHT_TYPE && ptSunOmc > 0.0 ) {
+
+			if ( 1.0 - dot( rayDirection, normalize( light.u ) ) < ptSunOmc ) {
+
+				lightRec.dist = 1e10;
+				lightRec.pdf = 1.0 / ( 6.28318530718 * ptSunOmc );
+				lightRec.emission = light.color * light.intensity * lightRec.pdf;
+				lightRec.direction = rayDirection;
+				lightRec.type = light.type;
+				return true;
+
+			}
+			return false;
+
+		}` ],
+	];
+	for ( const [ from, to ] of edits ) {
+
+		const n = typeof from === 'string' ? fs.split( from ).length - 1 : ( fs.match( new RegExp( from.source, 'g' ) ) ?? [] ).length;
+		if ( n !== 1 ) throw new Error( `ptpatch (sea): ${ String( from ).slice( 0, 60 ) }… found ${ n } times` );
+		fs = fs.replace( from, to );
+
+	}
+	// the surface record (after the structs, before main uses it)
+	const at = 'void main() {';
+	if ( fs.split( at ).length - 1 !== 1 ) throw new Error( 'ptpatch (sea): main() not found once' );
+	fs = fs.replace( at, `// the sea's surface: water (see patchSea)
+				int ptSeaSurface( Ray ray, SurfaceHit hit, float accumulatedRoughness, inout SurfaceRecord surf ) {
+
+					vec3 V = - ray.direction, n = hit.faceNormal;
+					// (a crest's back seen grazing: bent until the view is just above it, as a normal map's)
+					for ( int k = 0; k < 4 && dot( n, V ) < 0.02; k ++ ) n = normalize( mix( n, vec3( 0.0, 1.0, 0.0 ), 0.5 ) );
+					surf.volumeParticle = false;
+					surf.faceNormal = n; surf.normal = n; surf.frontFace = true;
+					surf.metalness = 1.0; surf.color = vec3( 0.0204 ); surf.emission = vec3( 0.0 );
+					surf.ior = 1.333; surf.transmission = 0.0; surf.thinFilm = false;
+					surf.attenuationColor = vec3( 1.0 ); surf.attenuationDistance = INFINITY;
+					surf.clearcoatNormal = n; surf.clearcoat = 0.0; surf.clearcoatRoughness = 0.0;
+					surf.sheen = 0.0; surf.sheenColor = vec3( 0.0 ); surf.sheenRoughness = 0.0;
+					surf.iridescence = 0.0; surf.iridescenceIor = 1.3; surf.iridescenceThickness = 0.0;
+					surf.specularColor = vec3( 1.0 ); surf.specularIntensity = 1.0;
+					surf.roughness = ptOcAlpha;
+					surf.filteredRoughness = applyFilteredGlossy( surf.roughness, accumulatedRoughness );
+					surf.filteredClearcoatRoughness = 0.0;
+					surf.eta = 1.0 / 1.333; surf.f0 = 0.0204;
+					surf.normalBasis = getBasisFromNormal( n ); surf.normalInvBasis = inverse( surf.normalBasis );
+					surf.clearcoatBasis = surf.normalBasis; surf.clearcoatInvBasis = surf.normalInvBasis;
+					// its body, as the raster's drawn sea (src/azurea.js backdropMaterial): its colour by the light's path
+					// through the water (red first), seen from the camera (its depression and distance), × ( 1 − F )
+					vec3 cam = cameraWorldMatrix[ 3 ].xyz;
+					vec3 P = ray.origin + ray.direction * hit.dist, vd = normalize( P - cam );
+					float dep = max( - vd.y, 1e-4 ), dist = length( P.xz - cam.xz );
+					float far = smoothstep( 0.0, ptSeaPhotoDep, dep );
+					float cosI = clamp( dot( - vd, n ), 0.0, 1.0 );
+					float c = max( dot( V, n ), 1e-3 ), g = sqrt( max( 1.333 * 1.333 - 1.0 + c * c, 0.0 ) );
+					float fa = ( g - c ) / ( g + c ), fb = ( c * ( g + c ) - 1.0 ) / ( c * ( g - c ) + 1.0 );
+					float fres = 0.5 * fa * fa * ( 1.0 + fb * fb );
+					float path = 2.6 * cosI * ( 0.5 + 1.6 * far ) + 0.45 * smoothstep( 3.0, 40.0, dist );
+					vec3 T = exp( - ptSeaExt * path * ptSeaExtScale );
+					T = mix( T, T * ptSeaColor * 1.6, 0.35 );
+					float lit = clamp( ptSeaColor.g * 3.0, 0.25, 1.35 );
+					surf.emission = ptSeaColor * T * lit * ptSeaTint * ( 1.0 - fres );
+					return HIT_SURFACE;
+
+				}
+
+				void main() {` );
+	return fs;
 
 }
 
@@ -224,7 +437,7 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 	let patched;
 	try {
 
-		patched = patchShader( mats[ 0 ].fragmentShader );
+		patched = patchShader( patchSea( mats[ 0 ].fragmentShader ) );
 
 	} catch ( e ) {
 
@@ -241,15 +454,41 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 	for ( const m of mats ) {
 
 		m.fragmentShader = patched;
-		Object.assign( m.uniforms, { ptLightCdf: { value: cdf }, ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 }, ptIndirectMax: { value: INDIRECT_MAX } } );
+		Object.assign( m.uniforms, { ptLightCdf: { value: cdf }, ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 }, ptIndirectMax: { value: INDIRECT_MAX } }, seaUniforms() );
 		m.defines.PT_AOV = 0;
 		m.needsUpdate = true;
 
 	}
+	// the sea and the disc: the venue's values (scene.userData.ptSea: { uniforms, beforeSample( k ) }; ptSun: { omc })
+	// copied into both materials (by value: the uniforms the programs hold are the materials' own)
+	const syncSea = () => {
+
+		const sea = pt.scene?.userData?.ptSea, sun = pt.scene?.userData?.ptSun;
+		for ( const m of mats ) {
+
+			const u = m.uniforms;
+			u.ptSeaOn.value = sea ? 1 : 0;
+			u.ptSunOmc.value = sun?.omc ?? 0;
+			if ( sea ) for ( const [ k, v ] of Object.entries( sea.uniforms ) ) if ( u[ k ] ) u[ k ].value = v.value;
+
+		}
+
+	};
+	pt.syncSea = syncSea;
+	const renderSample = pt.renderSample.bind( pt );
+	pt.renderSample = ( ...a ) => {
+
+		// (a new sample's first tile: the venue's sea at its time; the shutter's, or held)
+		const sea = pt.scene?.userData?.ptSea;
+		if ( sea?.beforeSample && Math.abs( pt.samples - Math.round( pt.samples ) ) < 1e-6 ) { sea.beforeSample( Math.round( pt.samples ) ); syncSea(); }
+		return renderSample( ...a );
+
+	};
 	const update = pt.updateLights.bind( pt );
 	pt.updateLights = () => {
 
 		update();
+		syncSea();
 		const lights = getLights( pt.scene );		// (as the path tracer uploads them: visible, by uuid)
 		const w = lights.map( power ), sum = w.reduce( ( a, b ) => a + b, 0 ), n = lights.length;
 		const data = new Float32Array( Math.max( n, 1 ) * 2 );

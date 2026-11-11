@@ -20,7 +20,8 @@
 // parameters (style, preset, ...). --frames dir: also each frame as PNG there (from the raw pixels).
 // --pt N: path traced, N samples per pixel a frame (src/main.js stepPT: the raster's state, the path
 // tracer's image; its samples are the anti-aliasing: --ss 1 and one sub-frame unless given). --denoise:
-// its image denoised (src/ptdenoise.js).
+// its image denoised (src/ptdenoise.js). --pt-shutter s: the open sea's samples spread over a shutter open
+// s of the frame (0..1; default 0: the sea at the frame's time), its glints' motion blur (src/azurea.js).
 //
 // --watermark: the klstudio.png mark drawn into every frame; defaults as on the page (src/main.js
 // WATERMARK: bottom right, 60 px in, opacity 0.06); keys opacity, right, bottom, height (px at
@@ -80,6 +81,7 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--frames' ) opt.frames = val();
 	else if ( a === '--pt' ) opt.pt = Number( val() );
 	else if ( a === '--denoise' ) opt.denoise = true;
+	else if ( a === '--pt-shutter' ) opt.ptShutter = Number( val() );
 	else if ( a === '--no-audio' ) opt.audio = false;
 	else if ( a === '--watermark' ) opt.watermark = val();
 	else if ( a === '-h' || a === '--help' ) {
@@ -191,6 +193,7 @@ try {
 	if ( opt.watermark ) hash.set( 'wm', opt.watermark );
 	if ( opt.pt ) hash.set( 'pt', opt.pt );
 	if ( opt.denoise ) hash.set( 'dn', 1 );
+	if ( opt.ptShutter ) hash.set( 'pts', opt.ptShutter );
 	const base = new URL( opt.url );
 	if ( opt.query ) base.search = opt.query;
 	await page.goto( new URL( '#?' + hash, base ).href, { waitUntil: 'commit' } );
