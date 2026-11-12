@@ -107,6 +107,7 @@ export function makeMaterials( baker, style ) {
 		case 'grand-white':
 			m.case = lacquer( '#ecebe6', { roughness: 0.22 } );
 			m.trim = m.case;
+			m.plate = lacquer( '#ecebe6', { roughness: 0.22 } );		// (the GF white's plate in the case's white lacquer: GF-TYPE-1.jpg)
 			m.panel = screen();
 			m.rimInner = woodMaterial( baker.walnut(), { clearcoat: 0.6, clearcoatRoughness: 0.2 } );
 			break;

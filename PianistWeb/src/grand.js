@@ -49,8 +49,7 @@ const RIM_START = LID_FRONT_Z;				// front of the straight rim sides
 // inside the shallower rim: soundboard, plate (strings and dampers stay below the rim top)
 const SOUNDBOARD_Y = RIM_BOTTOM + 0.10;
 const PLATE_Y = RIM_BOTTOM + 0.15;			// top of the plate floor
-const PLATE_RIB = 0.043;						// struts' and front bar's height above the floor (web + flange)
-const PLATE_BAND = 0.035;						// the plate rim band along the case
+const PLATE_RIB = 0.043;						// the tenor / treble strings' height over the plate floor, less 7 mm
 const STRING_Y = PLATE_RIB + 0.007;				// tenor / treble strings above the floor at the pins (0.004 lower at the hitch pins)
 const BASS_Y = STRING_Y + 0.018;				// overstrung bass, above the tenor
 // the lid's front flap: hinged to the main lid along FOLD_Z, folded back onto it when open
@@ -59,6 +58,51 @@ const FOLD_Z = - 0.65;
 const SCREEN_EDGE_X = SCREEN_W / 2;			// side boards between the display's ends and the case sides
 
 const v2 = ( x, y ) => new THREE.Vector2( x, y );
+
+// the plate's plan, after Footages.local/ref/grand-piano-interior-illustration-white-35943134.jpg mapped onto this
+// case (x 2.97 mm/px from the spine, z 2.47 mm/px back from the front; the case's own outline kept):
+// - its solid part, a crescent along the tail and the bentside: PLATE_EDGE its inner edge, (x, z) from the bass's
+//   hitch at the tail round to the bentside's front (x increasing); the strings' hitch pins on a rail just behind it
+//   (HITCH_BACK), its top HITCH_RAIL above the floor; the holes in it (x, z, radius), eight, small to large
+// - its frame over the strings (FRAME_Y: its beams' bottom and top above the floor; the bass strings at BASS_Y below,
+//   the closed lid 9 mm above): across the front, behind the display, a plate pierced by four bays, its back edge
+//   in two halves (FRAME_Z, FRONT_RIGHT), the first two bays either side of a gusset (GUSSET: its apex at the back); an X over the bass
+//   and the tenor, its node X_NODE, its legs from the first bay's back corner and the gusset, out to the tail; a
+//   strut from the gusset to the crescent; the treble's two struts at FRAME_V (in the gaps between the bays),
+//   straight back to the crescent and sweeping out to the bentside
+// (the edge one smooth S, a single cubic Bezier: flat along the bass's end at the tail, falling through the tenor,
+// flat again along the treble's; fitted to the illustration's edge, within 18 mm)
+const PLATE_EDGE = new THREE.CubicBezierCurve( v2( - 0.463, - 1.30 ), v2( 0.2488, - 1.2384 ), v2( - 0.301, - 0.5868 ), v2( 0.68, - 0.535 ) ).getSpacedPoints( 120 );
+/** z of a polyline of (x, z) increasing in x, at x (its ends' z beyond them). */
+function polyZ( e, x ) {
+
+	if ( x <= e[ 0 ].x ) return e[ 0 ].y;
+	for ( let i = 1; i < e.length; ++ i ) if ( x <= e[ i ].x ) return e[ i - 1 ].y + ( x - e[ i - 1 ].x ) / ( e[ i ].x - e[ i - 1 ].x ) * ( e[ i ].y - e[ i - 1 ].y );
+	return e[ e.length - 1 ].y;
+
+}
+const plateEdgeZ = x => polyZ( PLATE_EDGE, x );
+const HITCH_BACK = 0.025, HITCH_RAIL = 0.03;
+/** z of a string's hitch pin (the centre of the rail along the crescent's edge) at x. */
+const hitchZ = x => plateEdgeZ( x ) - HITCH_BACK;
+// (struts numbered by their lower ends, left to right: 1 the X's long leg, 2 the strut from the gusset parallel to
+// it, 3 the X's other leg, 4 and 5 the treble's. One hole between the X's upper legs; two small ones close together
+// by the rim between struts 1 and 2 (against 2), behind the bass's hitch rail; one against the rim between 2 and 4's
+// sweep; two large between the treble struts' sweeps, two after the second's)
+const PLATE_HOLES = [ [ - 0.383, - 1.407, 0.045 ], [ - 0.050, - 1.328, 0.024 ], [ 0.017, - 1.275, 0.026 ], [ 0.113, - 1.124, 0.034 ],
+	[ 0.25, - 0.94, 0.055 ], [ 0.31, - 0.81, 0.04 ], [ 0.489, - 0.74, 0.034 ], [ 0.575, - 0.70, 0.026 ] ];
+const FRAME_Y = [ 0.074, 0.106 ];
+const X_TAIL_R = v2( - 0.24, - 1.47 );		// (where the X's long leg, from the front plate's left end, meets the tail)
+const FRAME_Z = - 0.465, GUSSET = v2( - 0.213, - 0.48 ), X_NODE = v2( - 0.39, - 1.05 ), FRAME_V = [ 0.083, 0.368 ];
+// the front plate's back edge right of the first treble strut: 20 mm forward of FRAME_Z there, sloping back to the
+// bentside (the illustration's 515 -> 505 px)
+const FRONT_RIGHT = [ [ 0.083, - 0.445 ], [ 0.13, - 0.446 ], [ 0.22, - 0.450 ], [ 0.31, - 0.455 ], [ 0.48, - 0.458 ], [ 0.60, - 0.462 ], [ 0.68, - 0.468 ] ].map( ( [ x, z ] ) => v2( x, z ) );
+/** z of the front plate's back edge at x (its left half straight, its right half FRONT_RIGHT). */
+const frontBackZ = x => x > FRONT_RIGHT[ 0 ].x ? polyZ( FRONT_RIGHT, x ) : FRAME_Z;
+// the floor plate under it (over the pin block, under the strings): its back edge a curve rising from the spine
+// (FLOOR_LEFT) and bowing back, a quadratic meeting the front plate's right half at the first treble strut along
+// its tangent, then that half's own edge to the bentside
+const FLOOR_LEFT = v2( - 0.68, - 0.36 );
 
 const mesh = ( geo, mat, cast = true ) => {
 
@@ -225,64 +269,6 @@ function bentsideX( pts, z ) {
 	}
 
 	return best;
-
-}
-
-/** Inner end (z) of the case for a string running along -z at x. */
-function caseEndZ( pts, x ) {
-
-	let best = 0;
-	for ( let i = 1; i < pts.length; ++ i ) {
-
-		const a = pts[ i - 1 ], b = pts[ i ];
-		if ( ( a.x - x ) * ( b.x - x ) <= 0 && a.x !== b.x ) {
-
-			const t = ( x - a.x ) / ( b.x - a.x );
-			best = Math.min( best, a.y + ( b.y - a.y ) * t );
-
-		}
-
-	}
-
-	return best;
-
-}
-
-/** Keep the part of polygon `poly` (Vector2[]) where n·p >= c (Sutherland–Hodgman, one plane). */
-function clipHalfPlane( poly, n, c ) {
-
-	const out = [];
-	for ( let i = 0; i < poly.length; ++ i ) {
-
-		const a = poly[ i ], b = poly[ ( i + 1 ) % poly.length ];
-		const da = n.dot( a ) - c, db = n.dot( b ) - c;
-		if ( da >= 0 ) out.push( a );
-		if ( ( da >= 0 ) !== ( db >= 0 ) ) out.push( a.clone().lerp( b, da / ( da - db ) ) );
-
-	}
-
-	return out;
-
-}
-
-/**
- * A plate opening: the region of `area` on the same side as `inside` of every strut, each strut
- * [a, b, halfWidth] a line through a and b widened by halfWidth.
- */
-function plateOpening( area, struts, inside ) {
-
-	let poly = area;
-	for ( const [ a, b, w ] of struts ) {
-
-		const d = new THREE.Vector2().subVectors( b, a ).normalize();
-		let n = new THREE.Vector2( - d.y, d.x );
-		if ( n.dot( inside ) < n.dot( a ) ) n = n.negate();
-		poly = clipHalfPlane( poly, n, n.dot( a ) + w );
-		if ( poly.length < 3 ) return null;
-
-	}
-
-	return poly;
 
 }
 
@@ -512,69 +498,24 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	}
 
 	// --- plate ------------------------------------------------------------
-	// A cast plate is ribs standing on edge, not a flat sheet: over a thin floor (with the
-	// openings that show the soundboard), the front bar is a hollow box whose top carries three
-	// round holes (GF-TYPE-3, Fig. 1); the bass-break, tenor and treble struts (at x -0.21, 0.10,
-	// 0.40 behind the bar, top view Fig. 6) and a cross bar from the spine to the tenor strut are
-	// T sections (a web with a flange on top); along the case the plate rim is a raised band
-	// carrying the hitch pins. The strings run just above the ribs (PLATE_RIB below them)
+	// (its plan: PLATE_EDGE and the rest, above.) Under the strings the solid crescent along the tail and the
+	// bentside, a thin floor with a lip against the rim, the hitch rail along its inner edge, its holes each in a
+	// raised collar; a strip of floor across the front (the pin block's). Over the strings the frame, box beams
+	// flanged top and bottom, standing on feet where they meet the plate. Elsewhere the soundboard shows
 	const plateY = PLATE_Y;
-	const area = offsetPolyline( inner, 0.06 );		// inside the plate rim band
+	const frameLines = [];		// (the frame's beams, plan: [ a, b, width ]; the dampers keep clear of them)
+	let bassDir;		// (plan: the X's long leg's direction, back; the strut from the gusset's and the bass strings')
 	{
 
-		const plateOutline = offsetPolyline( inner, 0.02 );
-		const s = new THREE.Shape( plateOutline );
-		s.closePath();
-		const W = 0.014;			// floor kept either side of a strut's centre line: just under its flange
-		const bar = [ v2( - 1, - 0.58 ), v2( 1, - 0.58 ), 0 ];
-		const bass = [ v2( - 0.21, - 0.58 ), v2( - 0.32, - 1.52 ), W ];
-		const tenor = [ v2( 0.10, - 0.58 ), v2( 0.02, - 1.47 ), W ];
-		const treble = [ v2( 0.40, - 0.58 ), v2( 0.30, - 1.14 ), W ];
-		const cross = [ v2( - 0.75, - 1.00 ), v2( 0.03, - 1.12 ), W ];
-		const openings = [
-			[ [ bar, bass, cross ], v2( - 0.5, - 0.8 ) ],
-			[ [ bar, bass, cross ], v2( - 0.5, - 1.3 ) ],
-			[ [ bar, bass, tenor, cross ], v2( - 0.05, - 0.8 ) ],
-			[ [ bar, bass, tenor, cross ], v2( - 0.13, - 1.3 ) ],
-			[ [ bar, tenor, treble ], v2( 0.25, - 0.8 ) ],
-			[ [ bar, treble ], v2( 0.6, - 0.75 ) ],
-		];
-		for ( const [ struts, inside ] of openings ) {
-
-			const poly = plateOpening( area, struts, inside );
-			if ( poly && Math.abs( THREE.ShapeUtils.area( poly ) ) > 0.004 ) s.holes.push( new THREE.Path( poly ) );
-
-		}
-
-		const HOLES = [ - 0.40, - 0.05, 0.27 ], HOLE_Z = - 0.47, HOLE_R = 0.045;
-		for ( const cx of HOLES ) {
-
-			const h = new THREE.Path();
-			h.absellipse( cx, HOLE_Z, HOLE_R, HOLE_R, 0, Math.PI * 2, true );
-			s.holes.push( h );
-
-		}
-
-		const parts = [ extrudeXZ( s, plateY - 0.012, plateY, 0.004 ) ];
-		const top = plateY + PLATE_RIB;
-
-		// T rib along a -> b (plan, (x, z)): web `t` thick up to `h` below the top, flange `f`
-		// wide and `tf` thick on top
-		const rib = ( a, b, h, t, f, tf ) => {
-
-			const A = v3( a.x, 0, a.y ), B = v3( b.x, 0, b.y );
-			parts.push( beam( A.clone().setY( plateY + ( h - tf ) / 2 ), B.clone().setY( plateY + ( h - tf ) / 2 ), t, h - tf ) );
-			parts.push( beam( A.clone().setY( plateY + h - tf / 2 ), B.clone().setY( plateY + h - tf / 2 ), f, tf ) );
-
-		};
-
-		// a strut from its start on the bar, back to where it meets the rim band
-		const inside = p => {
+		const parts = [];
+		const [ fy0, fy1 ] = FRAME_Y;
+		const outline = offsetPolyline( inner, 0.02 ), lipIn = offsetPolyline( inner, 0.034 ), lim = offsetPolyline( inner, 0.03 );
+		const inLim = p => {
 
 			let c = false;
-			for ( let i = 0, j = area.length - 1; i < area.length; j = i ++ ) {
+			for ( let i = 0, j = lim.length - 1; i < lim.length; j = i ++ ) {
 
-				const pi = area[ i ], pj = area[ j ];
+				const pi = lim[ i ], pj = lim[ j ];
 				if ( ( pi.y > p.y ) !== ( pj.y > p.y ) && p.x < ( pj.x - pi.x ) * ( p.y - pi.y ) / ( pj.y - pi.y ) + pi.x ) c = ! c;
 
 			}
@@ -582,59 +523,213 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			return c;
 
 		};
+		// from a towards b (and on past it) to the last point inside the rim's lip
 		const toRim = ( a, b ) => {
 
 			let end = a.clone();
-			for ( let k = 1; k <= 400; ++ k ) {
+			for ( let k = 1; k <= 600; ++ k ) {
 
-				const p = a.clone().lerp( b, k / 400 * 1.3 );
-				if ( ! inside( p ) ) break;
+				const p = a.clone().lerp( b, k / 400 );
+				if ( ! inLim( p ) ) break;
 				end = p;
 
 			}
 
-			return end.addScaledVector( new THREE.Vector2().subVectors( b, a ).normalize(), 0.03 );		// into the band
+			return end;
 
 		};
-		for ( const [ a, b ] of [ bass, tenor, treble ] ) rib( a, toRim( a, b ), PLATE_RIB, 0.012, 0.024, 0.005 );
-		// cross bar: spine (inside the band) to the tenor strut
-		const tenorAt = x => tenor[ 0 ].clone().lerp( tenor[ 1 ], ( x - tenor[ 0 ].x ) / ( tenor[ 1 ].x - tenor[ 0 ].x ) );
-		const cA = cross[ 0 ].clone().lerp( cross[ 1 ], 0.02 ), cB = cross[ 1 ].clone();
-		cB.x = tenorAt( cB.x ).x;
-		rib( cA, cB, PLATE_RIB - 0.008, 0.011, 0.02, 0.004 );
+		const ring = ( cx, cz, r0, r1, y0, y1 ) => {
 
-		// front bar: a hollow box from z -0.405 to -0.58, its top skin cut by the three holes
-		const zF = - 0.405, zB = - 0.58, xL = - HALF_W + RIM_T + 0.03, xR = HALF_W - RIM_T - 0.03;
-		rib( v2( xL, zB ), v2( xR, zB ), PLATE_RIB, 0.02, 0.02, 0.004 );
-		rib( v2( xL, zF ), v2( xR, zF ), PLATE_RIB - 0.004, 0.014, 0.014, 0.004 );
-		const skin = new THREE.Shape( [ v2( xL, zF ), v2( xR, zF ), v2( xR, zB ), v2( xL, zB ) ] );
-		for ( const cx of HOLES ) {
+			const sh = new THREE.Shape();
+			sh.absellipse( cx, cz, r1, r1, 0, Math.PI * 2, false );
+			const h = new THREE.Path();
+			h.absellipse( cx, cz, r0, r0, 0, Math.PI * 2, true );
+			sh.holes.push( h );
+			parts.push( extrudeXZ( sh, y0, y1, Math.min( 0.0015, ( r1 - r0 ) / 4 ) ) );		// (a bevel past half the width fills the ring)
+
+		};
+
+		// the crescent: the rim's side behind the edge and right of the X's upper left leg, then the edge back
+		const leg = [ X_NODE, v2( - 0.507, - 1.42 ) ];
+		const side = p => ( leg[ 1 ].x - leg[ 0 ].x ) * ( p.y - leg[ 0 ].y ) - ( leg[ 1 ].y - leg[ 0 ].y ) * ( p.x - leg[ 0 ].x );
+		const right = Math.sign( side( v2( 0, - 1.45 ) ) );
+		const keep = outline.map( ( p, i ) => i ).filter( i => outline[ i ].y < plateEdgeZ( outline[ i ].x ) && Math.sign( side( outline[ i ] ) ) === right );
+		const crescent = new THREE.Shape( [ ...keep.map( i => outline[ i ] ), ...PLATE_EDGE.slice().reverse() ].filter( ( p, k, a ) => k === 0 || p.distanceTo( a[ k - 1 ] ) > 0.004 ) );
+		for ( const [ cx, cz, r ] of PLATE_HOLES ) {
 
 			const h = new THREE.Path();
-			h.absellipse( cx, HOLE_Z, HOLE_R, HOLE_R, 0, Math.PI * 2, true );
-			skin.holes.push( h );
-			// raised collar round each hole
-			const ring = new THREE.Shape();
-			ring.absellipse( cx, HOLE_Z, HOLE_R + 0.008, HOLE_R + 0.008, 0, Math.PI * 2, false );
-			const bore = new THREE.Path();
-			bore.absellipse( cx, HOLE_Z, HOLE_R, HOLE_R, 0, Math.PI * 2, true );
-			ring.holes.push( bore );
-			parts.push( extrudeXZ( ring, top - 0.006, top + 0.003, 0.0015 ) );
-			// the hole's wall down to the floor (the box is hollow)
-			parts.push( insideOut( new THREE.CylinderGeometry( HOLE_R + 0.001, HOLE_R + 0.001, PLATE_RIB, 32, 1, true ).translate( cx, plateY + PLATE_RIB / 2, HOLE_Z ) ) );
+			h.absellipse( cx, cz, r, r, 0, Math.PI * 2, true );
+			crescent.holes.push( h );
+			ring( cx, cz, r, r + 0.007, plateY - 0.002, plateY + 0.009 );
+			parts.push( insideOut( new THREE.CylinderGeometry( r + 0.0005, r + 0.0005, 0.02, 40, 1, true ).translate( cx, plateY - 0.002, cz ) ) );
 
 		}
 
-		parts.push( extrudeXZ( skin, top - 0.006, top, 0.002 ) );
+		parts.push( extrudeXZ( crescent, plateY - 0.012, plateY, 0 ) );		// (no bevel: at its sharp corners the bevel's offsets shot across the holes)
+		// its lip against the rim
+		for ( let k = 0; k + 1 < keep.length; ++ k ) {
 
-		// plate rim: a raised band along the case (sides and tail), from the case wall to the
-		// openings, its inner edge a web down to the floor; the hitch pins stand on it
-		const band = offsetPolyline( inner, 0.02 );
-		for ( let i = 0; i + 1 < band.length; ++ i ) {
+			const i = keep[ k ], j = keep[ k + 1 ];
+			if ( j !== i + 1 ) continue;
+			parts.push( extrudeXZ( new THREE.Shape( [ outline[ i ], outline[ j ], lipIn[ j ], lipIn[ i ] ] ), plateY - 0.001, plateY + 0.014, 0 ) );
 
-			if ( band[ i ].y > - 0.57 || band[ i + 1 ].y > - 0.57 ) continue;
-			const q = new THREE.Shape( [ band[ i ], band[ i + 1 ], area[ i + 1 ], area[ i ] ] );
-			parts.push( extrudeXZ( q, plateY - 0.001, plateY + PLATE_BAND, 0 ) );
+		}
+
+		// the hitch rail along the edge: every string's hitch pins
+		for ( const rail of [ PLATE_EDGE.map( p => v2( p.x, p.y - HITCH_BACK ) ) ] ) for ( let i = 0; i + 1 < rail.length; ++ i ) {
+
+			const d = new THREE.Vector2().subVectors( rail[ i + 1 ], rail[ i ] ).normalize().multiplyScalar( 0.01 );
+			const A = rail[ i ].clone().sub( d ), B = rail[ i + 1 ].clone().add( d );
+			parts.push( beam( v3( A.x, plateY + HITCH_RAIL / 2, A.y ), v3( B.x, plateY + HITCH_RAIL / 2, B.y ), 0.024, HITCH_RAIL ) );
+
+		}
+
+		// the front strip (under the pin block's cover, back under the front bar)
+		const xS = HALF_W - RIM_T - 0.02;
+		// the floor plate across the front (under the pin block's cover, back to its curved edge: FLOOR_LEFT)
+		{
+
+			const V0 = FRONT_RIGHT[ 0 ], slope = ( FRONT_RIGHT[ 1 ].y - V0.y ) / ( FRONT_RIGHT[ 1 ].x - V0.x );
+			const cx = ( FLOOR_LEFT.x + V0.x ) / 2, c = v2( cx, V0.y + slope * ( cx - V0.x ) );		// (on the right half's tangent: no kink)
+			const left = new THREE.QuadraticBezierCurve( FLOOR_LEFT.clone().setX( - xS ), c, V0 ).getPoints( 24 );
+			const right = FRONT_RIGHT.slice( 1 ).map( p => v2( Math.min( p.x, xS ), p.y ) );
+			parts.push( extrudeXZ( new THREE.Shape( [ v2( - xS, - 0.33 ), v2( xS, - 0.33 ), ...right.reverse(), ...left.reverse() ] ), plateY - 0.012, plateY, 0 ) );
+
+		}
+
+		// the frame: a box beam a -> b (plan), flanged top and bottom; a foot, a block from `y0` above the floor up
+		// under the beams at p; a node, a round boss the beams' height
+		const high = ( a, b, w = 0.014 ) => {
+
+			const A = v3( a.x, 0, a.y ), B = v3( b.x, 0, b.y ), at = y => [ A.clone().setY( plateY + y ), B.clone().setY( plateY + y ) ];
+			frameLines.push( [ a.clone(), b.clone(), w ] );
+			parts.push( beam( ...at( ( fy0 + fy1 ) / 2 ), w, fy1 - fy0 - 0.006 ) );
+			parts.push( beam( ...at( fy1 - 0.002 ), w + 0.006, 0.004 ) );
+			parts.push( beam( ...at( fy0 + 0.002 ), w + 0.006, 0.004 ) );
+
+		};
+		const foot = ( p, y0, w = 0.04, d = 0.04 ) => parts.push( new THREE.BoxGeometry( w, fy0 - y0 + 0.002, d ).translate( p.x, plateY + ( y0 + fy0 ) / 2, p.y ) );
+		const node = ( p, r ) => parts.push( new THREE.CylinderGeometry( r, r, fy1 - fy0, 32 ).translate( p.x, plateY + ( fy0 + fy1 ) / 2, p.y ) );
+		const longer = ( a, b, e ) => [ a, b.clone().addScaledVector( new THREE.Vector2().subVectors( b, a ).normalize(), e ) ];
+
+		// the front plate over the pin block and the dampers (above them: its 12 mm deep top at the beams'), one
+		// piece pierced by four bays (the illustration's: Footages.local/ref/grand-piano-interior-illustration-white-
+		// 35943134.jpg): its back edge in two halves meeting at the first treble strut out of line, the left
+		// straight (FRAME_Z) with the gusset's apex standing out of it, the right 20 mm further forward there and
+		// sloping back towards the bentside (FRONT_RIGHT); its left side slanting with the X's leg; the gusset, the
+		// plate between the first two bays, widening to the front. On posts behind the dampers
+		const RING_Y = [ 0.094, fy1 ], zF = - 0.312;		// (zF: the display's back 5 mm in front of its top edge)
+		// a polygon's outline with its corners rounded (radius r), as a Shape or a Path
+		const rounded = ( pts, r, P ) => {
+
+			const n = pts.length;
+			for ( let i = 0; i < n; ++ i ) {
+
+				const p = pts[ i ], a = pts[ ( i + n - 1 ) % n ], b = pts[ ( i + 1 ) % n ];
+				const p0 = p.clone().addScaledVector( new THREE.Vector2().subVectors( a, p ).normalize(), r );
+				const p1 = p.clone().addScaledVector( new THREE.Vector2().subVectors( b, p ).normalize(), r );
+				if ( i === 0 ) P.moveTo( p0.x, p0.y ); else P.lineTo( p0.x, p0.y );
+				P.quadraticCurveTo( p.x, p.y, p1.x, p1.y );
+
+			}
+
+			P.closePath();
+			return P;
+
+		};
+		const V0 = FRAME_V[ 0 ], xLf = - xS, B = 0.014, G = 0.012;		// (B: the border; G: half a divider)
+		// strut 1 from the front plate's front-left corner (on its bottom beam) straight to the X's node; the plate's
+		// left side along it
+		const S1 = v2( xLf + 0.012, zF - 0.008 ), u1 = new THREE.Vector2().subVectors( X_NODE, S1 ).normalize();
+		const xLb = xLf + ( FRAME_Z - zF ) * u1.x / u1.y;
+		const front = rounded( [
+			v2( xLf, zF ), v2( xLb, FRAME_Z ), v2( GUSSET.x - 0.019, FRAME_Z ), GUSSET.clone(), v2( GUSSET.x + 0.019, FRAME_Z ),
+			v2( V0, FRAME_Z ), v2( V0, FRONT_RIGHT[ 0 ].y ), ...FRONT_RIGHT.filter( p => p.x > V0 ), v2( xS, zF ),
+		], 0.008, new THREE.Shape() );
+		const zFi = zF - B, zBi = FRAME_Z + B;
+		const bays = [
+			[ v2( xLb + 0.026, zBi ), v2( GUSSET.x - 0.027, zBi ), v2( GUSSET.x - 0.059, zFi ), v2( xLf + B + 0.02, zFi ) ],		// (its left side clear of strut 1)
+			[ v2( GUSSET.x + 0.027, zBi ), v2( V0 - G, zBi ), v2( V0 - G, zFi ), v2( GUSSET.x + 0.061, zFi ) ],
+			[ v2( V0 + G, frontBackZ( V0 + G ) + B ), v2( FRAME_V[ 1 ] - G, frontBackZ( FRAME_V[ 1 ] - G ) + B ), v2( FRAME_V[ 1 ] - G, zFi ), v2( V0 + G, zFi ) ],
+			[ v2( FRAME_V[ 1 ] + G, frontBackZ( FRAME_V[ 1 ] + G ) + B ), v2( xS - B, frontBackZ( xS - B ) + B ), v2( xS - B, zFi ), v2( FRAME_V[ 1 ] + G, zFi ) ],
+		];
+		for ( const q of bays ) front.holes.push( rounded( q.slice().reverse(), 0.014, new THREE.Path() ) );
+		parts.push( extrudeXZ( front, plateY + RING_Y[ 0 ], plateY + RING_Y[ 1 ], 0.002 ) );
+		for ( const x of [ xLb + 0.012, GUSSET.x, V0, FRAME_V[ 1 ], xS - 0.012 ] ) foot( v2( x, frontBackZ( x ) + 0.008 ), 0, 0.014, 0.014 );
+
+		// the X: its lower legs from the bar's left end and the gusset to the node, its upper legs on to the tail
+		high( ...longer( S1, X_NODE, 0.01 ) );
+		high( ...longer( GUSSET, X_NODE, 0.01 ) );
+		let eB;		// (strut 3's end at the rim)
+		for ( const t of [ leg[ 1 ], X_TAIL_R ] ) {
+
+			const e = toRim( X_NODE, t );
+			high( X_NODE, e );
+			foot( e, 0 );
+			if ( t === leg[ 1 ] ) eB = e;
+
+		}
+
+
+		node( X_NODE, 0.022 );
+		node( GUSSET, 0.016 );
+
+		// the strut from the gusset to the rim, parallel to the X's long leg (from the front plate's
+		// left end out to the tail): the bass's strings between the two
+		const dA = new THREE.Vector2().subVectors( X_TAIL_R, S1 ).normalize();
+		const sEnd = GUSSET.clone();
+		while ( sEnd.y > plateEdgeZ( sEnd.x ) - HITCH_BACK - 0.02 ) sEnd.addScaledVector( dA, 0.002 );
+		bassDir = dA.clone();
+		// (on across the crescent to the rim, as every strut: a foot where it crosses the edge's rail and at the rim)
+		const sRim = toRim( GUSSET, GUSSET.clone().addScaledVector( dA, 2 ) );
+		high( GUSSET, sRim );
+		foot( sEnd, HITCH_RAIL );
+		foot( sRim, 0 );
+
+		// strut 6: along the rim, over the plate's lip, from the front plate's right end up the bentside and round
+		// the tail to strut 3's end (the X's leg from the gusset) (on feet every 30 cm)
+		{
+
+			const line = offsetPolyline( inner, 0.034 ), near = p => line.reduce( ( b, q, k ) => q.distanceTo( p ) < line[ b ].distanceTo( p ) ? k : b, 0 );
+			let kR = line.length - 1;
+			while ( kR > 0 && line[ kR ].y > frontBackZ( line[ kR ].x ) - 0.004 ) -- kR;
+			const k0 = near( eB );
+			let run = 0;
+			for ( let k = k0; k < kR; ++ k ) {
+
+				const d = new THREE.Vector2().subVectors( line[ k + 1 ], line[ k ] ).normalize().multiplyScalar( 0.003 );
+				high( line[ k ].clone().sub( d ), line[ k + 1 ].clone().add( d ) );
+				run += line[ k ].distanceTo( line[ k + 1 ] );
+				if ( run > 0.3 ) { foot( line[ k + 1 ], 0, 0.02, 0.02 ); run = 0; }
+
+			}
+
+			high( line[ kR ], v2( line[ kR ].x, frontBackZ( line[ kR ].x ) ) );
+
+		}
+
+		// the treble's struts: straight back from the bar to a foot behind the hitch rail, then a sweep (a quadratic,
+		// leaving 20 deg off the strings, meeting the rim at about 35 deg) out to the bentside
+		for ( const x of FRAME_V ) {
+
+			const b0 = v2( x, plateEdgeZ( x ) - HITCH_BACK - 0.03 );
+			// (strut 4 from the bottom beam, over the divider between the second and third bays, as strut 1: no thin
+			// joint at the back edge's step)
+			high( v2( x, x === FRAME_V[ 0 ] ? zF - 0.008 : frontBackZ( x ) + 0.008 ), b0 );
+			foot( b0, 0 );
+			const dir = new THREE.Vector2( Math.sin( 0.6 ), - Math.cos( 0.6 ) );
+			const end = toRim( b0, b0.clone().addScaledVector( dir, 0.6 ) );
+			const L = b0.distanceTo( end ), c = b0.clone().add( v2( Math.sin( 0.35 ), - Math.cos( 0.35 ) ).multiplyScalar( 0.45 * L ) );
+			const pts = new THREE.QuadraticBezierCurve( b0, c, end ).getPoints( 14 );
+			for ( let i = 0; i + 1 < pts.length; ++ i ) {
+
+				// (each piece a little longer: no gaps at the joints)
+				const d = new THREE.Vector2().subVectors( pts[ i + 1 ], pts[ i ] ).normalize().multiplyScalar( 0.004 );
+				high( pts[ i ].clone().sub( d ), pts[ i + 1 ].clone().add( d ) );
+
+			}
+
+			foot( end, 0 );
 
 		}
 
@@ -646,64 +741,114 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	{
 
 		const steel = [], copper = [], pins = [], hitch = [];
-		const DAMPER_Z = - 0.385;
 		const damperMats = [ M.hammerFelt, M.keyBlack ];
-		// one damper per note, resting on the top of its string(s) at DAMPER_Z; lifts upwards
-		const addDamper = ( i, a, b, r, w ) => {
+		// Each note's string(s) laid out through its damper. The dampers stand in a row just behind the front
+		// plate's back edge (its two halves; behind the gusset's apex there), their blocks' fronts 7 mm from it,
+		// in four groups between the struts leaving the front plate (numbered by their lower ends, left to right:
+		// 1 the X's long leg, 2 the strut from the gusset parallel to it, 3 the X's other leg, 4 and 5 the
+		// treble's): the bass's (29, compressed to 12 mm apart: their pins, forward along the strings, inside the
+		// case) between 1 and 2, parallel to them, on over the crescent to their own hitch rail parallel to its edge; the
+		// tenor's (20) between 3 and 4, turning note by note from 3's angle (leaning to the spine, under the bass:
+		// overstrung) to 4's, along -z; the treble's straight back, either side of 5 (none above note 68). From
+		// the damper forward to the tuning pins, back to the hitch pins (the tenor's and the treble's on the rail
+		// along the crescent's edge)
+		const n = 88, bassCount = 29, tenorCount = 20;
+		// (the bass's hitch rail's centre line: the crescent's edge moved 12 cm back along its normal, so the bass's
+		// ends run parallel to it; the two holes by the rim just behind it)
+		const bassRail = PLATE_EDGE.map( ( p, k, e ) => {
 
-			const t = ( DAMPER_Z - a.z ) / ( b.z - a.z );
-			const p = a.clone().lerp( b, t );
+			const t = new THREE.Vector2().subVectors( e[ Math.min( e.length - 1, k + 1 ) ], e[ Math.max( 0, k - 1 ) ] ).normalize();
+			const nb = v2( t.y, - t.x );
+			return p.clone().addScaledVector( nb.y > 0 ? nb.negate() : nb, 0.12 );
+
+		} ), bassEnds = [];
+		const pinZ = - 0.29, x1 = HALF_W - 0.06;
+		const [ V0, V1 ] = FRAME_V, treble = n - bassCount - tenorCount;
+		const t1 = Math.round( treble * ( V1 - 0.02 - ( V0 + 0.02 ) ) / ( x1 - ( V0 + 0.02 ) - 0.04 ) );
+		const span = ( a, b, k, m ) => a + ( b - a ) * k / ( m - 1 );
+		const damperX = i => i < bassCount ? span( - 0.575, - 0.238, i, bassCount )
+			: i < bassCount + tenorCount ? span( - 0.185, V0 - 0.02, i - bassCount, tenorCount )
+				: i < bassCount + tenorCount + t1 ? span( V0 + 0.02, V1 - 0.02, i - bassCount - tenorCount, t1 )
+					: span( V1 + 0.02, x1, i - bassCount - tenorCount - t1, treble - t1 );
+		const damperZ = x => Math.min( frontBackZ( x ), Math.abs( x - GUSSET.x ) < 0.035 ? GUSSET.y : 0 ) - 0.022;
+		const angA = Math.atan2( bassDir.x, - bassDir.y ), angB = Math.atan2( X_NODE.x - GUSSET.x, GUSSET.y - X_NODE.y );
+		const angle = i => i < bassCount ? angA : i < bassCount + tenorCount ? angB * ( 1 - ( i - bassCount ) / ( tenorCount - 1 ) ) : 0;
+		// a damper resting on its string at d (plan) on a string running along dir (plan, back), its top y there
+		const addDamper = ( i, d, dir, y, w ) => {
+
+			for ( const [ fa, fb, fw ] of frameLines ) {
+
+				const e = new THREE.Vector2().subVectors( fb, fa ), u = THREE.MathUtils.clamp( new THREE.Vector2().subVectors( d, fa ).dot( e ) / e.lengthSq(), 0, 1 );
+				if ( fa.clone().addScaledVector( e, u ).distanceTo( d ) < fw / 2 + 0.008 ) return;		// (a beam over it: none)
+
+			}
+
 			const felt = boxProjectUV( new THREE.BoxGeometry( w, 0.006, 0.026 ).translate( 0, 0.003, 0 ) );
 			const block = boxProjectUV( new THREE.BoxGeometry( w - 0.001, 0.026, 0.030 ).translate( 0, 0.019, 0 ) );
 			const node = new THREE.Group();
-			node.position.set( p.x, p.y + r, p.z );
-			node.rotation.y = Math.atan2( b.x - a.x, b.z - a.z );
+			node.position.set( d.x, y, d.y );
+			node.rotation.y = Math.atan2( dir.x, dir.y );
 			node.add( mesh( merge( [ felt ] ), damperMats[ 0 ] ), mesh( merge( [ block ] ), damperMats[ 1 ] ) );
 			group.add( node );
 			dampers.set( i + 21, { node, axis: 'y', lift: 0.010 } );
 
 		};
-		const n = 88;
-		const x0 = - HALF_W + 0.08, x1 = HALF_W - 0.06;
-		const pinZ = - 0.29;
-		const bassCount = 22;
 		for ( let i = 0; i < n; ++ i ) {
 
-			const t = i / ( n - 1 );
-			const x = x0 + ( x1 - x0 ) * t;
+			const bass = i < bassCount, th = angle( i ), dir = v2( Math.sin( th ), - Math.cos( th ) ), side = v2( - dir.y, dir.x );
+			const d = v2( damperX( i ), 0 );
+			d.y = damperZ( d.x );
 			const zPin = pinZ - ( i % 2 ) * 0.02;
-			// tuning pins up to just above their string
-			const pinTop = plateY + ( i < bassCount ? BASS_Y : STRING_Y ) + 0.008;
-			pins.push( rod( v3( x - 0.004, plateY, zPin ), v3( x - 0.004, pinTop, zPin ), 0.0035, 8 ) );
-			pins.push( rod( v3( x + 0.004, plateY, zPin - 0.01 ), v3( x + 0.004, pinTop, zPin - 0.01 ), 0.0035, 8 ) );
+			const sF = ( zPin - d.y ) / Math.cos( th ), P = d.clone().addScaledVector( dir, - sF );
+			// (the tenor's and the treble's to the rail along the crescent's edge; the bass's on over the crescent to
+			// theirs along the rim)
+			let sB = 0;
+			if ( bass ) while ( d.y + dir.y * sB > polyZ( bassRail, d.x + dir.x * sB ) + 0.004 ) sB += 0.002;
+			else while ( d.y + dir.y * sB > hitchZ( d.x + dir.x * sB ) + 0.004 ) sB += 0.002;
+			const E = d.clone().addScaledVector( dir, sB );
+			const y0 = bass ? BASS_Y : STRING_Y, y1 = y0 - ( bass ? 0.006 : 0.004 ), yD = plateY + y0 + ( y1 - y0 ) * sF / ( sF + sB );
+			// tuning pins up to just above their string; the hitch pin just behind its end
+			const pinTop = plateY + y0 + 0.008;
+			pins.push( rod( v3( P.x - 0.004, plateY, zPin ), v3( P.x - 0.004, pinTop, zPin ), 0.0035, 8 ) );
+			pins.push( rod( v3( P.x + 0.004, plateY, zPin - 0.01 ), v3( P.x + 0.004, pinTop, zPin - 0.01 ), 0.0035, 8 ) );
+			const H = E.clone().addScaledVector( dir, 0.004 );
+			hitch.push( rod( v3( H.x, plateY + HITCH_RAIL, H.y ), v3( H.x, plateY + y1 + 0.004, H.y ), 0.0022, 6 ) );
+			if ( bass ) {
 
-			if ( i < bassCount ) {
-
-				// bass fan: from the left front diagonally towards the tail, above the tenor strings
-				const a = v3( x, plateY + BASS_Y, zPin );
-				const endX = - 0.55 + 0.45 * t * n / bassCount;
-				const b = v3( endX, plateY + BASS_Y - 0.006, caseEndZ( inner, endX ) + 0.06 );
-				hitch.push( rod( v3( endX, plateY + PLATE_BAND, b.z - 0.004 ), v3( endX, b.y + 0.004, b.z - 0.004 ), 0.0022, 6 ) );
-				copper.push( beam( a, b, 0.003, 0.003 ) );
-				addDamper( i, a, b, 0.0015, 0.011 );
+				bassEnds.push( E );
+				copper.push( beam( v3( P.x, plateY + y0, P.y ), v3( E.x, plateY + y1, E.y ), 0.003, 0.003 ) );
+				addDamper( i, d, dir, yD + 0.0015, 0.011 );
 
 			} else {
 
-				const endZ = caseEndZ( inner, x ) + 0.06;
-				const a = v3( x - 0.003, plateY + STRING_Y, zPin ), b = v3( x - 0.003, plateY + STRING_Y - 0.004, endZ );
-				hitch.push( rod( v3( x, plateY + PLATE_BAND, endZ - 0.004 ), v3( x, b.y + 0.004, endZ - 0.004 ), 0.0022, 6 ) );
-				steel.push( beam( a, b, 0.0012, 0.0012 ) );
-				steel.push( beam( a.clone().setX( x + 0.003 ), b.clone().setX( x + 0.003 ), 0.0012, 0.0012 ) );
-				if ( i < 68 ) addDamper( i, a.clone().setX( x ), b.clone().setX( x ), 0.0006, 0.012 );
+				for ( const k of [ - 0.003, 0.003 ] ) steel.push( beam( v3( P.x + side.x * k, plateY + y0, P.y + side.y * k ), v3( E.x + side.x * k, plateY + y1, E.y + side.y * k ), 0.0012, 0.0012 ) );
+				if ( i < 68 ) addDamper( i, d, dir, yD + 0.0006, 0.012 );
 
 			}
+
+		}
+
+		// the bass's hitch rail: parallel to the crescent's edge, past the first and the last bass string's end
+		{
+
+			const near = p => bassRail.reduce( ( b, q, k ) => q.distanceTo( p ) < bassRail[ b ].distanceTo( p ) ? k : b, 0 );
+			const ks = bassEnds.map( near ), k0 = Math.max( 0, Math.min( ...ks ) - 2 ), k1 = Math.min( bassRail.length - 1, Math.max( ...ks ) + 2 ), rail = [];
+			for ( let k = k0; k < k1; ++ k ) {
+
+				const d = new THREE.Vector2().subVectors( bassRail[ k + 1 ], bassRail[ k ] ).normalize().multiplyScalar( 0.004 );
+				const A = bassRail[ k ].clone().sub( d ), B = bassRail[ k + 1 ].clone().add( d );
+				rail.push( beam( v3( A.x, plateY + HITCH_RAIL / 2, A.y ), v3( B.x, plateY + HITCH_RAIL / 2, B.y ), 0.024, HITCH_RAIL ) );
+
+			}
+
+			group.add( mesh( merge( rail ), M.plate ) );
 
 		}
 
 		group.add( mesh( merge( steel ), M.steel ) );
 		group.add( mesh( merge( copper ), M.copper ) );
 		group.add( mesh( merge( pins ), M.steel ) );
-		group.add( mesh( merge( hitch ), M.steel ) );		// hitch pins on the plate rim band
+		group.add( mesh( merge( hitch ), M.steel ) );		// hitch pins on the plate's hitch rails
 
 		// pin block cover / plate flange across the front
 		group.add( mesh( woodBox( v3( - HALF_W + RIM_T, plateY, - 0.33 ), v3( HALF_W - RIM_T, plateY + 0.006, - 0.245 ), { noUV: true } ), M.plate ) );
