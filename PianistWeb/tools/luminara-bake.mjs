@@ -4,7 +4,9 @@
 // (each map's scale, the shell's hash). tools/luminara-asset.mjs packs them; src/luminara.js uses them
 // while its shell is still the one baked (the hash).
 //
-//   node tools/luminara-bake.mjs --generated <dir> [--url http://localhost:5187/] [--size 1024] [--only Afternoon,Night]
+//   node tools/luminara-bake.mjs --generated <dir> [--url http://localhost:5187/] [--size 1024] [--only Afternoon,Night] [--shell shell.json]
+// --shell: a previous unwrap (its shell.json) reused when the shell's hash is its bake.json's (the unwrap needs
+// ../.venv-depth with xatlas: not on every box)
 // Needs the dev server (vite), playwright-core (PLAYWRIGHT_CORE, as tools/render-video.mjs) and the GPU
 // (the NVIDIA EGL setup: HEADLESS_GPU_EGL).
 
@@ -17,7 +19,7 @@ import { createRequire } from 'module';
 
 const { chromium } = createRequire( import.meta.url )( process.env.PLAYWRIGHT_CORE ?? '/tmp/pianist-tools/node_modules/playwright-core' );		// (as tools/render-video.mjs)
 const root = path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '..' );
-const opt = { generated: null, url: 'http://localhost:5187/', size: 1024, only: null, texels: 40 };
+const opt = { generated: null, url: 'http://localhost:5187/', size: 1024, only: null, texels: 40, shell: null };
 const argv = process.argv.slice( 2 );
 for ( let i = 0; i < argv.length; ++ i ) {
 
@@ -25,6 +27,7 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	if ( a === '--generated' ) opt.generated = v();
 	else if ( a === '--url' ) opt.url = v();
 	else if ( a === '--size' ) opt.size = Number( v() );
+	else if ( a === '--shell' ) opt.shell = v();
 	else if ( a === '--texels' ) opt.texels = Number( v() );
 	else if ( a === '--only' ) opt.only = new Set( v().split( ',' ) );
 	else throw new Error( `unknown argument ${ a }` );
@@ -57,13 +60,28 @@ await page.evaluate( () => { window.__pianistPaused = true; } );
 const shellIn = path.join( out, 'shell-in.json' ), shellOut = path.join( out, 'shell.json' );
 fs.writeFileSync( shellIn, JSON.stringify( await page.evaluate( async () => ( await import( '/src/luminarabake.js' ) ).exportShell( window.__pianist.luminara ) ) ) );
 const hash = await page.evaluate( () => window.__pianist.luminara.shellHash() );
-execFileSync( path.join( root, '..', '.venv-depth', 'bin', 'python' ), [ '-I', path.join( root, 'tools', 'luminara-unwrap.py' ), shellIn, shellOut, '--size', String( opt.size ), '--texels', String( opt.texels ) ], { stdio: 'inherit' } );
+if ( opt.shell ) {
+
+	// (a previous unwrap: only if it was of this shell, at this size)
+	const prev = JSON.parse( fs.readFileSync( path.join( path.dirname( opt.shell ), 'bake.json' ), 'utf8' ) );
+	if ( prev.hash !== hash || prev.size !== opt.size ) throw new Error( `--shell: its bake was of shell ${ prev.hash } at ${ prev.size }, this is ${ hash } at ${ opt.size }: unwrap again` );
+	if ( path.resolve( opt.shell ) !== path.resolve( shellOut ) ) fs.copyFileSync( opt.shell, shellOut );
+	say( `the unwrap reused (${ opt.shell }, shell ${ hash })` );
+
+} else execFileSync( path.join( root, '..', '.venv-depth', 'bin', 'python' ), [ '-I', path.join( root, 'tools', 'luminara-unwrap.py' ), shellIn, shellOut, '--size', String( opt.size ), '--texels', String( opt.texels ) ], { stdio: 'inherit' } );
 fs.unlinkSync( shellIn );
 const shell = JSON.parse( fs.readFileSync( shellOut, 'utf8' ) );
 say( `unwrapped: ${ shell.meshes.length } meshes, ${ shell.texels } texels/m` );
 await page.evaluate( async meshes => ( await import( '/src/luminarabake.js' ) ).applyShell( window.__pianist.luminara, meshes ), shell.meshes );
 // each preset
 const meta = { hash, size: opt.size, texels: shell.texels, presets: {} };
+// (--only: the other presets' maps of a bake of this shell at this size kept in bake.json, as they are)
+if ( opt.only && fs.existsSync( path.join( out, 'bake.json' ) ) ) {
+
+	const prev = JSON.parse( fs.readFileSync( path.join( out, 'bake.json' ), 'utf8' ) );
+	if ( prev.hash === hash && prev.size === opt.size ) for ( const [ k, v ] of Object.entries( prev.presets ?? {} ) ) if ( ! opt.only.has( k ) ) meta.presets[ k ] = v;
+
+}
 const presets = await page.evaluate( () => Object.keys( window.__pianist.luminara.presets ) );
 for ( const name of presets ) {
 
