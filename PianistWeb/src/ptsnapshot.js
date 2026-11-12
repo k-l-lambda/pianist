@@ -91,6 +91,8 @@ export class PTSnapshot {
 		// the camera copied (frozen), as the path tracer's lens: a PhysicalCamera, its aperture and focus the GUI's
 		const src = ( camera ?? this.camera ).clone();
 		src.updateMatrixWorld();
+		src.updateProjectionMatrix?.();		// (its fov as it is now: the raster draws, which update it, skipped before an offline render's first frame,
+		// and a frame behind on the others: a fov tween's frames each the one before's projection)
 		const cam = this.frozen = ptLens( src, this.hooks.lens?.( src ) ?? {} );
 		// its size: the view's, in CSS pixels (not the device's: path tracing at 2x would take 4 times as long)
 		const buf = this.renderer.getDrawingBufferSize( new THREE.Vector2() ), dpr = this.renderer.getPixelRatio();

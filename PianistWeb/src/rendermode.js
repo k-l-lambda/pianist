@@ -34,10 +34,13 @@ export const RENDER_OPTS = RENDER ? {
 	ptShutter: Math.min( 1, Math.max( 0, Number( get( 'pts' ) ?? 0 ) ) ),
 } : null;
 
-// a render is reproducible: Math.random (wood grain offsets in geometry.js, ...) seeded
+// a render is reproducible: Math.random (wood grain offsets in geometry.js, ...) seeded (#?seed=, default 1);
+// once the script is loaded, its `seed:` (if any) seeds it again for the timeline (reseedRandom)
+let seed = 1;
+export function reseedRandom( s ) { seed = Number( s ) >>> 0; }
 if ( RENDER ) {
 
-	let seed = Number( get( 'seed' ) ?? 1 ) >>> 0;
+	seed = Number( get( 'seed' ) ?? 1 ) >>> 0;
 	Math.random = () => {		// mulberry32
 
 		seed = ( seed + 0x6D2B79F5 ) >>> 0;

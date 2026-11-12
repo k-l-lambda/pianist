@@ -33,7 +33,7 @@ import { MidiFilePlayer } from './midi.js';
 import { ScriptPlayer } from './script.js';
 import { PianoRoll, excludeFromGTAO } from './pianoroll.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
-import { RENDER, RENDER_OPTS, clock } from './rendermode.js';
+import { RENDER, RENDER_OPTS, clock, reseedRandom } from './rendermode.js';
 import { OfflineFrame, toBase64, halton2 } from './offline.js';
 import { AudioLog, renderAudio, roomAPI } from './renderaudio.js';
 
@@ -1753,12 +1753,38 @@ function startRender() {
 	// offline frame's, which tone maps, resolves and dithers it as a raster frame's. Sub-frames are not used (the
 	// samples are the anti-aliasing; no motion blur)
 	const ptLinear = new PTPost();
+	let renderSeed = 1;
 	const stepPT = async () => {
 
 		await step();
 		if ( ! drawFrames ) return;
+		// (a fresh page's first frame path traced twice, the first image thrown away: it came out unlike the same
+		// frame drawn by a page that had drawn others before, all over, not only in its noise; a render's chunks each
+		// start on a fresh page)
+		if ( ! ptWarm ) { await ptFrame(); ptWarm = true; }
+		await ptFrame();
+		ptSnapshot.panel.hidden = true;
+
+	};
+	let ptWarm = false;
+	const ptFrame = async () => {
+
 		const size = renderer.getDrawingBufferSize( new THREE.Vector2() );
+		// (the sample noise from the seed and the frame alone, not from Math.random: whatever this page drew or
+		// skipped before, the frame's noise is the same; a new pattern each frame)
+		pathTracer.pt.stableNoise = true;
 		await ptSnapshot.start( { camera, samples: o.pt, exclusive: true } );
+		{
+
+			let h = Math.imul( renderSeed ^ 0x9E3779B9, 0x85EBCA6B ) ^ Math.imul( frameNo - 1, 0xC2B2AE35 );
+			h = ( h ^ ( h >>> 13 ) ) >>> 0;
+			const r = pathTracer.pt._pathTracer;
+			r.material.seed = h % 1000003;
+			r.material.stratifiedTexture.generator.seed = h % 2147483647;
+			r.material.stratifiedTexture.stableNoise = true;
+			r.material.stratifiedTexture.next();		// (the first sample's table too: a fresh page's was drawn from Math.random while the scene was built)
+
+		}
 		if ( ! ptSnapshot.running ) throw new Error( 'render: the path tracer did not start' );
 		const done = ptSnapshot.done;
 		for ( let settled = false; ! settled; ) {
@@ -1772,7 +1798,6 @@ function startRender() {
 		const lin = ptLinear.renderLinear( renderer, ptSnapshot.linearTexture(), ptPostParams() );
 		offline.begin( size.x, size.y, 1 );
 		offline.accumulate( lin.texture );
-		ptSnapshot.panel.hidden = true;
 
 	};
 	const ready = ( async () => {
@@ -1786,6 +1811,12 @@ function startRender() {
 		const res = await fetch( url );
 		if ( ! res.ok ) throw new Error( `${ url }: ${ res.status }` );
 		await scriptPlayer.load( await res.text(), { name: o.script, baseURL: url, midiURL: new URL( 'midi/', base ), audioURL: new URL( 'audio/', base ) } );
+		// the render's random seed (the script's `seed:`, else 1): the timeline's Math.random, the roll's particles,
+		// the path tracer's sample noise (per frame from it: stepPT). A render is then the same frame for frame at
+		// the same fps, from wherever it starts and on whichever GPU each frame falls
+		renderSeed = Number( scriptPlayer.script?.seed ?? 1 ) >>> 0;
+		reseedRandom( renderSeed );
+		if ( roll ) roll.seed = renderSeed % 2147483646 + 1;
 		// art and textures that load on their own: the person cut-out, the boot artwork, the chime
 		const until = async ( ok, what ) => {
 

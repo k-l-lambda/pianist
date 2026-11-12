@@ -50,8 +50,35 @@ export function buildScene( pt, scene, camera ) {
  *                their sharper albedo atlas) read the atlas at the wrong place: the stage floor near the
  *                piano in dark and light rectangles. Such a mesh's geometry gets uv1 as its uv (a stand-in),
  *                its material only the maps on uv1 (the others, on uv0, left out: their normal and roughness
- *                detail; the material's own roughness stays). Glass (transmission) keeps its own shadow rule.
+ *                detail; a dropped roughness / metalness map's mean folded into its factor). Glass (transmission) keeps its own shadow rule.
  */
+const _means = new WeakMap();
+/** A texture's mean in one channel (0 r, 1 g, 2 b), 0..1, from a 64x64 downsample; 1 when it can't be read. */
+function mapMean( tex, ch ) {
+
+	let m = _means.get( tex );
+	if ( ! m ) {
+
+		m = [ 1, 1, 1 ];
+		try {
+
+			const img = tex.image, cv = document.createElement( 'canvas' );
+			cv.width = cv.height = 64;
+			const ctx = cv.getContext( '2d', { willReadFrequently: true } );
+			ctx.drawImage( img, 0, 0, 64, 64 );
+			const d = ctx.getImageData( 0, 0, 64, 64 ).data, sum = [ 0, 0, 0 ];
+			for ( let i = 0; i < d.length; i += 4 ) for ( let k = 0; k < 3; ++ k ) sum[ k ] += d[ i + k ];
+			m = sum.map( v => v / ( 255 * 64 * 64 ) );
+
+		} catch { /* (unreadable: the factor alone) */ }
+		_means.set( tex, m );
+
+	}
+
+	return m[ ch ];
+
+}
+
 export function withPTMaterials( scene, fn ) {
 
 	const swaps = [], clones = new Map();
@@ -70,7 +97,17 @@ export function withPTMaterials( scene, fn ) {
 
 			c = m.clone();
 			if ( shadow ) c.castShadow = false;
-			if ( uv1 ) { for ( const k of onUv0 ) c[ k ] = null; for ( const k of onUv1 ) { c[ k ] = m[ k ].clone(); c[ k ].channel = 0; } }
+			if ( uv1 ) {
+
+				// (a roughness / metalness map dropped: its mean folded into the factor, as glTF packs them, G and
+				// B; else the factor alone, 1 and 1 for the hall's floors: rough metal, the near parquet's blocks
+				// dark under the Recital's front spot)
+				if ( m.roughnessMap && m.roughnessMap.channel !== 1 ) c.roughness = m.roughness * mapMean( m.roughnessMap, 1 );
+				if ( m.metalnessMap && m.metalnessMap.channel !== 1 ) c.metalness = m.metalness * mapMean( m.metalnessMap, 2 );
+				for ( const k of onUv0 ) c[ k ] = null;
+				for ( const k of onUv1 ) { c[ k ] = m[ k ].clone(); c[ k ].channel = 0; }
+
+			}
 			clones.set( key, c );
 
 		}

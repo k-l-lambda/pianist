@@ -374,7 +374,7 @@ export class ScriptPlayer {
 		}
 
 		this.stop();
-		this.script = { title: doc.title ?? name, loop: !! doc.loop, aliases, audioAliases, events, chained };
+		this.script = { title: doc.title ?? name, loop: !! doc.loop, seed: doc.seed, aliases, audioAliases, events, chained };		// (seed: an offline render's random seed, src/main.js)
 		this._state( `${ events.length } events` );
 		return this.script;
 
