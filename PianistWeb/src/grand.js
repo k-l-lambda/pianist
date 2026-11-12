@@ -89,9 +89,10 @@ const hitchZ = x => plateEdgeZ( x ) - HITCH_BACK;
 // it, 3 the X's other leg, 4 and 5 the treble's. One hole between the X's upper legs; two small ones close together
 // by the rim between struts 1 and 2 (against 2), behind the bass's hitch rail; one against the rim between 2 and 4's
 // sweep; two large between the treble struts' sweeps, two after the second's)
-const PLATE_HOLES = [ [ - 0.383, - 1.407, 0.045 ], [ - 0.050, - 1.328, 0.024 ], [ 0.017, - 1.275, 0.026 ], [ 0.113, - 1.124, 0.034 ],
-	[ 0.25, - 0.94, 0.055 ], [ 0.31, - 0.81, 0.04 ], [ 0.489, - 0.74, 0.034 ], [ 0.575, - 0.70, 0.026 ] ];
+const PLATE_HOLES = [ [ - 0.383, - 1.407, 0.045 ], [ - 0.050, - 1.328, 0.024 ], [ 0.017, - 1.275, 0.026 ], [ 0.106, - 1.196, 0.0306 ],
+	[ 0.22, - 0.94, 0.055 ], [ 0.31, - 0.81, 0.04 ], [ 0.489, - 0.74, 0.034 ], [ 0.575, - 0.70, 0.026 ] ];
 const FRAME_Y = [ 0.074, 0.106 ];
+const TREBLE_STRUT_ANGLE = [ 70, 90 ];		// struts 4 and 5 meet strut 6 at these angles (deg, on their right)
 const RIM_STRUT_LOW = 0.025;		// strut 6's top at the tail, above the plate floor
 const X_TAIL_R = v2( - 0.24, - 1.47 );		// (where the X's long leg, from the front plate's left end, meets the tail)
 const FRAME_Z = - 0.465, GUSSET = v2( - 0.213, - 0.48 ), X_NODE = v2( - 0.39, - 1.05 ), FRAME_V = [ 0.083, 0.368 ];
@@ -443,6 +444,8 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	const RIM = M.rim ?? M.case, LID = M.lid ?? M.case, PROP = M.prop ?? M.case, LEGS = M.legs ?? M.case, BASE = M.caseBase ?? M.case, STRETCHER = M.stretcher ?? LEGS;
 	const group = new THREE.Group();
 	const dampers = new Map();
+	const hammers = new Map(), hammerRack = new THREE.Group();		// (the soft pedal shifts the rack with the keyboard)
+	hammerRack.name = 'hammerRack';
 	const pedals = {};
 	group.name = 'grand';
 
@@ -695,20 +698,70 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
-		// the treble's struts: straight back from the bar past the hitch rail, then a sweep (a quadratic,
-		// leaving 20 deg off the strings, meeting the rim at about 35 deg) out to the bentside
-		for ( const x of FRAME_V ) {
+		// the treble's struts: straight back from the bar past the hitch rail, then a sweep (G2 at the join) out to
+		// the bentside
+		// the sweep: a clothoid (curvature rising linearly from 0 along it: no kink, no S, G2 with the straight part),
+		// its length and total turn such that it reaches strut 6 at TREBLE_STRUT_ANGLE to it (on its right, towards
+		// the front)
+		const rimLine = offsetPolyline( inner, 0.034 );
+		const rimFrame = q => {
+
+			const k = rimLine.reduce( ( b, r, j ) => r.distanceTo( q ) < rimLine[ b ].distanceTo( q ) ? j : b, 0 );
+			const u = new THREE.Vector2().subVectors( rimLine[ Math.min( rimLine.length - 1, k + 1 ) ], rimLine[ Math.max( 0, k - 1 ) ] ).normalize();
+			if ( u.y < 0 ) u.negate();		// (along the rim towards the front)
+			return u;
+
+		};
+		const clothoid = ( b0, L, turn, N = 60 ) => {
+
+			const pts = [ b0.clone() ], ds = L / N;
+			let phi = 0;		// (heading from -z towards +x)
+			for ( let j = 0; j < N; ++ j ) {
+
+				const s0 = ( j + 0.5 ) * ds;
+				phi = turn * ( s0 / L ) ** 2;
+				pts.push( pts[ j ].clone().add( v2( Math.sin( phi ), - Math.cos( phi ) ).multiplyScalar( ds ) ) );
+
+			}
+
+			return pts;
+
+		};
+		FRAME_V.forEach( ( x, which ) => {
 
 			const b0 = v2( x, plateEdgeZ( x ) - HITCH_BACK - 0.03 );
 			// (strut 4 from the bottom beam, over the divider between the second and third bays, as strut 1: no thin
 			// joint at the back edge's step)
 			const start = v2( x, x === FRAME_V[ 0 ] ? zF - 0.008 : frontBackZ( x ) + 0.008 );
-			const dir = new THREE.Vector2( Math.sin( 0.6 ), - Math.cos( 0.6 ) );
-			const end = toRim( b0, b0.clone().addScaledVector( dir, 0.6 ) );
-			const L = b0.distanceTo( end ), c = b0.clone().add( v2( Math.sin( 0.35 ), - Math.cos( 0.35 ) ).multiplyScalar( 0.45 * L ) );
-			strut( [ start, ...new THREE.QuadraticBezierCurve( b0, c, end ).getPoints( 20 ) ] );		// struts 4 and 5
+			const alpha = THREE.MathUtils.degToRad( TREBLE_STRUT_ANGLE[ which ] );
+			// the heading that meets the rim at alpha where the curve ends at q
+			const turnAt = ( q, p0 ) => {
 
-		}
+				const u = rimFrame( q ), n = v2( - u.y, u.x );
+				if ( n.dot( new THREE.Vector2().subVectors( p0, q ) ) < 0 ) n.negate();		// (into the plate)
+				const d = u.clone().multiplyScalar( Math.cos( alpha ) ).addScaledVector( n, Math.sin( alpha ) ).negate();		// (the strut's direction, out)
+				return Math.atan2( d.x, - d.y );
+
+			};
+			let turn = 0.9, pts;
+			for ( let it = 0; it < 6; ++ it ) {
+
+				let lo = 0.05, hi = 1.5;
+				for ( let k = 0; k < 40; ++ k ) {
+
+					const mid = ( lo + hi ) / 2, e = clothoid( b0, mid, turn ).pop();
+					if ( inLim( e ) ) lo = mid; else hi = mid;
+
+				}
+
+				pts = clothoid( b0, lo, turn );
+				turn = turnAt( pts[ pts.length - 1 ], b0 );
+
+			}
+
+			strut( [ start, ...pts ] );		// struts 4 and 5
+
+		} );
 
 		group.add( mesh( merge( parts ), M.plate ) );
 
@@ -720,7 +773,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		const steel = [], copper = [], pins = [], hitch = [];
 		const damperMats = [ M.hammerFelt, M.keyBlack ];
 		// Each note's string(s) laid out through its damper. The dampers stand in a row just behind the front
-		// plate's back edge (its two halves; behind the gusset's apex there), their blocks' fronts 7 mm from it,
+		// plate's back edge (its two halves), their blocks' fronts 7 mm from it,
 		// in four groups between the struts leaving the front plate (numbered by their lower ends, left to right:
 		// 1 the X's long leg, 2 the strut from the gusset parallel to it, 3 the X's other leg, 4 and 5 the
 		// treble's): the bass's (29, compressed to 12 mm apart: their pins, forward along the strings, inside the
@@ -747,7 +800,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			: i < bassCount + tenorCount ? span( - 0.185, V0 - 0.02, i - bassCount, tenorCount )
 				: i < bassCount + tenorCount + t1 ? span( V0 + 0.02, V1 - 0.02, i - bassCount - tenorCount, t1 )
 					: span( V1 + 0.02, x1, i - bassCount - tenorCount - t1, treble - t1 );
-		const damperZ = x => Math.min( frontBackZ( x ), Math.abs( x - GUSSET.x ) < 0.035 ? GUSSET.y : 0 ) - 0.022;
+		const damperZ = x => frontBackZ( x ) - 0.022;		// (in line by the gusset too: its apex, the front plate's, is above them, and they clear it sideways)
 		const angA = Math.atan2( bassDir.x, - bassDir.y ), angB = Math.atan2( X_NODE.x - GUSSET.x, GUSSET.y - X_NODE.y );
 		const angle = i => i < bassCount ? angA : i < bassCount + tenorCount ? angB * ( 1 - ( i - bassCount ) / ( tenorCount - 1 ) ) : 0;
 		// a damper resting on its string at d (plan) on a string running along dir (plan, back), its top y there
@@ -768,6 +821,35 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			node.add( mesh( merge( [ felt ] ), damperMats[ 0 ] ), mesh( merge( [ block ] ), damperMats[ 1 ] ) );
 			group.add( node );
 			dampers.set( i + 21, { node, axis: 'y', lift: 0.010 } );
+
+		};
+		// a hammer from below (as the upright's: src/stringing.js): its strike point 35 mm behind the damper along
+		// the string (the front plate's floor reaches the dampers in the treble: no room in front of them), the felt
+		// head 45 mm under the string at rest, its wooden core below, the shank forward to its pivot (SHANK) under the
+		// floor plate; a pivot per note turned along its string, swung about its own x up to the string (the strike
+		// angle: the felt's top just touching the string's underside)
+		const SHANK = 0.13, BLOW = 0.045;
+		const addHammer = ( i, d, dir, yBottom, w, h ) => {
+
+			const S = d.clone().addScaledVector( dir, 0.035 ), Q = S.clone().addScaledVector( dir, - SHANK );
+			const top = yBottom - BLOW, pivotY = top - h + 0.004;
+			const turn = new THREE.Group();
+			turn.position.set( Q.x, pivotY, Q.y );
+			turn.rotation.y = Math.atan2( dir.x, dir.y );		// (local +z back along the string)
+			const node = new THREE.Group();
+			turn.add( node );
+			const yt = top - pivotY;		// (the felt's top over the pivot)
+			const felt = new RoundedBoxGeometry( w, 0.024, 0.02, 2, 0.004 ).translate( 0, yt - 0.012, SHANK );
+			const core = boxProjectUV( new RoundedBoxGeometry( w - 0.001, h - 0.02, 0.016, 1, 0.0015 ).translate( 0, yt - 0.02 - ( h - 0.02 ) / 2 + 0.002, SHANK ), { grain: 'y' } );
+			const shank = boxProjectUV( rod( v3( 0, 0, - 0.012 ), v3( 0, yt - h + 0.008, SHANK ), 0.0023, 6 ), { grain: 'z' } );
+			// (one material per mesh: the path tracer maps materials per mesh)
+			for ( const [ geo, mat ] of [ [ merge( [ felt ] ), M.hammerFelt ], [ merge( [ core, shank ] ), M.spruce ] ] ) node.add( mesh( geo, mat ) );
+			hammerRack.add( turn );
+			const fp = felt.attributes.position;
+			const maxY = phi => { let m = - Infinity; const sn = Math.sin( phi ), cs = Math.cos( phi ); for ( let k = 0; k < fp.count; ++ k ) m = Math.max( m, fp.getY( k ) * cs - fp.getZ( k ) * sn ); return m; };
+			let lo = - 0.8, hi = 0;
+			for ( let k = 0; k < 40; ++ k ) { const mid = ( lo + hi ) / 2; if ( maxY( mid ) < yBottom - pivotY ) hi = mid; else lo = mid; }
+			hammers.set( i + 21, { node, strike: lo } );
 
 		};
 		for ( let i = 0; i < n; ++ i ) {
@@ -796,11 +878,13 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 				bassEnds.push( E );
 				copper.push( beam( v3( P.x, plateY + y0, P.y ), v3( E.x, plateY + y1, E.y ), 0.003, 0.003 ) );
 				addDamper( i, d, dir, yD + 0.0015, 0.011 );
+				addHammer( i, d, dir, yD - 0.0015, 0.0105, 0.044 );
 
 			} else {
 
 				for ( const k of [ - 0.003, 0.003 ] ) steel.push( beam( v3( P.x + side.x * k, plateY + y0, P.y + side.y * k ), v3( E.x + side.x * k, plateY + y1, E.y + side.y * k ), 0.0012, 0.0012 ) );
 				if ( i < 68 ) addDamper( i, d, dir, yD + 0.0006, 0.012 );
+				addHammer( i, d, dir, yD - 0.0006, i < bassCount + tenorCount ? 0.0115 : 0.0122, THREE.MathUtils.lerp( 0.04, 0.032, ( i - bassCount ) / ( n - bassCount - 1 ) ) );
 
 			}
 
@@ -823,6 +907,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
+		group.add( hammerRack );
 		group.add( mesh( merge( steel ), M.steel ) );
 		group.add( mesh( merge( copper ), M.copper ) );
 		group.add( mesh( merge( pins ), M.steel ) );
@@ -867,32 +952,56 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 				}
 
-				const tri = ( a, b, c, out ) => {
+				// (each of the eight long faces' normals smooth along the strut, averaged over its neighbouring pieces;
+				// sharp across the chamfers; the end caps flat)
+				const nor = [], centre = q => q.reduce( ( a, v ) => a.add( v ), new THREE.Vector3() ).multiplyScalar( 1 / q.length );
+				const faceN = [];		// [ piece ][ face ]
+				for ( let i = 0; i + 1 < sec.length; ++ i ) {
 
-					const nn = new THREE.Vector3().subVectors( b, a ).cross( new THREE.Vector3().subVectors( c, a ) );
-					if ( nn.dot( out ) < 0 ) [ b, c ] = [ c, b ];
-					pos.push( a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z );
+					const row = [];
+					for ( let k = 0; k < 8; ++ k ) {
 
-				};
-				const centre = q => q.reduce( ( a, v ) => a.add( v ), new THREE.Vector3() ).multiplyScalar( 1 / q.length );
+						const a = sec[ i ][ k ], b = sec[ i ][ ( k + 1 ) % 8 ], d = sec[ i + 1 ][ k ];
+						let nn = new THREE.Vector3().subVectors( b, a ).cross( new THREE.Vector3().subVectors( d, a ) );
+						if ( nn.lengthSq() < 1e-14 ) nn = new THREE.Vector3().subVectors( sec[ i + 1 ][ ( k + 1 ) % 8 ], a ).cross( new THREE.Vector3().subVectors( d, a ) );
+						const out = new THREE.Vector3().addVectors( a, b ).multiplyScalar( 0.5 ).sub( centre( sec[ i ] ) );
+						if ( nn.dot( out ) < 0 ) nn.negate();
+						row.push( nn.normalize() );
+
+					}
+
+					faceN.push( row );
+
+				}
+
+				const vN = ( i, k ) => new THREE.Vector3().add( faceN[ Math.max( 0, i - 1 ) ][ k ] ).add( faceN[ Math.min( faceN.length - 1, i ) ][ k ] ).normalize();
+				const put = ( v, n ) => { pos.push( v.x, v.y, v.z ); nor.push( n.x, n.y, n.z ); };
 				for ( let i = 0; i + 1 < sec.length; ++ i ) for ( let k = 0; k < 8; ++ k ) {
 
-					const a = sec[ i ][ k ], b = sec[ i ][ ( k + 1 ) % 8 ], c = sec[ i + 1 ][ ( k + 1 ) % 8 ], d = sec[ i + 1 ][ k ];
-					const out = new THREE.Vector3().addVectors( a, b ).multiplyScalar( 0.5 ).sub( centre( sec[ i ] ) );
-					tri( a, b, c, out ); tri( a, c, d, out );
+					const k1 = ( k + 1 ) % 8, a = sec[ i ][ k ], b = sec[ i ][ k1 ], c = sec[ i + 1 ][ k1 ], d = sec[ i + 1 ][ k ];
+					const na = vN( i, k ), nd = vN( i + 1, k );
+					const flip = new THREE.Vector3().subVectors( b, a ).cross( new THREE.Vector3().subVectors( d, a ) ).dot( faceN[ i ][ k ] ) < 0;
+					const quad = flip ? [ [ a, na ], [ d, nd ], [ c, nd ], [ a, na ], [ c, nd ], [ b, na ] ] : [ [ a, na ], [ b, na ], [ c, nd ], [ a, na ], [ c, nd ], [ d, nd ] ];
+					for ( const [ v, n ] of quad ) put( v, n );
 
 				}
 
 				for ( const [ i, j ] of [ [ 0, 1 ], [ sec.length - 1, sec.length - 2 ] ] ) {
 
-					const q = sec[ i ], o = centre( q ), out = new THREE.Vector3().subVectors( o, centre( sec[ j ] ) );
-					for ( let k = 0; k < 8; ++ k ) tri( o, q[ k ], q[ ( k + 1 ) % 8 ], out );
+					const q = sec[ i ], o = centre( q ), out = new THREE.Vector3().subVectors( o, centre( sec[ j ] ) ).normalize();
+					for ( let k = 0; k < 8; ++ k ) {
+
+						const b = q[ k ], c = q[ ( k + 1 ) % 8 ];
+						const ok = new THREE.Vector3().subVectors( b, o ).cross( new THREE.Vector3().subVectors( c, o ) ).dot( out ) >= 0;
+						for ( const v of ok ? [ o, b, c ] : [ o, c, b ] ) put( v, out );
+
+					}
 
 				}
 
 				const g = new THREE.BufferGeometry();
 				g.setAttribute( 'position', new THREE.Float32BufferAttribute( pos, 3 ) );
-				g.computeVertexNormals();
+				g.setAttribute( 'normal', new THREE.Float32BufferAttribute( nor, 3 ) );
 				return g;
 
 			};
@@ -1276,9 +1385,9 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	return {
 		group,
 		keyboard,
-		// the grand's hammers strike from below, hidden in the case; only the dampers show.
+		// the grand's hammers strike from below, seen through the strings behind the dampers.
 		// Soft pedal: the whole keyboard and action shift right (una corda)
-		action: new PianoAction( { dampers, pedals, softShift: keyboard.group, softShiftAmount: 0.003 } ),
+		action: new PianoAction( { hammers, dampers, pedals, softShift: [ keyboard.group, hammerRack ], softShiftAmount: 0.003 } ),
 		depth: LENGTH,
 		camera: { position: v3( 1.45, 1.5, 1.6 ), target: v3( 0.0, 0.85, - 0.5 ) },
 		// MIDI roll plane (pianoroll.js): the display's face
