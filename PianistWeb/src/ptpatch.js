@@ -24,6 +24,8 @@ import { OCEAN_PT_GLSL, CASCADES } from './ocean.js';
 // one sample's light after the first rough surface, capped (its luminance; 0: off; ?ptclamp= to try others): see patchAOV
 // ?ptsea=0: the path tracer's shader without the sea (patchSea): to tell a GPU / driver that cannot compile it
 const SEA_PATCH = typeof location === 'undefined' || new URLSearchParams( location.search ).get( 'ptsea' ) !== '0';
+// one spot / point light sample's direct light, capped (its luminance; 0: off; ?ptdclamp= to try others): see patchShader
+const DIRECT_MAX = ( () => { const v = typeof location !== 'undefined' ? new URLSearchParams( location.search ).get( 'ptdclamp' ) : null; return v !== null && Number.isFinite( Number( v ) ) ? Number( v ) : 256; } )();
 const INDIRECT_MAX = ( () => { const v = typeof location !== 'undefined' ? new URLSearchParams( location.search ).get( 'ptclamp' ) : null; return v !== null && Number.isFinite( Number( v ) ) ? Number( v ) : 64; } )();
 
 const POWER_MIX = 0.75;		// (the power-weighted part of a light's pick; the rest uniform)
@@ -34,7 +36,7 @@ function patchShader( fs ) {
 		// the CDF's declarations, before the light sampling (and the share beside lightsDenom)
 		[ 'float lightsDenom;', `float lightsDenom;
 			float ptLightsShare;
-			uniform float ptLightsShareSet;
+			uniform float ptLightsShareSet, ptDirectMax;
 			uniform uint ptCdfCount, ptCdfOffset;
 			// the CDF: ( cdf, p ) per light, in the lights' order, in the lights' own texture after their data
 			// (texel ptCdfOffset + l: updateLights). Not a sampler of its own: the shader already has the 16 a
@@ -55,6 +57,14 @@ function patchShader( fs ) {
 		[ 'getPhotometricAttenuation( iesProfiles, light.iesProfile,', 'getPhotometricAttenuation( light.iesProfile,' ],
 		[ 'LightRecord randomLightSample( sampler2D lights, sampler2DArray iesProfiles, uint lightCount, vec3 rayOrigin, vec3 ruv ) {', 'LightRecord randomLightSample( sampler2D lights, uint lightCount, vec3 rayOrigin, vec3 ruv ) {' ],
 		[ 'result = randomSpotLightSample( light, iesProfiles, rayOrigin, ruv.yz );', 'result = randomSpotLightSample( light, rayOrigin, ruv.yz );' ],
+		// one spot / point light sample's direct light capped at ptDirectMax in luminance (Cycles' clamp direct). Their
+		// discs (radius 0.25-0.35 m: soft shadows) are sampled but never hit (misWeight 1, no MIS): on a glossy surface
+		// (the lacquer, brass, the keys, the gilt) a rare point of the disc in the lobe's peak brought ~1000x a pixel's
+		// light in one sample of 2048, a flash the bloom spread over the frame for a frame (the indirect cap is after
+		// the first rough surface; this was its own direct light)
+		[ /(\n(\s*)result = attenuatedColor \* lightRec\.emission[^\n]*misWeight \/ lightPdf;)/,
+			`$1
+$2if ( ptDirectMax > 0.0 && ( lightRec.type == SPOT_LIGHT_TYPE || lightRec.type == POINT_LIGHT_TYPE ) ) { float ptL = luminance( result ); if ( ptL > ptDirectMax ) result *= ptDirectMax / ptL; }` ],
 		// the pick: by the CDF
 		[ 'uint l = uint( ruv.x * float( lightCount ) );', 'uint l = ptPickLight( lights, ruv.x );' ],
 		// the share: lights or the environment
@@ -473,7 +483,7 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 	for ( const m of mats ) {
 
 		m.fragmentShader = patched;
-		Object.assign( m.uniforms, { ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 }, ptCdfOffset: { value: 0 }, ptIndirectMax: { value: INDIRECT_MAX } }, seaUniforms() );
+		Object.assign( m.uniforms, { ptLightsShareSet: { value: share }, ptCdfCount: { value: 0 }, ptCdfOffset: { value: 0 }, ptIndirectMax: { value: INDIRECT_MAX }, ptDirectMax: { value: DIRECT_MAX } }, seaUniforms() );
 		m.defines.PT_AOV = 0;
 		m.needsUpdate = true;
 
@@ -554,6 +564,7 @@ export function patchPathTracer( pt, { share = 0.5 } = {} ) {
 
 	};
 	pt.lightsShare = v => { for ( const m of mats ) m.uniforms.ptLightsShareSet.value = v; pt.reset(); };
+	pt.directMax = v => { for ( const m of mats ) m.uniforms.ptDirectMax.value = v; pt.reset(); };		// (the cap above; 0: off)
 	// the denoiser's buffers (patchAOV): the main path tracer's target with 5 attachments and PT_AOV 1 (a
 	// recompile: switched only when asked otherwise, and left so); its textures: colour, albedo, normal, direct, stats
 	const R = pt._pathTracer, single = R._primaryTarget;

@@ -20,7 +20,7 @@ import { Azurea, prefetchAzurea, azureaStatus, azureaPhase, azureaProgress, azur
 import { berlinProgress, berlinStatus, berlinStatusText, prefetchBerlinHall } from './berlinhall.js';
 import { GIProbe } from './gi.js';
 import { PlaneMirror, chainCompile } from './mirror.js';
-import { PathTracer } from './pathtracer.js';
+import { PathTracer, fitTextureSize } from './pathtracer.js';
 import { PTSnapshot } from './ptsnapshot.js';
 import { PTPost, makeHDRClamp } from './ptpost.js';
 import { captureScreen } from './ptscreen.js';
@@ -372,7 +372,11 @@ const ptSnapshot = new PTSnapshot( renderer, pathTracer, scene, camera, {
 		// the screen's image as an emitting plate (ptscreen.js: the roll's additive shaders are not the path
 		// tracer's), drawn before the roll is hidden; the keys' additive glows hidden too (to the path tracer:
 		// tinted films)
-		ptScreen = captureScreen( renderer, roll, piano?.materials?.panel, { size: pathTracer.pt.textureSize.x } );
+		// (the layers' size fitted first, as buildScene will: the capture is made at the layers' own size. Fitted only
+		// after it, a fresh page's first capture was at the default 2048 for the hall's 1024: halved when copied into its
+		// layer, the 1-texel guides at half a byte, rounded away: every worker's first frame of a job had no lines)
+		fitTextureSize( pathTracer.pt, scene );
+		ptScreen = captureScreen( renderer, roll, piano?.materials?.panel, { size: pathTracer.pt.textureSize.x, camera } );		// (the camera: the guides' width, ptscreen.js)
 		setLightingMode( 'pathtrace' );
 		roll.group.visible = false;
 		if ( ptScreen ) scene.add( ptScreen );
