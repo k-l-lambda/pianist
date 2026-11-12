@@ -53,9 +53,9 @@ const OPENINGS = {
 // shelving beside it wide (its room given to the shelving); from the doors' (centred on φ 0) round
 const BAYS = [
 	[ 'door', 37.2 ], [ 'plain', 37.2 ], [ 'pipes', 37.2 ], [ 'window', 30 ],		// (window R at 108)
-	[ 'shelves', 28, { a: 1.51, cols: [ 0.5 ], heights: [ [ 0.52, 1.08 ], [ 0.56, 1.12 ] ] } ],		// (the shelves' openings more even: 0.48/0.52/0.83 m were; the top one less empty)
+	[ 'shelves', 28, { a: 1.51, shelves: 3 } ],		// (three shelves across, evenly up from the cabinet: four levels ~0.46 m apart)
 	[ 'curtain', 14, { a: 0.65 } ], [ 'window', 30 ], [ 'clef', 18 ],		// (window M at 180)
-	[ 'shelves', 24, { a: 1.27, cols: [ 0.5 ], heights: [ [ 0.55, 1.1 ], [ 0.5, 1.06 ] ] } ],
+	[ 'shelves', 24, { a: 1.27, shelves: 3 } ],
 	[ 'window', 30 ], [ 'pipes', 37.2 ], [ 'plain', 37.2 ],		// (window L at 252: the three windows 72° apart)
 ];
 /** Each bay's centre and its edges (rad), from BAYS' widths. */
@@ -118,21 +118,19 @@ const ON_SIDEBOARD = [ [ 'table-lamp', 0.74, 0 ], [ 'ceramic-vase', - 0.66, 0 ],
 // each column's shelves, bottom up): ornaments [ node, x in it (-1..1), turn ]. Every ornament model once in the room
 // (here, the sideboard, the tables: _build warns of a second use and leaves it out)
 const SHELVING = {
+	// per level, the cabinet's top first, then the shelves bottom up: [ node, turn (deg) ], left to right, spread
+	// evenly across the level (the tallest low, where the level is free above; the short ones on the top shelf)
 	1: [		// (shelving 1, by window L)
-		[ [ 'crystal-ball', - 0.45, 0 ], [ 'hourglass', 0.45, 0 ] ],
-		[ [ 'books-grey', - 0.42, 0 ], [ 'perfume', 0.32, - 15 ], [ 'crystal-gem', 0.76, 0 ] ],
-		[ [ 'pothos', - 0.6, 0 ], [ 'armillary', 0.05, 0 ], [ 'figurine', 0.62, - 20 ] ],
-		[ [ 'picture', - 0.45, 0 ], [ 'loop-sculpture', 0.45, 0 ] ],		// (the shell to the top on the right: here it crowded)
-		[ [ 'carousel', - 0.32, 0 ], [ 'gold-star', 0.55, 0 ] ],		// (the carousel music box in the books' place)
-		[ [ 'brass-globe', - 0.55, 0 ], [ 'shell', 0.05, 20 ], [ 'jewelry-box', 0.6, 10 ] ],
+		[ [ 'carousel', 0 ], [ 'armillary', 0 ], [ 'pothos', 0 ], [ 'gold-star', 0 ] ],
+		[ [ 'books-grey', 0 ], [ 'hourglass', 0 ], [ 'crystal-ball', 0 ], [ 'figurine', - 20 ] ],
+		[ [ 'shell', 20 ], [ 'picture', 0 ], [ 'brass-globe', 0 ], [ 'loop-sculpture', 0 ] ],
+		[ [ 'perfume', - 15 ], [ 'crystal-gem', 0 ], [ 'jewelry-box', 10 ] ],
 	],
 	2: [		// (shelving 2, by window R)
-		[ [ 'radio', - 0.5, 0 ], [ 'coral-tree', 0.4, 0 ] ],		// (the mushroom lamp up beside the crystal note: the gold ribbon's place)
-		[ [ 'books-gold', - 0.45, 0 ], [ 'astronaut', 0.25, 20 ], [ 'clock', 0.72, - 10 ] ],
-		[ [ 'vinyl', - 0.55, 12 ], [ 'headphones', 0.05, 15 ], [ 'diffuser', 0.65, 0 ] ],
-		[ [ 'roses', - 0.55, 0 ], [ 'cloche', 0.1, 0 ], [ 'metronome', 0.65, 0 ] ],
-		[ [ 'crystal-note', - 0.4, 0 ], [ 'mushroom-lamp', 0.45, 0 ] ],		// (the gold ribbon gone: its loops read as a clef, oddly drawn)
-		[ [ 'whale-tail', - 0.4, 20 ], [ 'olive-vase', 0.45, 0 ] ],
+		[ [ 'mushroom-lamp', 0 ], [ 'headphones', 15 ], [ 'cloche', 0 ], [ 'roses', 0 ] ],
+		[ [ 'books-gold', 0 ], [ 'astronaut', 20 ], [ 'diffuser', 0 ], [ 'olive-vase', 0 ] ],
+		[ [ 'metronome', 0 ], [ 'crystal-note', 0 ], [ 'vinyl', 12 ], [ 'radio', 0 ] ],
+		[ [ 'clock', - 10 ], [ 'whale-tail', 20 ], [ 'coral-tree', 0 ] ],
 	],
 };
 // the shelves' ornaments' sizes over the pack's (tools/luminara-asset.mjs SIZE), as the close-ups': the tall ones
@@ -164,7 +162,7 @@ export const LUMINARA_PRESETS = {
 	'Blue hour': { skyHdr: 4, skySat: 1, sunCore: 1, moon: 0, moonLight: 0, stars: 0, clouds: 0, baked: true, bakeInterior: 0.45, shelf: 1.2, outside: 'dusk', sky: 1.5, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, cove: 1.1, coveColor: '#fff0e0', dome: 70, downColor: '#fff5ec', sconce: 3.3, sconceColor: '#fff3e6', niche: 0.65, nicheColor: '#ffecd6', led: 8, ledWall: 1.8, ledFloor: 0.7, ledColor: '#fff1e2', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.62, exposure: 0.6, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
 	'Night': { skyHdr: 4.22, skySat: 1, sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.85, shelf: 1.3, outside: 'night', sky: 0.5, moon: 1, moonLight: 0.7, stars: 1, clouds: 0.55, cove: 2.2, coveColor: '#ffc283', dome: 140, downColor: '#ffcd95', sconce: 6.5, sconceColor: '#ffd6a4', niche: 1.3, nicheColor: '#ffc07a', led: 15, ledWall: 3.4, ledFloor: 1.4, ledColor: '#ffc283', top: 0, topColor: '#fff0dc', topAngle: 15, env: 0.55, exposure: 0.62, tone: 'ACES', saturation: 1.0, bloom: 0.12, bloomThreshold: 8 },
 	// the house down, the piano under a single spot from the dome's crown
-	'Recital': { skyHdr: 6, skySat: 1, sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.9, shelf: 0.09, outside: 'night', sky: 0.72, moon: 0.8, moonLight: 1.4, stars: 0.8, clouds: 0.55, cove: 0.1, coveColor: '#e3e9ff', dome: 0, downColor: '#e0e8ff', sconce: 0.32, sconceColor: '#dee7ff', niche: 0.08, nicheColor: '#e4eaff', led: 0.8, ledWall: 0.22, ledFloor: 0.1, ledColor: '#e3e9ff', top: 280, topColor: '#ffd09a', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
+	'Recital': { skyHdr: 6, skySat: 1, sunCore: 1, sun: 0, sunColor: '#ffc890', sunAz: 249, sunEl: 15.5, baked: true, bakeInterior: 0.9, shelf: 0.09, outside: 'night', sky: 0.72, moon: 0.8, moonLight: 1.4, stars: 0.8, clouds: 0.55, cove: 0.1, coveColor: '#e3e9ff', dome: 0, downColor: '#e0e8ff', sconce: 0.32, sconceColor: '#dee7ff', niche: 0.08, nicheColor: '#e4eaff', led: 0.8, ledWall: 0.22, ledFloor: 0.1, ledColor: '#e3e9ff', top: 420, topColor: '#ffd09a', topAngle: 15, env: 0.3, exposure: 0.62, tone: 'ACES', saturation: 1.05, bloom: 0.12, bloomThreshold: 8 },
 };
 export const LUMINARA_DEFAULT = 'Afternoon';
 export const LUMINARA_OUTSIDE = [ 'day', 'sunset', 'dusk', 'night' ];
@@ -1772,11 +1770,11 @@ export class Luminara {
 
 	}
 
-	/** Built-in shelving in a rounded-rect niche (frame F: its back): four shelves, two uprights, a strip of light under each shelf's front. */
+	/** Built-in shelving in a rounded-rect niche (frame F: its back): a cabinet, shelves across at equal heights, a strip of light under each. */
 	_shelving( add, F, o ) {
 
-		// as the reference's, not a grid: a closed lacquered cabinet along the foot (three doors, brass
-		// pulls), above it an upright off the middle, two columns of shelves at different heights; a
+		// a closed lacquered cabinet along the foot (three doors, brass pulls), above it shelves across the
+		// whole width at equal heights (o.shelves; there was an upright off the middle, two columns staggered); a
 		// strip of light under each shelf (and the niche's top) along its back edge, by the back wall,
 		// facing down and a little back: each part lit from its top, its back washed below it. Its
 		// light: a line light (addSegmentGlow, the bake's). Surfaces for ornaments: n.surfaces
@@ -1805,19 +1803,16 @@ export class Luminara {
 			add( new THREE.CylinderGeometry( 0.006, 0.006, 0.16, 12 ).translate( x + pull * ( cw / doors / 2 - 0.06 ), o.y0 + ( cabTop - o.y0 ) * 0.62, d - 0.03 + 0.03 ).applyMatrix4( F ), M.brass );
 
 		}
-		// the uprights between the columns (o.cols: their places, fractions across; the other bay's
-		// mirrored), each column's shelves at its own heights (o.heights: above the cabinet; staggered)
-		const fr = ( o.cols ?? [ 0.434 ] ).map( f => sx > 0 ? f : 1 - f ).sort( ( a, b ) => a - b );
-		const xs = fr.map( f => - o.a + 0.01 + f * ( cw ) ), bounds = [ - o.a + 0.01, ...xs, o.a - 0.01 ];
-		const heights = sx > 0 ? o.heights : [ ...o.heights ].reverse();
-		for ( const x of xs ) add( new RoundedBoxGeometry( t, top - cabTop, d - 0.02, 2, 0.008 ).translate( x, ( top + cabTop ) / 2, d / 2 - 0.01 ).applyMatrix4( F ), M.lacquer );
-		const cols = bounds.slice( 0, - 1 ).map( ( x0, i ) => [ x0 + ( i ? t / 2 : 0 ), bounds[ i + 1 ] - ( i < bounds.length - 2 ? t / 2 : 0 ) ] );
-		cols.forEach( ( c, i ) => { for ( const h of heights[ i ] ) { board( c[ 0 ], c[ 1 ], cabTop + h ); strip( c[ 0 ] + 0.06, c[ 1 ] - 0.06, cabTop + h - t ); } } );
+		// the shelves: o.shelves boards across the whole width, evenly spaced from the cabinet's top to the niche's
+		// top (its levels the same height), a strip of light under each
+		const n = o.shelves ?? 3, gap = ( top - cabTop ) / ( n + 1 ), x0 = - o.a + 0.01, x1 = o.a - 0.01;
+		const ys = Array.from( { length: n }, ( _, k ) => cabTop + gap * ( k + 1 ) );
+		for ( const y of ys ) { board( x0, x1, y ); strip( x0 + 0.06, x1 - 0.06, y - t ); }
 		strip( - o.a + o.rc + 0.02, o.a - o.rc - 0.02, o.y1 );		// (the niche's top)
-		// where the ornaments stand: [ y, x of its middle, half width ]: the cabinet's top in each column,
-		// then each column's shelves (left to right); SHELVING by these
-		const mid = c => ( c[ 0 ] + c[ 1 ] ) / 2, hw = c => ( c[ 1 ] - c[ 0 ] ) / 2 - 0.04, ord = sx > 0 ? cols : [ ...cols ].reverse();
-		return [ ...ord.map( c => [ cabTop, mid( c ), hw( c ) ] ), ...ord.flatMap( ( c, i ) => o.heights[ i ].map( h => [ cabTop + h, mid( c ), hw( c ) ] ) ) ];
+		// where the ornaments stand: [ y, x of its middle, half width ], the cabinet's top then each shelf, bottom up
+		// (the top shelf's ends kept clear of the niche's rounded corners); SHELVING by these
+		const hw = ( x1 - x0 ) / 2 - 0.08;
+		return [ [ cabTop, 0, hw ], ...ys.map( ( y, k ) => [ y, 0, k === n - 1 ? hw - o.rc * 0.5 : hw ] ) ];
 
 	}
 
@@ -2575,7 +2570,8 @@ export class Luminara {
 
 			if ( ! n.surfaces[ k ] ) return;
 			const [ y, cx, half ] = n.surfaces[ k ];		// (each shelving its own ornaments)
-			for ( const [ item, x, tt ] of items ) place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( cx + x * half * 0.75, y, n.o.depth * 0.45 ) ).multiply( turn( tt ) ) );
+			// (spread evenly: m of them at the middles of m equal parts of the level)
+			items.forEach( ( [ item, tt ], i ) => place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( cx + half * ( ( 2 * i + 1 ) / items.length - 1 ), y, n.o.depth * 0.45 ) ).multiply( turn( tt ) ) ) );
 
 		} );
 		// the curtain at the curtain of light's back (its relief: its back on z 0, its middle at x 0; as wide as the niche)
