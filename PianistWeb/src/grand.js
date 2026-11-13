@@ -565,13 +565,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		const keep = outline.map( ( p, i ) => i ).filter( i => outline[ i ].y < plateEdgeZ( outline[ i ].x ) && Math.sign( side( outline[ i ] ) ) === right );
 		// (its S edge EDGE_BEAD back: the bead along the edge rounds it over)
 		const crescent = new THREE.Shape( [ ...keep.map( i => outline[ i ] ), ...offsetPolyline( PLATE_EDGE, - EDGE_BEAD ).reverse() ].filter( ( p, k, a ) => k === 0 || p.distanceTo( a[ k - 1 ] ) > 0.004 ) );
-		for ( const [ cx, cz, r ] of PLATE_HOLES ) {
-
-			const h = new THREE.Path();
-			h.absellipse( cx, cz, r, r, 0, Math.PI * 2, true );
-			crescent.holes.push( h );
-
-		}
+		// (its holes: cut below, as wide as each one's dish, once the struts are laid out)
 
 		// the S edge's bead: the floor's edge rounded over (top and bottom), its top flush with the floor
 		parts.push( sweep( PLATE_EDGE, () => EDGE_PROFILE, { y: plateY, closed: true } ) );
@@ -854,27 +848,46 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
-		parts.push( extrudeXZ( crescent, plateY - 0.012, plateY, 0 ) );		// (no bevel: at its sharp corners the bevel's offsets shot across the holes)
-
-		// the holes' collars (lathed, as cast: photos Footages.local/ref/soundboard/20261113-*.jpg): from the floor
-		// a fillet up a sloping shoulder to a low ring, a fillet into the lip round the hole, its top rounded over
-		// into the bore; as wide as the room round the hole allows (the struts, strut 6, the hitch rail, the other
-		// holes)
+		// the holes, as cast (the middle hole of Footages.local/ref/soundboard/20261113-155903.jpg through MoGe-2:
+		// Footages.local/render/plate-hole-moge/): each a raised ring, its outer edge Ro (PLATE_HOLES' radius plus
+		// HOLE_RING: as the collars were) on a concave slope rising from the floor, faster towards the ring (as much
+		// room as the struts, strut 6, the hitch rail and the next hole leave, up to 0.4 Ro); inwards a narrow outer
+		// bead, a wide flat groove (HOLE_GROOVE at the largest hole, in proportion on the others), a bead at the bore
+		// rounding over into it; the bore's edge thin (the casting thicker away from it underneath). The beads, the
+		// groove and the heights in proportion to Ro (the small holes' all scaled down). The floor is cut at the slope's
+		// foot, the lathe the hole's whole surface
+		const HOLE_RING = 0.0075, HOLE_GROOVE = 0.0126, RO_MAX = Math.max( ...PLATE_HOLES.map( h => h[ 2 ] ) ) + HOLE_RING;
 		const face6 = offsetPolyline( inner, 0.041 ), rail = offsetPolyline( PLATE_EDGE, - HITCH_BACK );
+		const FT = 0.012;		// (the floor's thickness)
 		plateHoleCollars.length = 0;
+		const holeLathes = [];
 		for ( const [ cx, cz, r ] of PLATE_HOLES ) {
 
-			const c = v2( cx, cz );
+			const c = v2( cx, cz ), Ro = r + HOLE_RING, k = Ro / RO_MAX;
 			let room = Math.min( lineD( c, face6 ) - STRUT_FOOT * 0.6, lineD( c, rail ) - 0.017 );
 			for ( const [ a, b, w ] of frameLines ) room = Math.min( room, segD( c, a, b ) - w / 2 - STRUT_FOOT * 0.6 );
-			for ( const [ ox, oz, orr ] of PLATE_HOLES ) if ( ox !== cx || oz !== cz ) room = Math.min( room, ( c.distanceTo( v2( ox, oz ) ) - orr ) / 2 );
-			const wc = THREE.MathUtils.clamp( room - r - 0.002, 0.0075, 0.02 ), R0 = r + wc, Rp = r + 0.0075 + 0.3 * ( wc - 0.0075 );
-			plateHoleCollars.push( [ cx, cz, R0 ] );
-			const prof = latheProfile( [ [ R0 + 0.004, - 0.0006 ], [ R0, - 0.0006 ], [ Rp, 0.0035 ], [ r + 0.0065, 0.0035 ], [ r + 0.0045, 0.0105 ], [ r - 0.0003, 0.0105 ], [ r - 0.0003, - 0.0125 ] ],
-				[ 0, 0.004, 0.003, 0.0018, 0.0022, 0.0022, 0 ] );
-			parts.push( new THREE.LatheGeometry( prof, 56 ).translate( cx, plateY, cz ) );
+			for ( const [ ox, oz, orr ] of PLATE_HOLES ) if ( ox !== cx || oz !== cz ) room = Math.min( room, Ro + ( c.distanceTo( v2( ox, oz ) ) - Ro - orr - HOLE_RING ) / 2 );		// (half the gap between the two rings)
+			const dw = 0.6 * THREE.MathUtils.clamp( room - Ro - 0.002, 0.004, 0.4 * Ro ), Rd = Ro + dw;		// (the slope out to the floor)
+			const ob = 0.0056 * k, g = HOLE_GROOVE * k, ib = 0.006 * k, rb = Ro - ob - g - ib;		// (the outer bead, the groove, the inner bead; the bore)
+			const hu = 1.4 * Ro;		// (the heights below in units of hu: the ring stands 0.087 Ro over the floor)
+			plateHoleCollars.push( [ cx, cz, Rd ] );
+			const cut = new THREE.Path();
+			cut.absellipse( cx, cz, Rd, Rd, 0, Math.PI * 2, true );
+			crescent.holes.push( cut );
+			// (outer edge to the bore, then down the bore and back under the floor; corner radii in m)
+			const Hb = 0.045 * hu, ramp = [];
+			for ( let j = 0; j <= 8; ++ j ) { const t = j / 8; ramp.push( [ Rd - t * dw, Hb * t ** 2.4 ] ); }
+			const pts = [
+				...ramp, [ Ro - 0.45 * ob, 0.062 * hu ],		// (the outer bead's crest)
+				[ Ro - ob, 0.041 * hu ], [ Ro - ob - g, 0.041 * hu ],		// (the wide flat groove: a third as deep as the ring stands over the floor)
+				[ rb + 0.5 * ib, 0.062 * hu ], [ rb + 0.12 * ib, 0.057 * hu ], [ rb, 0.035 * hu ], [ rb, - 0.0015 ], [ rb + 0.006, - 0.0025 ], [ Rd, - FT ],		// (the inner bead, over into the bore)
+			];
+			const rad = [ ...ramp.map( ( q, j ) => j === 8 ? 0.0008 * k : 0 ), ...[ 0.0013, 0.001, 0.001, 0.0018, 0.0012, 0.001, 0.0008 ].map( v => v * k ), 0.002, 0 ];
+			holeLathes.push( new THREE.LatheGeometry( latheProfile( pts, rad, 3 ), 56 ).translate( cx, plateY, cz ) );
 
 		}
+		parts.push( extrudeXZ( crescent, plateY - FT, plateY, 0 ) );		// (no bevel: at its sharp corners the bevel's offsets shot across the holes)
+		parts.push( ...holeLathes );
 
 		// the bolts holding the plate down (hex heads on washers, in the plate's finish): along the crescent inside strut 6, about
 		// BOLT_PITCH apart, where clear of the holes' collars, the struts' feet and the rails; a screw by each hole on its
