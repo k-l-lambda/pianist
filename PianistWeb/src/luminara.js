@@ -117,14 +117,16 @@ const ON_SIDEBOARD = [ [ 'table-lamp', 0.74, 0 ], [ 'ceramic-vase', - 0.66, 0 ],
 // in the shelving, as the close-ups: per surface (_shelving's, left to right: the cabinet's top in each column, then
 // each column's shelves, bottom up): ornaments [ node, x in it (-1..1), turn ]. Every ornament model once in the room
 // (here, the sideboard, the tables: _build warns of a second use and leaves it out)
+// how far each shelving's ornaments stray from an even layout (1: as drawn, 0: even)
+const SHELVING_JITTER = { 1: 1, 2: 0.4 };
 const SHELVING = {
 	// per level, the cabinet's top first, then the shelves bottom up: [ node, turn (deg) ], left to right, spread
 	// evenly across the level (the tallest low, where the level is free above; the short ones on the top shelf)
 	1: [		// (shelving 1, by window L)
-		[ [ 'carousel', 0 ], [ 'armillary', 0 ], [ 'pothos', 0 ], [ 'gold-star', 0 ] ],
+		[ [ 'loop-sculpture', 0 ], [ 'jewelry-box', 10 ], [ 'pothos', 0 ], [ 'gold-star', 0 ] ],
 		[ [ 'books-grey', 0 ], [ 'hourglass', 0 ], [ 'crystal-ball', 0 ], [ 'figurine', - 20 ] ],
-		[ [ 'shell', 20 ], [ 'picture', 0 ], [ 'brass-globe', 0 ], [ 'loop-sculpture', 0 ] ],
-		[ [ 'perfume', - 15 ], [ 'crystal-gem', 0 ], [ 'jewelry-box', 10 ] ],
+		[ [ 'shell', 20 ], [ 'picture', 0 ], [ 'brass-globe', 0 ], [ 'carousel', 0 ] ],		// (the carousel music box: third level up, at the right)
+		[ [ 'perfume', - 15 ], [ 'crystal-gem', 0 ], [ 'armillary', 0 ] ],
 	],
 	2: [		// (shelving 2, by window R)
 		[ [ 'mushroom-lamp', 0 ], [ 'headphones', 15 ], [ 'cloche', 0 ], [ 'roses', 0 ] ],
@@ -2568,10 +2570,34 @@ export class Luminara {
 		// the shelving's ornaments, each on its shelf
 		for ( const n of this.nichePoints.filter( n => n.kind === 'shelves' ) ) ( SHELVING[ n.deg > 180 ? 1 : 2 ] ).forEach( ( items, k ) => {
 
+			const f = SHELVING_JITTER[ n.deg > 180 ? 1 : 2 ];		// (how far from the even layout)
+
 			if ( ! n.surfaces[ k ] ) return;
 			const [ y, cx, half ] = n.surfaces[ k ];		// (each shelving its own ornaments)
-			// (spread evenly: m of them at the middles of m equal parts of the level)
-			items.forEach( ( [ item, tt ], i ) => place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( cx + half * ( ( 2 * i + 1 ) / items.length - 1 ), y, n.o.depth * 0.45 ) ).multiply( turn( tt ) ) ) );
+			// (left to right in their order, but not on a grid: the free width between them shared out at random
+			// (the gaps drawn exponentially, the ends' halves: some close together, some well apart), each a little forward or back and turned a
+			// little more; a fixed draw per shelving and level, so the room is the same every load)
+			let sd = Math.imul( n.deg * 7919 + k * 104729 + 17, 0x9E3779B1 ) >>> 0;
+			const rnd = () => { sd = sd + 0x6D2B79F5 | 0; let t = Math.imul( sd ^ sd >>> 15, 1 | sd ); t = t + Math.imul( t ^ t >>> 7, 61 | t ) ^ t; return ( ( t ^ t >>> 14 ) >>> 0 ) / 4294967296; };
+			const yaw = items.map( ( [ , tt ] ) => tt + f * ( rnd() - 0.5 ) * 44 );
+			const wide = items.map( ( [ item ], i ) => {
+
+				const [ sx, , sz ] = size( item ), sc = /^books/.test( item ) ? 1 : ( ORNAMENT_SCALE[ item ] ?? 1.15 ), a = yaw[ i ] * Math.PI / 180;
+				return sc * ( Math.abs( sx * Math.cos( a ) ) + Math.abs( sz * Math.sin( a ) ) );
+
+			} );
+			const free = Math.max( 2 * half - 0.04 - wide.reduce( ( a, w ) => a + w, 0 ), 0 );
+			const gaps = Array.from( { length: items.length + 1 }, ( _, i ) => ( i === 0 || i === items.length ? 0.5 : 1 ) * ( 0.06 - Math.log( 1 - 0.985 * rnd() ) ) );
+			const gsum = gaps.reduce( ( a, g ) => a + g, 0 );
+			let x = cx - half + 0.02;
+			items.forEach( ( [ item ], i ) => {
+
+				x += free * gaps[ i ] / gsum + wide[ i ] / 2;
+				const z = n.o.depth * 0.45 + f * ( rnd() - 0.5 ) * 0.14, xe = cx + half * ( ( 2 * i + 1 ) / items.length - 1 );
+				place( item, n.F.clone().multiply( new THREE.Matrix4().makeTranslation( xe + f * ( x - xe ), y, z ) ).multiply( turn( yaw[ i ] ) ) );
+				x += wide[ i ] / 2;
+
+			} );
 
 		} );
 		// the curtain at the curtain of light's back (its relief: its back on z 0, its middle at x 0; as wide as the niche)
