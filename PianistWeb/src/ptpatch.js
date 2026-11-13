@@ -128,6 +128,8 @@ function seaUniforms() {
 		ptSeaHole: { value: new THREE.Vector3( 0, 0, 0 ) }, ptSeaColor: { value: new THREE.Color( 0, 0, 0 ) }, ptSeaExt: { value: new THREE.Vector3() },
 		ptSeaTint: { value: new THREE.Color( 1, 1, 1 ) }, ptSunSeaGain: { value: new THREE.Vector3( 1, 1, 1 ) }, ptSeaVis: { value: 25 },
 		ptOcTex: { value: tex }, ptOcRot: { value: CASCADES.map( () => new THREE.Vector4( 1, 0, 1, 0 ) ) }, ptOcSlab: { value: 0.05 }, ptOcAlpha: { value: 0.004 },
+		ptOcGust: { value: new THREE.Vector4( 0, 1, 0, 0 ) }, ptOcGustO: { value: Array.from( { length: 3 }, () => new THREE.Vector4( 0, 0, 0, 1 ) ) },		// (src/ocean.js: the gusts, off)
+		ptOcPaw: { value: new THREE.Vector4( 0, 1, 0, 1 ) }, ptOcPawO: { value: Array.from( { length: 3 }, () => new THREE.Vector4( 0, 0, 0, 1 ) ) }, ptOcPawD: { value: new THREE.Vector4( 0, 1, 0, 20 ) }, ptOcPawAlpha: { value: 0 },		// (the cat's paws, off)
 	};
 
 }
@@ -302,7 +304,7 @@ function patchSea( fs ) {
 					surf.sheen = 0.0; surf.sheenColor = vec3( 0.0 ); surf.sheenRoughness = 0.0;
 					surf.iridescence = 0.0; surf.iridescenceIor = 1.3; surf.iridescenceThickness = 0.0;
 					surf.specularColor = vec3( 1.0 ); surf.specularIntensity = 1.0;
-					surf.roughness = ptOcAlpha;
+					surf.roughness = ptOcRough;		// (the unresolved ripples' slopes × the gust's factor here, the cat's paws' added: src/ocean.js)
 					surf.filteredRoughness = applyFilteredGlossy( surf.roughness, accumulatedRoughness );
 					surf.filteredClearcoatRoughness = 0.0;
 					surf.eta = 1.0 / 1.333; surf.f0 = 0.0204;
