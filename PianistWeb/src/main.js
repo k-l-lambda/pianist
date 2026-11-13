@@ -1758,33 +1758,50 @@ function startRender() {
 
 		await step();
 		if ( ! drawFrames ) return;
-		// (a fresh page's first frame path traced twice, the first image thrown away: it came out unlike the same
-		// frame drawn by a page that had drawn others before, all over, not only in its noise; a render's chunks each
-		// start on a fresh page)
-		if ( ! ptWarm ) { await ptFrame(); ptWarm = true; }
 		await ptFrame();
 		ptSnapshot.panel.hidden = true;
 
 	};
-	let ptWarm = false;
+	// the frame's sample noise from the seed and the frame alone (not Math.random: whatever this page drew or skipped
+	// before, the frame's noise is the same; a new pattern each frame). Applied inside the path tracer's own reset:
+	// WebGLPathTracer.reset() only queues it, and the real one (at the first sample) set the seed to 0 and put the
+	// stratified sampler's strata back in order, unshuffled — sample k in stratum k: biased (~3.5 % brighter) and
+	// ~30 % slower. Here, after it: the seed, a seeded generator (mulberry32: the library's LCG repeats within ~16 k
+	// draws) and the sampler rebuilt, its strata shuffled from that seed
+	let ptNoiseSeed = null;
+	const ptSeedHook = r => {
+
+		if ( r._ptSeedHooked ) return;
+		r._ptSeedHooked = true;
+		const reset = r.reset.bind( r );
+		r.reset = () => {
+
+			reset();
+			if ( ptNoiseSeed === null ) return;
+			const st = r.material.stratifiedTexture;
+			r.material.seed = ptNoiseSeed % 1000003;
+			let a = ptNoiseSeed;
+			st.generator = { nextFloat: () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul( a ^ a >>> 15, 1 | a ); t = t + Math.imul( t ^ t >>> 7, 61 | t ) ^ t; return ( ( t ^ t >>> 14 ) >>> 0 ) / 4294967296; } };
+			st.stableNoise = true;
+			// (on a page's first frame the table is still 1x1: left as it is, so the renderer's own init at the first
+			// sample builds it from the fresh generator, as on every other frame; an init here first took draws from it)
+			if ( st.image.width > 1 ) { st.sampler = null; st.init( st.image.height, st.image.width ); }
+
+		};
+
+	};
 	const ptFrame = async () => {
 
 		const size = renderer.getDrawingBufferSize( new THREE.Vector2() );
-		// (the sample noise from the seed and the frame alone, not from Math.random: whatever this page drew or
-		// skipped before, the frame's noise is the same; a new pattern each frame)
-		pathTracer.pt.stableNoise = true;
-		await ptSnapshot.start( { camera, samples: o.pt, exclusive: true } );
 		{
 
 			let h = Math.imul( renderSeed ^ 0x9E3779B9, 0x85EBCA6B ) ^ Math.imul( frameNo - 1, 0xC2B2AE35 );
-			h = ( h ^ ( h >>> 13 ) ) >>> 0;
-			const r = pathTracer.pt._pathTracer;
-			r.material.seed = h % 1000003;
-			r.material.stratifiedTexture.generator.seed = h % 2147483647;
-			r.material.stratifiedTexture.stableNoise = true;
-			r.material.stratifiedTexture.next();		// (the first sample's table too: a fresh page's was drawn from Math.random while the scene was built)
+			ptNoiseSeed = ( h ^ ( h >>> 13 ) ) >>> 0;
 
 		}
+		pathTracer.pt.stableNoise = true;
+		ptSeedHook( pathTracer.pt._pathTracer );
+		await ptSnapshot.start( { camera, samples: o.pt, exclusive: true } );
 		if ( ! ptSnapshot.running ) throw new Error( 'render: the path tracer did not start' );
 		const done = ptSnapshot.done;
 		for ( let settled = false; ! settled; ) {
