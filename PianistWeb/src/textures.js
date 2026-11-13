@@ -442,6 +442,16 @@ export class TextureBaker {
 
 	}
 
+	maple() {
+
+		// (the bridges' and the pins' bushings' hard maple: pale, fine and close-grained)
+		return this.bake( 'maple', WOOD_GLSL, {
+			colBase: '#e2c9a0', colDark: '#d8bb8e', colLate: '#c7a679', colGray: '#e2c9a0',
+			weathering: 0.0, crackAmount: 0.0, planks: 3, ringScale: 90.0, roughBase: 0.45, seed: 5.3,
+		}, { normalStrength: 0.6, tile: [ 0.6, 0.3 ] } );
+
+	}
+
 	darkInterior() {
 
 		return this.bake( 'darkInterior', WOOD_GLSL, {
