@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { boxProjectUV } from './geometry.js';
-import { BERLIN, BERLIN_CHANDELIERS, berlinStatus, berlinToHall, loadBerlinHall, setBerlinLamps } from './berlinhall.js';
+import { BERLIN, BERLIN_CHANDELIERS, berlinStatus, berlinToHall, loadBerlinHall, setBerlinChandelierMode, setBerlinLamps } from './berlinhall.js';
 
 // dimensions (m), hall frame; about 0.65 of the real hall
 export const HALL = {
@@ -211,6 +211,7 @@ export class ConcertHall {
 			this.loading = loadBerlinHall( { toWorld: TO_WORLD, pianoZ: PIANO_Z, renderer: this.baker.renderer } ).then( async g => {
 
 				this.berlin = g;
+				setBerlinChandelierMode( g, this.mode );
 				if ( ! g ) { this.berlinLoading = false; this._shellChanged( false ); return; }
 				// its presets and lights first (still hidden: berlinLoading), then its shaders compiled
 				// for those lights (one long freeze at its first frame otherwise), then shown
@@ -1311,6 +1312,7 @@ export class ConcertHall {
 	setMode( mode ) {
 
 		this.mode = mode;
+		setBerlinChandelierMode( this.berlin, mode );		// (the chandeliers' crystals: instanced, or merged glass for the path tracer)
 		this.updateLights();
 
 	}

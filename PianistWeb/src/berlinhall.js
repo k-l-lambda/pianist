@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CHANDELIER_PT_LOD, crystalInstances, crystalLayout, crystalMaterial, crystalMerged, crystalPTMaterial, frameGeometries } from './chandelier.js';
 
 export const BERLIN = {
 	apronHeight: 0.61,		// the stage's front strip above the stalls floor (m)
@@ -115,6 +116,69 @@ export function berlinToHall( pianoZ ) {
 
 }
 
+// the chandeliers (src/chandelier.js): their frame's gilt, the candles' wax; the crystals' glow from their
+// candles per unit of `house` (the crystal material's uLamp)
+const CHANDELIER_GILT = { color: '#d6ad5e', metalness: 0.85, roughness: 0.28 };
+const CRYSTAL_GLOW = 2.2;
+
+/**
+ * The procedural chandeliers at BERLIN_CHANDELIERS (`M`: the packs' frame -> the world), in `group`
+ * (userData.chandeliers: { crystal, raster: [ groups ], pt: [ groups ] }). Each: its frame (gilt, wax,
+ * flames: a lamp of the `house` group), its crystals instanced (raster) and merged as glass (the path
+ * tracer's, shown by setBerlinChandelierMode; coarser beyond CHANDELIER_PT_LOD.near of the piano).
+ */
+function addChandeliers( group, M ) {
+
+	const F = frameGeometries();
+	const gilt = new THREE.MeshStandardMaterial( CHANDELIER_GILT ), wax = new THREE.MeshStandardMaterial( { color: '#f3ede1', roughness: 0.45, emissive: '#ffd9a8', emissiveIntensity: 0.15 } );
+	const flame = new THREE.MeshStandardMaterial( { color: '#000000', emissive: LAMP_TINT, emissiveIntensity: LAMP_EMISSIVE.house } );
+	flame.userData.lamp = true; flame.userData.lampGroup = 'house';
+	group.userData.lamps.push( flame );
+	const crystal = crystalMaterial(), glass = crystalPTMaterial();
+	const full = crystalLayout( { seed: 7 } );
+	const ptGeo = { near: crystalMerged( crystalLayout( { seed: 7, pitchK: CHANDELIER_PT_LOD.nearPitch, scaleK: 1.15 } ) ), far: crystalMerged( crystalLayout( { seed: 7, pitchK: CHANDELIER_PT_LOD.pitch, scaleK: CHANDELIER_PT_LOD.scale } ) ) };
+	const C = group.userData.chandeliers = { crystal, raster: [], pt: [], tris: { raster: 0, pt: 0, ptNear: ptGeo.near.attributes.position.count / 3, ptFar: ptGeo.far.attributes.position.count / 3, frame: ( F.gilt.attributes.position.count + F.wax.attributes.position.count + F.flame.attributes.position.count ) / 3 } };
+	for ( const p of BERLIN_CHANDELIERS ) {
+
+		const at = new THREE.Vector3( ...p ).applyMatrix4( M );
+		const g = new THREE.Group();
+		g.name = 'berlinHall:chandelier';
+		g.position.copy( at );
+		for ( const [ geo, mat ] of [ [ F.gilt, gilt ], [ F.wax, wax ], [ F.flame, flame ] ] ) {
+
+			const m = new THREE.Mesh( geo, mat );
+			m.castShadow = false; m.receiveShadow = mat !== flame;
+			m.userData.ptNoOccluder = true;		// (round the chandelier's own light: pathtracer.js)
+			m.userData.noAO = true;
+			g.add( m );
+
+		}
+		const raster = new THREE.Group(), pt = new THREE.Group();
+		for ( const im of crystalInstances( full, crystal ) ) { im.castShadow = false; im.userData.noAO = true; raster.add( im ); C.tris.raster += im.count * im.geometry.attributes.position.count / 3; }
+		const lod = Math.hypot( at.x, at.z ) < CHANDELIER_PT_LOD.near ? 'near' : 'far';		// (the piano: the world's origin)
+		C.tris.pt += ptGeo[ lod ].attributes.position.count / 3;
+		const gm = new THREE.Mesh( ptGeo[ lod ], glass );
+		pt.add( gm );
+		pt.visible = false;
+		raster.name = 'chandelier:crystals'; pt.name = 'chandelier:crystalsPT';
+		g.add( raster, pt );
+		C.raster.push( raster ); C.pt.push( pt );
+		group.add( g );
+
+	}
+
+}
+
+/** The chandeliers' crystals for the renderer: instanced (raster) or merged glass (the path tracer). */
+export function setBerlinChandelierMode( group, mode ) {
+
+	const C = group?.userData.chandeliers;
+	if ( ! C ) return;
+	for ( const g of C.raster ) g.visible = mode !== 'pathtrace';
+	for ( const g of C.pt ) g.visible = mode === 'pathtrace';
+
+}
+
 /** The lamps' glow: the chandeliers and sconces at `house`, the candelabras at `lamps` (the preset's). */
 export function setBerlinLamps( group, { house, lamps } ) {
 
@@ -124,6 +188,8 @@ export function setBerlinLamps( group, { house, lamps } ) {
 		m.emissiveIntensity = LAMP_EMISSIVE[ m.userData.lampGroup ] * v;
 
 	}
+	const C = group?.userData.chandeliers;
+	if ( C ) C.crystal.userData.u.uLamp.value = CRYSTAL_GLOW * house;
 
 }
 
@@ -270,6 +336,7 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8, rendere
 	for ( const o of meshes ) {
 
 		if ( performance.now() - t > 30 ) { await nextFrame(); t = performance.now(); }
+		if ( o.material.name === 'kronleuchter' ) continue;		// (the scanned chandeliers: ours instead, src/chandelier.js)
 		if ( ! ours.has( o.material ) ) ours.set( o.material, hallMaterial( o.material, anisotropy ) );
 		const mat = ours.get( o.material );
 		const geo = new THREE.BufferGeometry();
@@ -317,6 +384,8 @@ export async function loadBerlinHall( { toWorld, pianoZ, anisotropy = 8, rendere
 		group.add( mesh );
 
 	}
+	await nextFrame();
+	addChandeliers( group, M );
 	for ( const g of gltfs ) g.scene.traverse( o => o.geometry?.dispose() );		// (the materials' textures: now ours)
 	if ( renderer ) { berlinStatus.phase = 'upload'; await nextFrame(); await uploadTextures( group, renderer ); }
 	return group;
