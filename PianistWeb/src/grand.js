@@ -14,8 +14,8 @@ import * as THREE from 'three';
 import { Keyboard } from './keyboard.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { woodBox, v3, extrudeTop, merge, beam, rod, boxProjectUV } from './geometry.js';
-import { sweep, profile, filletPlan, meet, latheProfile } from './castdetail.js';
-import { buildBridges } from './soundboard.js';
+import { sweep, profile, filletPlan, meet, latheProfile, roundCorners } from './castdetail.js';
+import { buildBridges, buildBassBridge } from './soundboard.js';
 import { PianoAction } from './action.js';
 import { pedalShape } from './upright.js';
 import { buildBench } from './bench.js';
@@ -85,7 +85,12 @@ function polyZ( e, x ) {
 }
 const plateEdgeZ = x => polyZ( PLATE_EDGE, x );
 const HITCH_BACK = 0.025, HITCH_RAIL = 0.03;
-const PIN_FRONT = - 0.333;		// (z: the tuning pins' front row, in the front plate's bays)
+const PIN_FRONT = - 0.333;
+// the bass's strings: their dampers' x (the first and the last of BASS_COUNT, evenly between); the bass bridge's opening
+// in the crescent: a slot along the S edge, from SLOT[ 0 ] to SLOT[ 1 ] behind it (between the tenor's hitch rail's
+// foot and the bass's), across the bass strings, SLOT_END on past the end ones (less where a strut's foot is near)
+const BASS_COUNT = 29, BASS_DX = [ - 0.575, - 0.238 ];
+const SLOT = [ 0.049, 0.095 ], SLOT_END = 0.014;		// (z: the tuning pins' front row, in the front plate's bays)
 /** z of a string's hitch pin (the centre of the rail along the crescent's edge) at x. */
 const hitchZ = x => plateEdgeZ( x ) - HITCH_BACK;
 // the casting's rounded profiles (src/castdetail.js; u across their path, towards its left normal: the front
@@ -519,6 +524,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 	const struts = [];		// (the frame's struts, plan polylines: built once the strings are laid out, see below)
 	let bassDir;		// (plan: the X's long leg's direction, back; the strut from the gusset's and the bass strings')
 	let floorBack;		// (plan: the floor plate's back edge, x increasing: the tuning pins stand in front of it)
+	let bassSlot;		// (the bass bridge's opening: { midZ, path, half }, for src/soundboard.js)
 	{
 
 		const parts = [];
@@ -567,7 +573,6 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
-		parts.push( extrudeXZ( crescent, plateY - 0.012, plateY, 0 ) );		// (no bevel: at its sharp corners the bevel's offsets shot across the holes)
 		// the S edge's bead: the floor's edge rounded over (top and bottom), its top flush with the floor
 		parts.push( sweep( PLATE_EDGE, () => EDGE_PROFILE, { y: plateY, closed: true } ) );
 		// its lip against the rim: rounded over on the rim's side, a fillet up into strut 6 (which stands on its
@@ -792,13 +797,70 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
+		const segD = ( q, a, b ) => { const e = new THREE.Vector2().subVectors( b, a ), u = THREE.MathUtils.clamp( new THREE.Vector2().subVectors( q, a ).dot( e ) / e.lengthSq(), 0, 1 ); return a.clone().addScaledVector( e, u ).distanceTo( q ); };
+		const lineD = ( q, L ) => { let m = Infinity; for ( let i = 0; i + 1 < L.length; ++ i ) m = Math.min( m, segD( q, L[ i ], L[ i + 1 ] ) ); return m; };
+
+		// the bass bridge's opening (as a real grand's: behind the tenor's hitch pins, under the bass's strings only): a
+		// slot in the crescent along its edge (SLOT), across where the bass strings cross it, its corners rounded, a low
+		// rounded lip round it; the bridge stands on an apron in it (src/soundboard.js)
+		{
+
+			const half = ( SLOT[ 1 ] - SLOT[ 0 ] ) / 2, mid = offsetPolyline( PLATE_EDGE, - ( SLOT[ 0 ] + SLOT[ 1 ] ) / 2 );
+			const A = [ 0 ];
+			for ( let i = 1; i < mid.length; ++ i ) A.push( A[ i - 1 ] + mid[ i ].distanceTo( mid[ i - 1 ] ) );
+			const N = mid.map( ( p, i ) => { const t = new THREE.Vector2().subVectors( mid[ Math.min( mid.length - 1, i + 1 ) ], mid[ Math.max( 0, i - 1 ) ] ).normalize(); return v2( - t.y, t.x ); } );
+			const at = ( a, u = 0 ) => {
+
+				let i = 0;
+				while ( i + 2 < mid.length && A[ i + 1 ] < a ) ++ i;
+				const f = ( a - A[ i ] ) / ( A[ i + 1 ] - A[ i ] );
+				return mid[ i ].clone().lerp( mid[ i + 1 ], f ).addScaledVector( N[ i ].clone().lerp( N[ i + 1 ], f ).normalize(), u );
+
+			};
+			const arcOf = q => { let best = 0, bd = Infinity; for ( let a = 0; a <= A.at( - 1 ); a += 0.001 ) { const d = at( a ).distanceTo( q ); if ( d < bd ) { bd = d; best = a; } } return best; };
+			const midZ = x => polyZ( mid, x );
+			// the first and the last bass string's crossing of its centre line (as laid out below: from their dampers along dA)
+			const cross = [ 0, BASS_COUNT - 1 ].map( i => {
+
+				const d = v2( BASS_DX[ 0 ] + ( BASS_DX[ 1 ] - BASS_DX[ 0 ] ) * i / ( BASS_COUNT - 1 ), 0 );
+				d.y = frontBackZ( d.x ) - 0.022;
+				let sc = 0;
+				while ( d.y + dA.y * sc > midZ( d.x + dA.x * sc ) ) sc += 0.0005;
+				return arcOf( d.addScaledVector( dA, sc ) );
+
+			} );
+			// (its ends clear of struts 1 and 2's feet)
+			const s1 = struts.find( t => t.pts[ 0 ].equals( S1 ) ).pts, s2 = struts.find( t => t.pts[ 0 ].equals( GUSSET ) && t.pts.length === 2 ).pts;
+			const footClear = ( a, pts ) => lineD( at( a ), pts ) > 0.007 + STRUT_FOOT + 0.004;
+			let aL = cross[ 0 ] - SLOT_END, aR = cross[ 1 ] + SLOT_END;
+			while ( aL < cross[ 0 ] - 0.004 && ! footClear( aL, s1 ) ) aL += 0.0005;
+			while ( aR > cross[ 1 ] + 0.004 && ! footClear( aR, s2 ) ) aR -= 0.0005;
+			const poly = ( h, a0, a1, r ) => {
+
+				const pts = [], k0 = A.findIndex( a => a > a0 ), k1 = A.findLastIndex( a => a < a1 );
+				const front = [ at( a0, h ), ...mid.slice( k0, k1 + 1 ).map( ( p, j ) => p.clone().addScaledVector( N[ k0 + j ], h ) ), at( a1, h ) ];
+				const back = [ at( a0, - h ), ...mid.slice( k0, k1 + 1 ).map( ( p, j ) => p.clone().addScaledVector( N[ k0 + j ], - h ) ), at( a1, - h ) ];
+				pts.push( ...front, ...back.reverse() );
+				const radii = pts.map( ( p, j ) => ( j === 0 || j === front.length - 1 || j === front.length || j === pts.length - 1 ) ? r : 0 );
+				return roundCorners( pts, radii, { closed: true, n: 5 } ).map( q => q.p );
+
+			};
+			crescent.holes.push( new THREE.Path( poly( half, aL, aR, 0.008 ) ) );
+			const lip = new THREE.Shape( poly( half + 0.005, aL - 0.005, aR + 0.005, 0.013 ) );
+			lip.holes.push( new THREE.Path( poly( half - 0.0005, aL + 0.0005, aR - 0.0005, 0.0075 ) ) );
+			parts.push( extrudeXZ( lip, plateY - 0.0115, plateY + 0.003, 0.0015 ) );
+			const k0 = A.findIndex( a => a > aL + 0.004 ), k1 = A.findLastIndex( a => a < aR - 0.004 );
+			bassSlot = { midZ, half, path: [ at( aL + 0.004 ), ...mid.slice( k0, k1 + 1 ), at( aR - 0.004 ) ] };
+
+		}
+
+		parts.push( extrudeXZ( crescent, plateY - 0.012, plateY, 0 ) );		// (no bevel: at its sharp corners the bevel's offsets shot across the holes)
+
 		// the holes' collars (lathed, as cast: photos Footages.local/ref/soundboard/20261113-*.jpg): from the floor
 		// a fillet up a sloping shoulder to a low ring, a fillet into the lip round the hole, its top rounded over
 		// into the bore; as wide as the room round the hole allows (the struts, strut 6, the hitch rail, the other
 		// holes)
 		const face6 = offsetPolyline( inner, 0.041 ), rail = offsetPolyline( PLATE_EDGE, - HITCH_BACK );
-		const segD = ( q, a, b ) => { const e = new THREE.Vector2().subVectors( b, a ), u = THREE.MathUtils.clamp( new THREE.Vector2().subVectors( q, a ).dot( e ) / e.lengthSq(), 0, 1 ); return a.clone().addScaledVector( e, u ).distanceTo( q ); };
-		const lineD = ( q, L ) => { let m = Infinity; for ( let i = 0; i + 1 < L.length; ++ i ) m = Math.min( m, segD( q, L[ i ], L[ i + 1 ] ) ); return m; };
 		plateHoleCollars.length = 0;
 		for ( const [ cx, cz, r ] of PLATE_HOLES ) {
 
@@ -814,7 +876,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 
 		}
 
-		// the bolts holding the plate down (bronze, hex heads on washers): along the crescent inside strut 6, about
+		// the bolts holding the plate down (hex heads on washers, in the plate's finish): along the crescent inside strut 6, about
 		// BOLT_PITCH apart, where clear of the holes' collars, the struts' feet and the rails; a screw by each hole on its
 		// rim's side; small domed screws at the front plate's bays' corners
 		{
@@ -856,7 +918,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 				for ( const q of b ) screw( q.clone().addScaledVector( new THREE.Vector2().subVectors( q, m ).normalize(), 0.0115 ), plateY + RING_Y[ 1 ], 0.0034 );
 
 			}
-			group.add( mesh( merge( bolts ), M.bronze ?? M.brass ) );
+			parts.push( ...bolts );		// (cast-in look: the plate's own finish, each variant's)
 
 		}
 
@@ -879,7 +941,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// overstrung) to 4's, along -z; the treble's straight back, either side of 5 (none above note 68). From
 		// the damper forward to the tuning pins, back to the hitch pins (the tenor's and the treble's on the rail
 		// along the crescent's edge)
-		const n = 88, bassCount = 29, tenorCount = 20, stringSegs = [];
+		const n = 88, bassCount = BASS_COUNT, tenorCount = 20, stringSegs = [];
 		// (the bass's hitch rail's centre line: the crescent's edge moved 12 cm back along its normal, so the bass's
 		// ends run parallel to it; the two holes by the rim just behind it)
 		const bassRail = PLATE_EDGE.map( ( p, k, e ) => {
@@ -893,7 +955,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		const [ V0, V1 ] = FRAME_V, treble = n - bassCount - tenorCount;
 		const t1 = Math.round( treble * ( V1 - 0.02 - ( V0 + 0.02 ) ) / ( x1 - ( V0 + 0.02 ) - 0.04 ) );
 		const span = ( a, b, k, m ) => a + ( b - a ) * k / ( m - 1 );
-		const damperX = i => i < bassCount ? span( - 0.575, - 0.238, i, bassCount )
+		const damperX = i => i < bassCount ? span( BASS_DX[ 0 ], BASS_DX[ 1 ], i, bassCount )
 			: i < bassCount + tenorCount ? span( - 0.185, V0 - 0.02, i - bassCount, tenorCount )
 				: i < bassCount + tenorCount + t1 ? span( V0 + 0.02, V1 - 0.02, i - bassCount - tenorCount, t1 )
 					: span( V1 + 0.02, x1, i - bassCount - tenorCount - t1, treble - t1 );
@@ -1012,16 +1074,28 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// the other: filleted into the floor, its top rounded)
 		{
 
-			const near = p => bassRail.reduce( ( b, q, k ) => q.distanceTo( p ) < bassRail[ b ].distanceTo( p ) ? k : b, 0 );
-			const ks = bassEnds.map( near ), k0 = Math.max( 0, Math.min( ...ks ) - 2 ), k1 = Math.min( bassRail.length - 1, Math.max( ...ks ) + 2 );
-			group.add( mesh( sweep( bassRail.slice( k0, k1 + 1 ), () => RAIL_PROFILE, { y: plateY, closed: true } ), M.plate ) );
+			// (from 10 mm before its first pin to 10 mm past its last: its ends clear of struts 1 and 2's feet, where its
+			// old end, a whole rail point on, stood out of strut 2's side)
+			const A = [ 0 ];
+			for ( let k = 1; k < bassRail.length; ++ k ) A.push( A[ k - 1 ] + bassRail[ k ].distanceTo( bassRail[ k - 1 ] ) );
+			const at = a => { let k = 0; while ( k + 2 < bassRail.length && A[ k + 1 ] < a ) ++ k; return bassRail[ k ].clone().lerp( bassRail[ k + 1 ], ( a - A[ k ] ) / ( A[ k + 1 ] - A[ k ] ) ); };
+			const arcOf = q => { let k = 0, bd = Infinity; for ( let j = 0; j < bassRail.length; ++ j ) { const d = bassRail[ j ].distanceTo( q ); if ( d < bd ) { bd = d; k = j; } } const j = Math.min( k, bassRail.length - 2 ), e = new THREE.Vector2().subVectors( bassRail[ j + 1 ], bassRail[ j ] ); return A[ j ] + new THREE.Vector2().subVectors( q, bassRail[ j ] ).dot( e ) / e.length(); };
+			const as = bassEnds.map( arcOf ), a0 = Math.min( ...as ) - 0.01, a1 = Math.max( ...as ) + 0.01;
+			const path = [ at( a0 ), ...bassRail.filter( ( q, k ) => A[ k ] > a0 + 0.002 && A[ k ] < a1 - 0.002 ), at( a1 ) ];
+			group.add( mesh( sweep( path, () => RAIL_PROFILE, { y: plateY, closed: true } ), M.plate ) );
 
 		}
 
 		// the bridges on the soundboard (src/soundboard.js: the long bridge under the tenor and the treble, the bass's
 		// on its apron), the strings bearing on them
 		const bridges = buildBridges( { courses, plateY, soundboardY: SOUNDBOARD_Y, bassCount, stringSegs, edgeZ: plateEdgeZ, edge: PLATE_EDGE } );
-		for ( const [ geo, key ] of bridges ) group.add( mesh( geo, M[ key ] ?? M.spruce ) );
+		bridges.push( ...buildBassBridge( { courses, slot: bassSlot, plateY, soundboardY: SOUNDBOARD_Y } ) );
+		for ( const key of [ 'maple', 'graphite', 'steel' ] ) {
+
+			const geos = bridges.filter( b => b[ 1 ] === key ).map( b => b[ 0 ] );
+			if ( geos.length ) group.add( mesh( merge( geos ), M[ key ] ?? M.spruce ) );
+
+		}
 		group.add( mesh( merge( bushings ), M.maple ?? M.spruce ) );
 		group.add( mesh( merge( coils ), M.steel ) );
 

@@ -68,10 +68,9 @@ function shared( baker ) {
 		panelBack: phys( { color: '#0a0a0a', roughness: 0.8 } ),		// the grand's display: its back and edges
 		spruce: woodMaterial( baker.spruce(), { clearcoat: 0.3, clearcoatRoughness: 0.3 } ),
 		// the grands' bridges (maple, its cap graphite: a dark, faintly lustrous grey) and the bushings round their
-		// tuning pins; the plate's bolts (bronze)
+		// tuning pins
 		maple: woodMaterial( baker.maple(), { clearcoat: 0.2, clearcoatRoughness: 0.35 } ),
 		graphite: phys( { color: '#131315', roughness: 0.45, metalness: 0.15 } ),
-		bronze: phys( { color: '#a4733f', metalness: 1, roughness: 0.32 } ),
 		interior: woodMaterial( baker.darkInterior() ),
 	};
 
@@ -114,7 +113,7 @@ export function makeMaterials( baker, style ) {
 			m.trim = m.case;
 			m.plate = lacquer( '#ecebe6', { roughness: 0.22 } );		// (the GF white's plate in the case's white lacquer: GF-TYPE-1.jpg)
 			m.panel = screen();
-			m.rimInner = woodMaterial( baker.walnut(), { clearcoat: 0.6, clearcoatRoughness: 0.2 } );
+			m.rimInner = m.case;		// (the rim's inner side in the case's white lacquer too)
 			break;
 
 		// FIND GF-TYPE-3 in crystal (Footages.local/find/GF-TYPE-3.jpg): the case's rim, the lid and its
@@ -171,7 +170,7 @@ export function makeMaterials( baker, style ) {
 	m.keyWhite.aoMapIntensity = 1;
 
 	// interior parts receive less of the room probe (they sit in a cavity)
-	for ( const k of [ 'interior', 'plate', 'spruce', 'maple', 'graphite', 'bronze', 'hammerFelt', 'steel', 'copper' ] ) m[ k ].envMapIntensity = 0.6;
+	for ( const k of [ 'interior', 'plate', 'spruce', 'maple', 'graphite', 'hammerFelt', 'steel', 'copper' ] ) m[ k ].envMapIntensity = 0.6;
 
 	return m;
 

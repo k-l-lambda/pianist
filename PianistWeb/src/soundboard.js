@@ -1,4 +1,4 @@
-// The grands' long bridge on the soundboard (after Footages.local/ref/soundboard/20261113-*.jpg): a maple strip
+// The grands' bridges on the soundboard (after Footages.local/ref/soundboard/20261113-*.jpg): a maple strip
 // standing on the board under the tenor's and the treble's strings, its top just under them, a graphite cap V-notched
 // at every string, front and back, and two staggered rows of bridge pins (each string between its front pin on
 // one side and its back pin on the other).
@@ -8,9 +8,8 @@
 // edge's bead. In the high treble the room between the two runs out (the hammers strike 1 to 2 cm from the edge
 // there): the bridge keeps to the room left, narrowing, and ends where under MIN_HALF would be left.
 //
-// No bass bridge: in a real overstrung grand it stands behind the tenor's hitch pins, in an opening of the plate;
-// here the tenor's strings run on under the bass's to their rail on the crescent, and the crescent is solid behind
-// it, so there is no board under the bass's strings that the tenor's do not cross.
+// The bass's bridge as a real overstrung grand's: behind the tenor's hitch pins, in an opening of the plate (the slot
+// in the crescent between their rail and the bass's, grand.js), on an apron filling it.
 
 import * as THREE from 'three';
 import { extrudeTop, boxProjectUV, rod, merge } from './geometry.js';
@@ -22,6 +21,7 @@ const BACK = 0.034;				// (m: the bridge's centre in front of the S edge, along 
 const FELT_END = 0.048;			// (the hammers' felt to 45 mm behind the dampers, and 3 mm)
 const HALF = [ 0.016, 0.0115 ];	// (its half width at the tenor's end and at the treble's)
 const MIN_HALF = 0.0075;
+const BASS_HALF = 0.0105;		// (the bass bridge's half width at its cap)
 const CAP = 0.0016;				// (the graphite cap's thickness)
 const NOTCH_W = 0.0015, NOTCH_IN = 0.68;	// (a notch: 1.5 mm either side of its apex, in to 0.68 of the half width, where the pin stands)
 
@@ -62,12 +62,46 @@ export function buildBridges( { courses, plateY, soundboardY, edgeZ, edgeBead = 
 
 	}
 	// its top: just under the lowest string on it (the cap's top); the strings from tenor to treble fall 1 mm at most
-	const top = plateY + Math.min( ...pts.map( q => q.yb ) ) - 0.0008;
-	// the path: through the notes' points, on 12 mm past the end ones
+	return bridge( pts, { base: soundboardY - 0.0005, top: plateY + Math.min( ...pts.map( q => q.yb ) ) - 0.0008 } );
+
+}
+
+/**
+ * The bass's bridge (as a real grand's: behind the tenor's hitch pins, in an opening of the plate between their rail
+ * and the bass's: grand.js's slot): on a maple apron filling the opening up to just under the plate's floor, the bridge
+ * on it as the long one (its sides battered: wider at its foot) up to just under the bass strings where they cross the
+ * opening's centre line. `slot`: { midZ( x ), path (its centre line, plan), half (its half width) }.
+ */
+export function buildBassBridge( { courses, slot, plateY, soundboardY } ) {
+
+	const pts = [];
+	for ( const c of courses.filter( c => c.bass ) ) {
+
+		let s = 0;
+		while ( c.d.y + c.dir.y * s > slot.midZ( c.d.x + c.dir.x * s ) ) s += 0.0005;
+		pts.push( { B: c.d.clone().addScaledVector( c.dir, s ), hw: BASS_HALF, yb: c.y0 + ( c.y1 - c.y0 ) * ( c.sF + s ) / ( c.sF + c.sB ), c } );
+
+	}
+	if ( pts.length < 3 ) return [];
+	const apronTop = plateY - 0.0015, ha = slot.half - 0.0025;
+	const apron = sweep( slot.path, () => profile( [ [ - ha, soundboardY - 0.0005 ], [ ha, soundboardY - 0.0005 ], [ ha, apronTop ], [ - ha, apronTop ] ], [ 0, 0, 0.003, 0.003 ] ), { y: 0, closed: true } );
+	// (the copper strings' radius 1.5 mm: the cap's top that much under their axes)
+	return [ [ boxProjectUV( apron, { grain: 'x' } ), 'maple' ], ...bridge( pts, { base: apronTop - 0.002, top: plateY + Math.min( ...pts.map( q => q.yb ) ) - 0.0018, batter: 0.003, ext: 0.006 } ) ];
+
+}
+
+/**
+ * A bridge through `pts` ({ B: the string's crossing (plan), hw: the half width there, c: its course }): maple from
+ * `base` to the cap, its sides battered out `batter` at the foot, the graphite cap's top at `top`, notched at each
+ * string, the pins; on `ext` past the end strings.
+ */
+function bridge( pts, { base, top, batter = 0, ext = 0.012 } ) {
+
+	// the path: through the notes' points, on past the end ones
 	const t0 = new THREE.Vector2().subVectors( pts[ 1 ].B, pts[ 0 ].B ).normalize(), t1 = new THREE.Vector2().subVectors( pts.at( - 1 ).B, pts.at( - 2 ).B ).normalize();
-	const path = [ pts[ 0 ].B.clone().addScaledVector( t0, - 0.012 ), ...pts.map( q => q.B ), pts.at( - 1 ).B.clone().addScaledVector( t1, 0.012 ) ];
+	const path = [ pts[ 0 ].B.clone().addScaledVector( t0, - ext ), ...pts.map( q => q.B ), pts.at( - 1 ).B.clone().addScaledVector( t1, ext ) ];
 	const hws = [ pts[ 0 ].hw, ...pts.map( q => q.hw ), pts.at( - 1 ).hw ];
-	const body = sweep( path, i => profile( [ [ - hws[ i ], soundboardY - 0.0005 ], [ hws[ i ], soundboardY - 0.0005 ], [ hws[ i ], top - CAP ], [ - hws[ i ], top - CAP ] ], [ 0, 0, 0.0022, 0.0022 ] ), { y: 0, closed: true } );
+	const body = sweep( path, i => profile( [ [ - hws[ i ] - batter, base ], [ hws[ i ] + batter, base ], [ hws[ i ], top - CAP ], [ - hws[ i ], top - CAP ] ], [ 0, 0, 0.0022, 0.0022 ] ), { y: 0, closed: true } );
 
 	// the path's frame: arc length a, normal n (left: towards the front); a point at ( a, u )
 	const A = [ 0 ], N = [];
