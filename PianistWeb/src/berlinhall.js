@@ -179,8 +179,8 @@ export function setBerlinChandelierMode( group, mode ) {
 
 }
 
-/** The lamps' glow: the chandeliers and sconces at `house`, the candelabras at `lamps` (the preset's). */
-export function setBerlinLamps( group, { house, lamps } ) {
+/** The lamps' glow: the chandeliers and sconces at `house`, the candelabras at `lamps`; the chandeliers' crystals at house × `crystal` (the preset's). */
+export function setBerlinLamps( group, { house, lamps, crystal = 1 } ) {
 
 	for ( const m of group?.userData.lamps ?? [] ) {
 
@@ -189,7 +189,7 @@ export function setBerlinLamps( group, { house, lamps } ) {
 
 	}
 	const C = group?.userData.chandeliers;
-	if ( C ) C.crystal.userData.u.uLamp.value = CRYSTAL_GLOW * house;
+	if ( C ) C.crystal.userData.u.uLamp.value = CRYSTAL_GLOW * house * crystal;		// (`crystal`: the crystals' own glow over the room's light, the preset's 'crystal')
 
 }
 

@@ -352,6 +352,7 @@ export class ConcertHall {
 	lightControls() {
 
 		const berlin = this.berlinShown;
+		this.light.saturation ??= 1; this.light.crystal ??= 1;		// (a GUI control needs a value; the presets leave it unset: 1)
 		return [
 			[ 'key', 0, 3000, 10, 'Front spot' ], [ 'keyColor', 'color', 'Front spot color' ],
 			[ 'top', 0, 3000, 10, 'Top light' ], [ 'topColor', 'color', 'Top light color' ],
@@ -360,6 +361,8 @@ export class ConcertHall {
 			[ 'topAngle', 5, 40, 0.5, 'Top light cone (°)' ],
 			[ 'lamps', 0, 3, 0.01, berlin ? 'Candelabras' : 'Lamps (ceiling, Tiara)' ],
 			[ 'env', 0, 1.5, 0.01, 'Ambient (probe)' ],
+			[ 'saturation', 0.5, 1.6, 0.01, 'Saturation' ],		// (the composer's, before the tone mapping: venue.light.saturation)
+			...( berlin ? [ [ 'crystal', 0, 20, 0.1, 'Chandelier crystal' ] ] : [] ),		// (the crystals' glow alone, × the chandeliers' level: the room's light unchanged)
 		];
 
 	}
@@ -1288,7 +1291,7 @@ export class ConcertHall {
 		this.materials.lamp.emissiveIntensity = 5 * L.lamps;
 		this.materials.glow.emissiveIntensity = 0.15 + 0.25 * L.house;
 		this.materials.glow.emissive.set( L.houseColor );
-		setBerlinLamps( this.berlin, { house: L.house, lamps: L.lamps } );
+		setBerlinLamps( this.berlin, { house: L.house, lamps: L.lamps, crystal: L.crystal ?? 1 } );
 		const size = this.highQuality ? 4096 : 2048;
 		if ( this.keySpot.shadow.mapSize.x !== size ) {
 
