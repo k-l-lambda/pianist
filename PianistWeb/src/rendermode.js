@@ -32,6 +32,8 @@ export const RENDER_OPTS = RENDER ? {
 	// path traced: the open sea's samples across a shutter open this part of the frame (0: its time held at the
 	// frame's; src/azurea.js _ptSeaAttach): the glints' motion blur
 	ptShutter: Math.min( 1, Math.max( 0, Number( get( 'pts' ) ?? 0 ) ) ),
+	// path traced: also the frame's image at these sample counts on the way (e.g. 256,512,768): __render.ptSteps()
+	ptSteps: ( get( 'ptsteps' ) ?? '' ).split( ',' ).map( Number ).filter( n => n > 0 ).sort( ( a, b ) => a - b ),
 } : null;
 
 // a render is reproducible: Math.random (wood grain offsets in geometry.js, ...) seeded (#?seed=, default 1);

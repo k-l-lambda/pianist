@@ -20,7 +20,8 @@
 // parameters (style, preset, ...). --frames dir: also each frame as PNG there (from the raw pixels).
 // --pt N: path traced, N samples per pixel a frame (src/main.js stepPT: the raster's state, the path
 // tracer's image; its samples are the anti-aliasing: --ss 1 and one sub-frame unless given). --denoise:
-// its image denoised (src/ptdenoise.js). --pt-shutter s: the open sea's samples spread over a shutter open
+// its image denoised (src/ptdenoise.js). --pt-steps "256,512": also the frame as it stands at those sample counts
+// (raw and denoised) as <frame>-<spp>spp[-denoised].png in --frames. --pt-shutter s: the open sea's samples spread over a shutter open
 // s of the frame (0..1; default 0: the sea at the frame's time), its glints' motion blur (src/azurea.js).
 //
 // --watermark: the klstudio.png mark drawn into every frame; defaults as on the page (src/main.js
@@ -82,6 +83,7 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--pt' ) opt.pt = Number( val() );
 	else if ( a === '--denoise' ) opt.denoise = true;
 	else if ( a === '--pt-shutter' ) opt.ptShutter = Number( val() );
+	else if ( a === '--pt-steps' ) opt.ptSteps = val();
 	else if ( a === '--no-audio' ) opt.audio = false;
 	else if ( a === '--watermark' ) opt.watermark = val();
 	else if ( a === '-h' || a === '--help' ) {
@@ -194,6 +196,7 @@ try {
 	if ( opt.pt ) hash.set( 'pt', opt.pt );
 	if ( opt.denoise ) hash.set( 'dn', 1 );
 	if ( opt.ptShutter ) hash.set( 'pts', opt.ptShutter );
+	if ( opt.ptSteps ) hash.set( 'ptsteps', opt.ptSteps );
 	const base = new URL( opt.url );
 	if ( opt.query ) base.search = opt.query;
 	await page.goto( new URL( '#?' + hash, base ).href, { waitUntil: 'commit' } );
@@ -239,6 +242,8 @@ try {
 		shotMs += Date.now() - ts;
 		if ( ! opt.legacy && px.length !== W * H * 3 * ( opt.bits === 10 ? 2 : 1 ) ) throw new Error( `frame ${ f }: ${ px.length } bytes, expected ${ W * H * 3 * ( opt.bits === 10 ? 2 : 1 ) }` );
 		if ( opt.frames ) savePNG( path.join( opt.frames, `${ String( f ).padStart( 5, '0' ) }.png` ), px );
+		if ( opt.ptSteps && opt.frames ) for ( const k of await page.evaluate( () => window.__render.ptSteps() ) )
+			savePNG( path.join( opt.frames, `${ String( f ).padStart( 5, '0' ) }-${ String( k.spp ).padStart( 4, '0' ) }spp${ k.denoised ? '-denoised' : '' }.png` ), Buffer.from( k.px, 'base64' ) );
 		if ( ! ffmpeg.stdin.write( px ) ) await new Promise( r => ffmpeg.stdin.once( 'drain', r ) );
 		++ frames;
 		if ( frames % opt.fps === 0 ) {

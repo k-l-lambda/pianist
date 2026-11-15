@@ -1768,6 +1768,7 @@ function startRender() {
 	// stratified sampler's strata back in order, unshuffled — sample k in stratum k: biased (~3.5 % brighter) and
 	// ~30 % slower. Here, after it: the seed, a seeded generator (mulberry32: the library's LCG repeats within ~16 k
 	// draws) and the sampler rebuilt, its strata shuffled from that seed
+	const ptStepFrames = [];		// (--pt-steps: the frame's images on the way, taken by __render.ptSteps())
 	let ptNoiseSeed = null;
 	const ptSeedHook = r => {
 
@@ -1804,10 +1805,27 @@ function startRender() {
 		await ptSnapshot.start( { camera, samples: o.pt, exclusive: true } );
 		if ( ! ptSnapshot.running ) throw new Error( 'render: the path tracer did not start' );
 		const done = ptSnapshot.done;
+		const steps = ( o.ptSteps ?? [] ).filter( n => n < o.pt );
+		ptStepFrames.length = 0;
 		for ( let settled = false; ! settled; ) {
 
 			ptSnapshot.tick();
 			settled = ! ptSnapshot.running;
+			// (--pt-steps: the image as it stands at each of those sample counts, raw and denoised, at the output size)
+			while ( ! settled && steps.length && ptSnapshot.samples >= steps[ 0 ] ) {
+
+				const spp = steps.shift(), W = Math.round( size.x / o.pixelRatio ), H = Math.round( size.y / o.pixelRatio );
+				for ( const dn of [ false, true ] ) {
+
+					const keep = ptSnapshot.denoise; ptSnapshot.denoise = dn;
+					const lin = ptLinear.renderLinear( renderer, ptSnapshot.linearTexture(), ptPostParams() );
+					ptSnapshot.denoise = keep;
+					offline.begin( size.x, size.y, 1 ); offline.accumulate( lin.texture );
+					ptStepFrames.push( { spp, denoised: dn, width: W, height: H, px: await toBase64( offline.read( W, H, { bits: 8, dither: o.dither, seed: frameNo } ) ) } );
+
+				}
+
+			}
 			if ( ! settled ) await new Promise( r => setTimeout( r, 0 ) );
 
 		}
@@ -1895,6 +1913,7 @@ function startRender() {
 		// the frame just drawn, at the output size: its linear light resolved and quantised (src/offline.js),
 		// as raw rgb24 (8 bits) or rgb48le (10), base64. `legacy` (the old capture): tone mapped onto the
 		// canvas at the drawing size, scaled by the 2D canvas's drawImage, PNG
+		ptSteps: () => ptStepFrames.splice( 0 ),
 		async frame( width, height ) {
 
 			if ( ! o.legacy ) {
