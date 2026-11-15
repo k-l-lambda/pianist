@@ -121,6 +121,24 @@ function ribNormalMap() {
 }
 const V2 = THREE.Vector2;
 
+/** A floor height map (tools/hall-floor.mjs: <name>.json + <name>.bin) from the site root, or null. */
+async function loadFloor( name ) {
+
+	try {
+
+		const base = import.meta.env?.BASE_URL ?? '/';
+		const [ meta, bin ] = await Promise.all( [ fetch( `${ base }${ name }.json` ).then( r => r.ok ? r.json() : null ), fetch( `${ base }${ name }.bin` ).then( r => r.ok ? r.arrayBuffer() : null ) ] );
+		if ( ! meta || ! bin || bin.byteLength !== meta.nx * meta.nz * 2 ) return null;
+		return { ...meta, h: new Uint16Array( bin ) };
+
+	} catch {
+
+		return null;
+
+	}
+
+}
+
 export class ConcertHall {
 
 	constructor( scene, baker ) {
@@ -213,6 +231,7 @@ export class ConcertHall {
 				this.berlin = g;
 				setBerlinChandelierMode( g, this.mode );
 				if ( ! g ) { this.berlinLoading = false; this._shellChanged( false ); return; }
+				this.floor = await loadFloor( 'berlinhall/floor' );		// (before it shows: a script's first frame may walk on it)
 				// its presets and lights first (still hidden: berlinLoading), then its shaders compiled
 				// for those lights (one long freeze at its first frame otherwise), then shown
 				if ( this.active ) this.scene.add( g );
@@ -285,6 +304,22 @@ export class ConcertHall {
 	probePoint() {
 
 		return this.toWorld( 0, 1.2, PIANO_Z + 2.6 );
+
+	}
+
+	/**
+	 * The walkable floor's height (world y, m) at world (x, z): the Berlin hall's floor map
+	 * (public/berlinhall/floor.bin, tools/hall-floor.mjs: stage, risers, terraces, stalls; one level,
+	 * no galleries), nearest 5 cm cell; null where there is none (or no map: the procedural hall).
+	 */
+	floorHeight( x, z ) {
+
+		const F = this.berlinShown ? this.floor : null;
+		if ( ! F ) return null;
+		const i = Math.floor( ( x - F.minX ) / F.res ), j = Math.floor( ( z - F.minZ ) / F.res );
+		if ( i < 0 || j < 0 || i >= F.nx || j >= F.nz ) return null;
+		const v = F.h[ j * F.nx + i ];
+		return v === F.none ? null : v / 1000 + F.base;
 
 	}
 

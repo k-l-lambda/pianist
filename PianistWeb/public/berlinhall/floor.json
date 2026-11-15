@@ -1,0 +1,20 @@
+{
+ "minX": -10.2,
+ "minZ": -10.9,
+ "res": 0.05,
+ "nx": 664,
+ "nz": 436,
+ "base": -1,
+ "none": 65535,
+ "meshes": [
+  "buehne-platten",
+  "buehnen-parkett",
+  "buehnen-parkett-near",
+  "grille-stage",
+  "grille-stalls",
+  "parkett",
+  "parkett-2",
+  "parkett-4",
+  "parkett-near"
+ ]
+}

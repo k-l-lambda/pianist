@@ -254,6 +254,7 @@ const handheld = new HandheldMode( {
 	subject: () => pianoCentre(),
 	defocus: ( duration, amount ) => startDefocus( duration, amount ),
 	bounds: () => venue.bounds(),
+	floorHeight: ( x, z ) => venue.floorHeight?.( x, z ) ?? null,
 } );
 renderer.debug.onShaderError = ( gl, program, vs, fs ) => {
 
@@ -915,6 +916,7 @@ fHand.add( handheld, 'intensity', 0, 3, 0.05 ).name( 'Shake' );
 fHand.add( handheld, 'walk', 0, 2, 0.05 ).name( 'Walking motion' );
 fHand.add( handheld, 'drift', 0, 2, 0.05 ).name( 'Operator drift' );
 fHand.add( handheld, 'bursts' ).name( 'Operator bursts' );
+fHand.add( handheld, 'floor' ).name( 'Follow floor' ).onChange( () => handheld.resetFloor() );
 fHand.add( handheld, 'focusHunt', 0, 2, 0.05 ).name( 'Focus hunting' );
 fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
 // path tracing: a snapshot of the view (a window in the corner), and the scene's state as JSON (the input
@@ -1053,8 +1055,14 @@ function switchVenue( v ) {
 	venue.deactivate();
 	venue = v;
 	venue.activate();
-	controls.maxDistance = venue.view.maxDistance;
-	controls.maxPolarAngle = venue.view.maxPolarAngle;
+	// (in handheld mode the venue's limits apply when it is switched off)
+	if ( handheld.enabled ) handheld.savedLimits = { maxDistance: venue.view.maxDistance, maxPolarAngle: venue.view.maxPolarAngle };
+	else {
+
+		controls.maxDistance = venue.view.maxDistance;
+		controls.maxPolarAngle = venue.view.maxPolarAngle;
+
+	}
 	buildLightFolder();
 	fRoom.show( venue === room );
 	fHall.show( venue === hall );
@@ -1204,6 +1212,8 @@ fMidi.add( roll, 'particles' ).name( 'Particles' );
 
 const scriptPlayer = new ScriptPlayer( {
 	camera, controls, gui, setScreenPower,
+	// handheld, following the floor: the camera's y is its height above the floor there (the target's aim from the eye's real height)
+	floorOffset: p => handheld.enabled && handheld.floor ? venue.floorHeight?.( p.x, p.z ) ?? 0 : 0,
 	// what a preset leaves unset is (for a fade's numbers: the Berlin hall's Recital sets them, its Spotlight not)
 	lightDefaults: () => ( { saturation: 1, bloom: settings.gi ? settings.bloom : 0, bloomThreshold: 0.92 } ),
 	setRollMode: mode => roll.setMode( mode ),

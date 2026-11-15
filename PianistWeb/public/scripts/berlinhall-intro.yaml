@@ -1,0 +1,510 @@
+# Berlin hall intro: a person walks into the Konzerthaus Berlin's Großer Saal, where the black grand
+# stands on the stage, and the smart piano's assistant (小音) shows them round (dialog:
+# Footages.local/dialogs/berlinhall.md); then it plays Liszt's Liebestraum No. 3 for them.
+# The assistant speaks through the piano: talking-piano MIDI in midi/yin/berlinhall-*.mid (fitted
+# from the TTS voice at 1.3x length, as premiere's), the green voice roll, its lines as subtitles.
+# The user's lines are recordings in audio/user/berlinhall/ (volumes set to premiere's user level,
+# ~0.025 RMS speech on the output; the whisper ~5 dB under). Music: midi/songs/, normal roll.
+# Shot on a phone held upright: a 1:2 portrait frame (fov is vertical: 70 the wide view). Load with
+# ?style=grand-black&script=berlinhall-intro.yaml (the style is a query, not a script setting); render with
+#   node tools/render-video.mjs berlinhall-intro.yaml --query "style=grand-black" --size 1080x2160
+# (720x1440 for a quicker one; 540x1080 for previews). Spatialised sound (tools/spatialise.py): a phone
+# held upright has its two mics across its short side, --spacing 0.07 (the default 0.14 is one held
+# sideways).
+#
+# Turns are chained with `gap:` (0.2-0.3 s after the previous gap event, and everything timed after
+# it, has finished: MIDI + its 0.5 s release tail, recordings' speech, camera moves), thinking 0.4-0.5
+# s; a user line that follows an assistant line comes in over its last word (`after:` off it, 0.3-0.4 s
+# before its end). Camera moves inside a turn are timed with `after:` off the line and end before it
+# does, so they never hold the next turn back: the walking and looking happen during the speech.
+# Voice MIDI start with 0.47 s of silence (the 6x roll's look-ahead).
+#
+# The frame (the hall from src/hall.js fromBerlin): the stage floor y 0, the piano at the origin
+# (keyboard front z 0.46, the tail at z -1.12, its lid opening towards +x, the audience); the stage's
+# front edge at x 1.3 and the stalls' floor 0.61 m below it (y -0.61) from x 1.5; the centre aisle
+# at z 0. Facing the audience (+x), left is -z. The organ / choir side behind the stage at -x, the
+# hall's back wall at x ~26, the side walls at z +-10.3, the ceiling at y ~15.6.
+# Handheld: the operator model's bursts are off (the phone follows the written path, with shake,
+# gait and drift) while the user walks and points round the hall: its sub-movements are fitted to
+# a phone moved about while standing (at most 0.42 m/s, 46 deg/s) and lag a walk by seconds. On
+# again for the music at the end, standing in the stalls.
+# The user enters by the stage-right door (seen from the stage facing the hall; the +z side, the
+# keyboard's side, so the piano is in view at once): a plain single door in the stage's side wall at
+# x -2.7..-1.8, z +8.19, onto a side terrace at y 0.35, two steps (0.17 each) above the stage; a 0.17 m riser runs along the back of the stage
+# (x < -1.25, behind the piano). The camera follows the floor (handheld: { floor: true }; the hall's
+# floor map, public/berlinhall/floor.bin from tools/hall-floor.mjs): its y's here are heights above the
+# floor under the phone (1.30; 1.20 leaning in to the screen), and each change of floor is taken as a
+# step in time with the walk: down the terrace's two steps on the way in, up and down the riser behind
+# the piano, and off the stage's 0.61 m front edge in one stride into the stalls.
+#
+# Lighting (the hall's presets): Spotlight at first, the chandeliers out (Lighting/Chandeliers 0:
+# their candles, glow and crystal follow it); as the screen powers on, a 4 s fade to House lights up,
+# the chandeliers coming up with it (the preset's own value); Recital as the assistant says lets-play-liebestraum; Liebestraum starts 2 s
+# after that line has ended, and 2 s later the light fades (4 s) back to Spotlight.
+#
+# The busts (Footages.local/Berlin-Hall/generated/busts/relief/placements.json): the dialog's
+# 左手边 wall is the audience's left (+z: Bach, Telemann, Gluck, Mozart, Schubert), its 右手边 the
+# -z wall (Handel, C. P. E. Bach, Haydn, Beethoven, Weber); Brahms and Wagner on the back wall
+# (Mendelssohn and Schumann have no placement); the upper tier at y ~9.2.
+title: Berlin hall — an introduction
+seed: 1
+
+timeline:
+  # the entrance: in by the stage-right door (+z), the piano in view at once, its keyboard
+  # side towards the door. Spotlight, the chandeliers out
+  - at: 0
+    handheld: { enabled: true, shake: 1, walk: 1, drift: 0.2, bursts: false, person: true, floor: true }
+    set:
+      Lighting/Preset: Spotlight
+      Lighting/Chandeliers: 0
+    screen: off
+    camera: { position: [ -2.25, 1.30, 8.00 ], target: [ 0.00, 1.00, 0.40 ], fov: 70 }
+  # off the terrace (0.35), down the side step (0.17) and across the stage to the keyboard: two steps down
+  - after: 0.05
+    camera:
+      duration: 7.5
+      ease: inOutSine
+      path:
+        - { position: [ -1.95, 1.30, 6.70 ], target: [ 0.00, 1.00, 0.40 ], fov: 70 }
+        - { position: [ -1.10, 1.30, 5.20 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }
+        - { position: [ 0.00, 1.30, 3.20 ], target: [ 0.00, 1.00, 0.20 ], fov: 66 }
+        - { position: [ 0.65, 1.30, 1.90 ], target: [ 0.00, 1.00, 0.10 ], fov: 62 }
+  # the screen powers on as the user comes in; the house lights and the chandeliers come up together (4 s)
+  - after: 1.15
+    screen: on
+    duration: 4
+    ease: inOutSine
+    set:
+      Lighting/Preset: House lights up
+  - after: 6.1    # Assistant: 晚上好，我是智慧钢琴助手小音。今天想听点什么？ (the boot animation done)
+    midi: { play: yin/berlinhall-good-evening.mid, roll: voice, think: 0, subtitle: 晚上好，我是智慧钢琴助手小音。今天想听点什么？ }
+  # leaning in over the end of the bench: the screen and the keys, close (~2 s)
+  - after: 0.25
+    camera:
+      duration: 1.2
+      ease: inOutSine
+      path:
+        - { position: [ 0.32, 1.20, 1.12 ], target: [ 0.00, 1.00, 0.05 ], fov: 55 }
+  # back out, a look left: the organ and the choir behind the stage
+  - after: 2.05
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 0.85, 1.30, 2.25 ], target: [ -9.00, 4.50, 2.00 ], fov: 70 }
+  - after: 0.3    # User, over the greeting (as it says 智慧钢琴助手): 嚯——这屋子可真够气派的！
+    audio: { play: user/berlinhall/brilliant.opus, volume: 0.25 }
+  - after: 1.3    # up at the ceiling and the chandeliers
+    camera:
+      duration: 1.4
+      ease: inOutSine
+      path:
+        - { position: [ 0.85, 1.30, 2.25 ], target: [ 5.00, 9.00, 3.50 ], fov: 70 }
+  - after: 1.18    # User: 小音，你知道这里是哪吗？
+    audio: { play: user/berlinhall/do-you-know-where.opus, volume: 0.3 }
+  - after: 0.32    # and right, over the stalls
+    camera:
+      duration: 1.2
+      ease: inOutSine
+      path:
+        - { position: [ 0.85, 1.30, 2.25 ], target: [ 12.00, 2.20, 3.00 ], fov: 70 }
+  - after: 1.2    # back to the piano
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ 0.85, 1.30, 2.20 ], target: [ 0.00, 1.00, 0.10 ], fov: 64 }
+
+  # Assistant: 让我看一下定位……
+  - gap: 0.3
+    midi: { play: yin/berlinhall-check-location.mid, roll: voice, think: 0.4, subtitle: 让我看一下定位…… }
+
+  # Assistant: 我们在德国柏林，御林广场上的柏林音乐厅，这里是它的大厅。 The user walks on towards the back of the stage, looking out over the hall
+  - gap: 0.2
+    midi: { play: yin/berlinhall-konzerthaus.mid, roll: voice, think: 0.4, subtitle: 我们在德国柏林，御林广场上的柏林音乐厅，这里是它的大厅。 }
+  - after: 0.8
+    camera:
+      duration: 6
+      ease: inOutSine
+      path:
+        - { position: [ -0.30, 1.30, 2.40 ], target: [ 8.00, 2.40, -1.00 ], fov: 70 }
+        - { position: [ -1.15, 1.30, 2.20 ], target: [ 10.00, 2.40, -2.00 ], fov: 70 }
+  - after: 5.86    # User, over the line's last word, looking up: 这是……什么年代盖的呀？
+    audio: { play: user/berlinhall/how-old.opus, volume: 0.49 }
+  - after: 0.1
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ -1.15, 1.30, 2.15 ], target: [ 6.00, 10.00, 1.00 ], fov: 70 }
+
+  # Assistant: 它最早是建筑师申克尔设计的剧院……  a step up onto the riser behind the piano (0.17), round towards its tail
+  - gap: 0.3
+    midi: { play: yin/berlinhall-schinkel-1821.mid, roll: voice, think: 0.4, subtitle: 它最早是建筑师申克尔设计的剧院，一八二一年落成。开幕那年，韦伯的歌剧《魔弹射手》就在这里首演。 }
+  # down from the ceiling to the organ and the choir behind the stage (Schinkel's theatre), not across the open lid
+  - after: 0.1
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ -1.20, 1.30, 2.05 ], target: [ -10.00, 6.00, 4.00 ], fov: 70 }
+  - after: 1.7
+    camera:
+      duration: 8
+      ease: inOutSine
+      path:
+        - { position: [ -1.60, 1.30, 1.00 ], target: [ -10.00, 6.00, 1.50 ], fov: 70 }
+        - { position: [ -1.70, 1.30, -0.80 ], target: [ -10.00, 5.50, -2.00 ], fov: 70 }
+
+  # Assistant: 二战末期……  round the tail, a step down off the riser, forward to the front of the stage, the -z side
+  - gap: 0.2
+    midi: { play: yin/berlinhall-rebuilt-1984.mid, roll: voice, think: 0.4, subtitle: 二战末期，大楼几乎被炸毁，后来按原样重建，一九八四年作为音乐厅重新开放。一九八九年圣诞节，伯恩斯坦就在这里指挥了贝多芬第九交响曲。 }
+  - after: 2.0
+    camera:
+      duration: 12
+      ease: inOutSine
+      path:
+        - { position: [ -1.60, 1.30, -1.90 ], target: [ -6.00, 5.00, -8.00 ], fov: 70 }
+        - { position: [ -0.60, 1.30, -2.50 ], target: [ 8.00, 2.20, -4.00 ], fov: 70 }
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 8.00, 2.00, 0.00 ], fov: 70 }
+  # User, over its last word, to the piano: 哎哟，那可是有年头了。那……你们这儿听音乐，跟别处有啥不一样吗？
+  - after: 15.58
+    audio: { play: user/berlinhall/whats-different.opus, volume: 0.33 }
+  - after: 0.2
+    camera:
+      duration: 1.2
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.95 ], target: [ 0.00, 1.00, -0.20 ], fov: 64 }
+
+  # Assistant: 不一样的地方，就在这个大厅的形状和墙上的装饰里。 The user turns to the hall
+  - gap: 0.3
+    midi: { play: yin/berlinhall-shape-and-walls.mid, roll: voice, think: 0.4, subtitle: 不一样的地方，就在这个大厅的形状和墙上的装饰里。 }
+  - after: 1.0
+    camera:
+      duration: 2.5
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 20.00, 3.00, 0.00 ], fov: 72 }
+
+  # Assistant: 它是经典的“鞋盒”式大厅…… (33 s) The gaze follows: up (高), the side walls (窄, 侧墙),
+  # round (包围), the reliefs, columns, carvings and the coffered ceiling, the seats, the back wall; the piano
+  # at the end (钢琴). Offsets in the comments: from the line's event
+  - gap: 0.2
+    midi: { play: yin/berlinhall-shoebox.mid, roll: voice, think: 0.4, subtitle: 它是经典的“鞋盒”式大厅：又高又窄，两侧墙面离得很近，声音很快就从侧墙反射回来，把您包围起来。墙上的浮雕、柱子、雕花和天花板的格子，又把声音打散得很均匀，所以哪个座位都听得清楚、听得温暖。乐声停下之后，大厅里还会留下大约两秒的余韵，最适合交响乐和钢琴。 }
+  - after: 3.2    # 又高又窄: up
+    camera:
+      duration: 2.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 14.00, 12.00, 0.00 ], fov: 72 }
+  - after: 2.2    # 两侧墙面: the +z wall
+    camera:
+      duration: 1.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 9.00, 5.00, 10.30 ], fov: 72 }
+  - after: 3.4    # 从侧墙反射回来: across to the -z wall
+    camera:
+      duration: 2.4
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 9.00, 5.00, -10.30 ], fov: 72 }
+  - after: 2.6    # 把您包围起来: back to the middle
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 18.00, 3.50, 0.00 ], fov: 72 }
+  - after: 1.8    # 浮雕: the reliefs high on the -z wall
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 7.00, 7.00, -10.20 ], fov: 60 }
+  - after: 1.8    # 柱子: the columns
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 12.00, 5.00, -10.00 ], fov: 60 }
+  - after: 1.2    # 雕花
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 12.00, 9.00, -10.20 ], fov: 60 }
+  - after: 0.8    # 天花板的格子: the coffered ceiling
+    camera:
+      duration: 1.5
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 8.00, 15.60, -1.00 ], fov: 66 }
+  - after: 1.9    # 打散得很均匀: down over the hall
+    camera:
+      duration: 2.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 16.00, 5.00, 0.00 ], fov: 72 }
+  - after: 2.7    # 哪个座位: the seats
+    camera:
+      duration: 2.2
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 14.00, 0.00, -3.00 ], fov: 70 }
+  - after: 2.8
+    camera:
+      duration: 2.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 14.00, 0.00, 4.00 ], fov: 70 }
+  - after: 2.1    # 余韵: the length of the hall to the back wall
+    camera:
+      duration: 3.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 26.00, 4.00, 0.00 ], fov: 70 }
+  - after: 5.0    # 钢琴: to the piano
+    camera:
+      duration: 2.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 0.00, 1.00, 0.00 ], fov: 66 }
+  - after: 1.81    # User, over its last words: 怪不得我刚才说话都带回声儿呢！
+    audio: { play: user/berlinhall/echo.opus, volume: 0.24 }
+  # across the front of the stage to the +z side (0.35 m clear of the lid), turning to the +z wall
+  - after: 0.2
+    camera:
+      duration: 5.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.10, 1.30, 0.20 ], target: [ 8.00, 1.50, 4.00 ], fov: 70 }
+        - { position: [ 1.00, 1.30, 2.40 ], target: [ 2.50, 1.00, 10.20 ], fov: 60 }
+  - after: 2.26    # User, pointing: 欸，那墙上一圈儿白色的人头像，都是谁呀？
+    audio: { play: user/berlinhall/who-are-busts.opus, volume: 0.29 }
+
+  # Assistant: 那是作曲家的胸像。您左手边这面墙上，是巴赫、泰勒曼、格鲁克、莫扎特和舒伯特。 (the +z wall,
+  # the audience's left), each bust as it is named, zooming in as they get further away
+  - gap: 0.3
+    midi: { play: yin/berlinhall-busts-left.mid, roll: voice, think: 0.5, subtitle: 那是作曲家的胸像。您左手边这面墙上，是巴赫、泰勒曼、格鲁克、莫扎特和舒伯特。 }
+  - after: 3.2    # 您左手边这面墙上
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, 2.40 ], target: [ 8.00, 1.20, 10.20 ], fov: 60 }
+  - after: 2.8    # 巴赫
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, 2.40 ], target: [ 0.22, 0.95, 10.18 ], fov: 46 }
+  - after: 1.3    # 泰勒曼
+    camera:
+      duration: 0.9
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, 2.40 ], target: [ 5.19, 0.95, 10.19 ], fov: 40 }
+  - after: 1.2    # 格鲁克
+    camera:
+      duration: 0.9
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, 2.40 ], target: [ 10.16, 0.95, 10.18 ], fov: 34 }
+  - after: 1.3    # 莫扎特
+    camera:
+      duration: 0.9
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, 2.40 ], target: [ 15.11, 0.95, 10.19 ], fov: 28 }
+  - after: 0.9    # 舒伯特
+    camera:
+      duration: 0.9
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, 2.40 ], target: [ 19.42, 0.95, 9.29 ], fov: 24 }
+
+  # Assistant: 正对舞台的后墙上，是门德尔松、瓦格纳、勃拉姆斯和舒曼；右手边是亨德尔、卡尔·菲利普·埃马努埃尔·
+  # 巴赫、海顿、贝多芬和韦伯。 The back wall (Wagner, Brahms) while the user walks back across to the -z side, then the
+  # -z wall
+  - gap: 0.2
+    midi: { play: yin/berlinhall-busts-back-right.mid, roll: voice, think: 0.5, subtitle: 正对舞台的后墙上，是门德尔松、瓦格纳、勃拉姆斯和舒曼；右手边是亨德尔、卡尔·菲利普·埃马努埃尔·巴赫、海顿、贝多芬和韦伯。 }
+  - after: 0.4    # 后墙 … 瓦格纳 … 勃拉姆斯
+    camera:
+      duration: 6.4
+      ease: inOutSine
+      path:
+        - { position: [ 1.10, 1.30, 0.60 ], target: [ 22.26, 1.10, 2.48 ], fov: 36 }
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 22.26, 1.10, -2.48 ], fov: 34 }
+  - after: 8.0    # 右手边: the -z wall, 亨德尔
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 0.22, 0.95, -10.18 ], fov: 50 }
+  - after: 2.2    # 卡尔·菲利普·埃马努埃尔·巴赫
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 5.19, 0.95, -10.19 ], fov: 42 }
+  - after: 4.0    # 海顿
+    camera:
+      duration: 0.9
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 10.16, 0.95, -10.18 ], fov: 34 }
+  - after: 1.1    # 贝多芬
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 15.11, 0.95, -10.20 ], fov: 28 }
+  - after: 0.8    # 韦伯
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 19.42, 0.95, -9.29 ], fov: 24 }
+
+  # Assistant: 二楼还有一圈，从肖邦……还有李斯特。 Up to the upper tier: along the +z side from Chopin
+  # (behind the stage) to Shostakovich, across to Britten on the -z side, back to Strauss, Liszt last
+  - gap: 0.2
+    midi: { play: yin/berlinhall-busts-upper.mid, roll: voice, think: 0.5, subtitle: 二楼还有一圈，从肖邦、柴可夫斯基、德沃夏克、马勒，到德彪西、斯特拉文斯基、肖斯塔科维奇、布里顿、理查·施特劳斯，还有李斯特。 }
+  - after: 0.2    # 二楼还有一圈
+    camera:
+      duration: 1.6
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 6.00, 9.20, 10.16 ], fov: 60 }
+  - after: 2.6    # 肖邦
+    camera:
+      duration: 1.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ -4.61, 9.22, 10.16 ], fov: 50 }
+  - after: 1.2    # 柴可夫斯基
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ -2.15, 9.22, 10.14 ], fov: 50 }
+  - after: 1.4    # 德沃夏克
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 0.31, 9.22, 10.16 ], fov: 48 }
+  - after: 1.3    # 马勒
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 5.23, 9.22, 10.16 ], fov: 46 }
+  - after: 1.1    # 德彪西
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 10.14, 9.22, 10.16 ], fov: 42 }
+  - after: 1.3    # 斯特拉文斯基
+    camera:
+      duration: 0.9
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 17.53, 9.22, 10.14 ], fov: 38 }
+  - after: 1.7    # 肖斯塔科维奇
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 19.98, 9.22, 10.16 ], fov: 38 }
+  - after: 1.2    # 布里顿: across the back
+    camera:
+      duration: 1.3
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 19.98, 9.22, -10.16 ], fov: 40 }
+  - after: 1.4    # 理查·施特劳斯
+    camera:
+      duration: 1.3
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ -2.15, 9.22, -10.14 ], fov: 52 }
+  - after: 1.6    # 李斯特
+    camera:
+      duration: 1.3
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 15.07, 9.22, -10.16 ], fov: 42 }
+  # User, over the line's last word: 好家伙，这一屋子大师啊……要不你来一首李斯特的曲子吧。 The user steps off
+  # the front of the stage (0.61 m down) and walks up the centre aisle, away from the stage
+  - after: 0.58
+    audio: { play: user/berlinhall/play-liszt.opus, volume: 0.31 }
+  - after: 0.1
+    camera:
+      duration: 0.8
+      ease: inOutSine
+      path:
+        - { position: [ 1.00, 1.30, -1.90 ], target: [ 12.00, 1.80, 0.00 ], fov: 70 }
+  - after: 0.9
+    camera:
+      duration: 7.0
+      ease: inOutSine
+      path:
+        - { position: [ 1.22, 1.30, -1.70 ], target: [ 8.00, 0.60, -0.50 ], fov: 70 }
+        - { position: [ 1.75, 1.30, -1.35 ], target: [ 9.00, 0.40, -0.30 ], fov: 70 }
+        - { position: [ 3.40, 1.30, -0.35 ], target: [ 14.00, 1.00, 0.00 ], fov: 70 }
+        - { position: [ 5.00, 1.30, 0.00 ], target: [ 14.00, 1.00, 0.00 ], fov: 70 }
+  # Assistant: 对呀。我为您弹一首李斯特的《爱之梦》第三首。 0.3 s after the user's speech (timed with `after:`: a `gap:`
+  # would wait for the walk); the light changes to Recital as it starts. The user turns back to the stage as it ends
+  - after: 3.7
+    midi: { play: yin/berlinhall-lets-play-liebestraum.mid, roll: voice, think: 0.5, subtitle: 对呀。我为您弹一首李斯特的《爱之梦》第三首。 }
+    duration: 3
+    ease: inOutSine
+    set:
+      Lighting/Preset: Recital
+  # round by the +z side wall (a straight swing of the aim would pass through the floor)
+  - after: 3.4
+    camera:
+      duration: 2.6
+      ease: inOutSine
+      path:
+        - { position: [ 5.05, 1.30, 0.05 ], target: [ 5.30, 0.90, 4.00 ], fov: 70 }
+        - { position: [ 5.10, 1.30, 0.05 ], target: [ 0.00, 1.10, 0.00 ], fov: 62 }
+
+  # Liebestraum: 2 s after the line's end (the gap counts from the player's 0.5 s tail), from just before its
+  # first note (5.05 s); 2 s later the light fades to Spotlight. From here on only `after:` (a `gap:` would wait
+  # for the whole piece)
+  - gap: 1.5
+    midi: { play: songs/liszt-liebestraum3.transkun.mid, roll: music, from: 4.8 }
+  - after: 2.0
+    duration: 4
+    ease: inOutSine
+    set:
+      Lighting/Preset: Spotlight
+  # standing now: the operator's bursts back on (off while walking and pointing)
+  - after: 1.0
+    handheld: { bursts: true }
+    camera:
+      duration: 2.5
+      ease: inOutSine
+      path:
+        - { position: [ 5.00, 1.30, 0.10 ], target: [ 0.00, 1.00, 0.00 ], fov: 56 }
+  # User, whispering: 欸这台琴卖多少钱？ Someone behind (the vendor, in the aisle 1.45 m back, mouth 1.62 m
+  # above the stalls' floor, facing the user) answers 0.5 s after the speech: 想买啊你？关注我视频号就送你一台啊。
+  # (level as in premiere's closing); the phone turns a little that way
+  - after: 3.5
+    audio: { play: user/berlinhall/how-much-whisper.opus, volume: 0.16 }
+  - after: 1.86
+    audio: { play: vendor/follow-me.opus, volume: 3.6, position: [ 6.70, 1.01, 0.25 ], facing: [ 5.25, 0.93, 0.10 ] }
+  - after: 0.4
+    camera:
+      duration: 1.1
+      ease: inOutSine
+      path:
+        - { position: [ 5.02, 1.30, 0.12 ], target: [ 0.10, 1.00, 0.45 ], fov: 56 }
+  # the end: the music fades out (3 s) a few seconds after the vendor's line
+  - after: 3.5
+    midi: { stop: 3 }
+

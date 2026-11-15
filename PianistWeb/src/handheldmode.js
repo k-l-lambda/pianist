@@ -15,7 +15,9 @@
 //    step bob (~40% gets through at 0.7 m/s, ~25% at 1.2) and lags it; the slower stride sway
 //    passes more. The hand's own shake comes on top
 //  - height capped at what a person can reach holding a phone (1.85 m; standing eye height of a
-//    1.75 m person is 1.64 m, higher means the arm is raised)
+//    1.75 m person is 1.64 m, higher means the arm is raised); with `floor` (Follow floor) the height
+//    is above the floor under the phone (ctx.floorHeight: the Berlin hall's map), and a change of
+//    floor is taken as a step up or down in time with the walk (_floorY, STEP_*)
 //  - arrow keys walk (up/down forward/back along the heading, left/right sidestep; Shift
 //    faster). The camera and its orbit target move together and stay inside the room
 //  - right drag moves the phone in the hand, relative to the body (which stays where it stands):
@@ -57,10 +59,26 @@ const WALL_MARGIN = 0.3;						// m kept from the walls
 const ARM_X = [ - 0.08, 0.08 ], ARM_Y = [ - 0.18, 0.15 ];	// m, phone offset in the hand (sideways, up)
 const ARM_DRAG = 0.0012;						// m per pixel of right drag
 const KEYS = { ArrowUp: [ 0, 1 ], ArrowDown: [ 0, - 1 ], ArrowLeft: [ - 1, 0 ], ArrowRight: [ 1, 0 ] };
+// following the floor (this.floor; ctx.floorHeight): the camera's y is then its height above the floor, and a
+// change in the floor under the phone is taken as a step, timed to the walk's next footfall (at most
+// STEP_WAIT s after the phone crosses it: the feet are a little behind the phone). Per step of height a
+// (m; the floor's own treads one at a time: the terrace's 0.17 + 0.17, the back riser's 0.17; an edge with
+// none between, the stage's 0.61 m front, in one stride, as a person steps off a knee-high edge):
+//  - the move: min-jerk over STEP_T0 + STEP_TK * a s (0.17 m: 0.39 s, 0.61 m: 0.64 s)
+//  - up: a dip first (the knee bending to push off; STEP_DIP + STEP_DIPK * a, over the first 45 %), the
+//    rise after it (from a quarter of the way in)
+//  - down: the drop, then the landing's give: a dip below the new floor (STEP_GIVE + STEP_GIVEK * a: 2.4 cm
+//    off 0.17 m, 5.5 cm off the stage's edge) from three quarters of the way down, over STEP_S0 + STEP_SK * a
+//    s after it, recovering
+// A cut (the floor or the camera jumping by more than STEP_CUT in one frame) takes the new floor at once.
+const STEP_MIN = 0.03, STEP_CUT = 0.4, STEP_WAIT = 0.4;
+const STEP_T0 = 0.3, STEP_TK = 0.55, STEP_DIP = 0.015, STEP_DIPK = 0.05, STEP_GIVE = 0.012, STEP_GIVEK = 0.07, STEP_S0 = 0.25, STEP_SK = 0.35;
+const minJerk = u => u * u * u * ( 10 - 15 * u + 6 * u * u );
+const bump = ( t, a, b ) => t <= a || t >= b ? 0 : Math.sin( Math.PI * ( t - a ) / ( b - a ) ) ** 2;
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.Euler();
 const _dv = new THREE.Vector3(), _dq = new THREE.Quaternion();
-const _v = new THREE.Vector3(), _o = new THREE.Vector3();
+const _v = new THREE.Vector3(), _o = new THREE.Vector3(), _g = new THREE.Vector3();
 
 // autofocus hunting (HandheldMode._focusHunt)
 const HUNT_SPEED = 0.2;			// m/s, smoothed: a quick move
@@ -102,6 +120,8 @@ export class HandheldMode {
 		this.operator = new Operator( operatorParams, { seed: 5 } );
 		this.drift = 0.2;				// the fitted drift at full strength read as too much sway
 		this.bursts = true;				// the operator's sub-movements (off: follows the goal directly)
+		this.floor = false;				// follow the floor (ctx.floorHeight): the camera's y is a height above it
+		this._floor = { level: null, step: null, wait: 0, last: new THREE.Vector3( 1e9, 0, 0 ), y: 0 };
 		// the phone's autofocus hunting now and then on a quick move (ctx.defocus); 0 = never
 		this.focusHunt = 1;
 		this._hunt = { on: false, peak: 0, cool: 0, dist: null, radial: 0, rand: mulberry( RENDER ? 23 : Date.now() ) };		// offline: reproducible
@@ -148,6 +168,12 @@ export class HandheldMode {
 			this.savedMiddle = controls.mouseButtons.MIDDLE;
 			this.savedPan = controls.enablePan;
 			this.savedMinDistance = controls.minDistance;
+			// the orbit limits are for orbiting the piano: here the orbit centre sits just ahead of the
+			// lens, and a script's far target (a bust across the hall, the ceiling) must not be pulled
+			// in (maxDistance) or the camera swung round it (the polar limit: a person can look up)
+			this.savedLimits = { maxDistance: controls.maxDistance, maxPolarAngle: controls.maxPolarAngle };
+			controls.maxDistance = Infinity;
+			controls.maxPolarAngle = Math.PI * 0.95;
 			this.savedTargetDistance = camera.position.distanceTo( controls.target );
 			controls.minDistance = 0;
 			controls.target.copy( camera.position ).add( _v.set( 0, 0, - TURN_RADIUS ).applyQuaternion( camera.quaternion ) );
@@ -163,6 +189,7 @@ export class HandheldMode {
 			if ( this.showPerson ) scene.add( this.person.group ); else this._removePerson();
 			this.intended.valid = false;
 			this.operator.valid = false;
+			this.resetFloor();
 			this.probeAt.set( 1e9, 0, 0 );
 			this.armOffset.set( 0, 0 );
 			el.addEventListener( 'pointerdown', this._onSteer );
@@ -175,6 +202,7 @@ export class HandheldMode {
 			if ( this.intended.valid ) {
 
 				camera.position.copy( this.intended.position );
+				if ( this.floor ) camera.position.y += this._floor.y;		// (a height above the floor: back to the world)
 				camera.quaternion.copy( this.intended.quaternion );
 
 			}
@@ -182,6 +210,7 @@ export class HandheldMode {
 			this.intended.valid = false;
 			// put the orbit centre back at a comfortable distance in front of the camera
 			controls.minDistance = this.savedMinDistance ?? controls.minDistance;
+			Object.assign( controls, this.savedLimits ?? {} );
 			controls.target.copy( camera.position ).add( _v.set( 0, 0, - ( this.savedTargetDistance ?? 1.5 ) ).applyQuaternion( camera.quaternion ) );
 			camera.fov = this.savedFov ?? camera.fov;
 			camera.updateProjectionMatrix();
@@ -277,6 +306,71 @@ export class HandheldMode {
 	}
 
 	// ---- per frame ----------------------------------------------------------------------------
+
+	/** Forget the floor stood on (a cut, a change of venue or of the mode): the next frame stands on what is there. */
+	resetFloor() {
+
+		Object.assign( this._floor, { level: null, step: null, wait: 0, y: 0 } );
+		this._floor.last.set( 1e9, 0, 0 );
+
+	}
+
+	/**
+	 * Following the floor: the height (world y) of the floor the person stands on at `p` (the phone's
+	 * x, z), with the steps between levels taken as steps (see STEP_*). `cosStep`: the gait's phase (cos:
+	 * -1 at a footfall), `walking` (0..1).
+	 */
+	_floorY( dt, p, cosStep, walking ) {
+
+		const F = this._floor;
+		const raw = this.ctx.floorHeight?.( p.x, p.z ) ?? null;
+		const jumped = p.distanceTo( F.last ) > STEP_CUT;
+		F.last.copy( p );
+		if ( raw === null ) return F.y = F.level ?? 0;		// (off the map: stay at the level stood on)
+		if ( F.level === null || jumped || ( ! F.step && Math.abs( raw - F.level ) > 1.5 ) ) {
+
+			Object.assign( F, { level: raw, step: null, wait: 0 } );
+			return F.y = raw;
+
+		}
+		if ( ! F.step && Math.abs( raw - F.level ) > STEP_MIN ) {
+
+			// at the next footfall (or at once when not walking; at most STEP_WAIT s on)
+			F.wait += dt;
+			if ( walking < 0.2 || cosStep < - 0.8 || F.wait >= STEP_WAIT ) {
+
+				const d = raw - F.level, a = Math.abs( d );
+				const T = STEP_T0 + STEP_TK * a;
+				F.step = { from: F.level, d, a, t: 0, T, end: d > 0 ? T : T + STEP_S0 + STEP_SK * a };
+				F.wait = 0;
+
+			}
+
+		} else F.wait = 0;
+		if ( ! F.step ) return F.y = F.level;
+		const S = F.step;
+		S.t += dt;
+		const t = S.t, u = Math.min( 1, t / S.T );
+		let y;
+		if ( S.d > 0 ) {
+
+			y = S.from + S.d * minJerk( THREE.MathUtils.clamp( ( u - 0.25 ) / 0.75, 0, 1 ) ) - ( STEP_DIP + STEP_DIPK * S.a ) * bump( t, 0, 0.45 * S.T );
+
+		} else {
+
+			y = S.from + S.d * minJerk( u ) - ( STEP_GIVE + STEP_GIVEK * S.a ) * bump( t, 0.75 * S.T, S.end );
+
+		}
+		if ( t >= S.end ) {
+
+			F.level = S.from + S.d;
+			F.step = null;
+			y = F.level;
+
+		}
+		return F.y = y;
+
+	}
 
 	/** Put the camera back on the intended (un-shaken) pose before the controls move it. */
 	restore() {
@@ -385,6 +479,9 @@ export class HandheldMode {
 		const moving = Math.min( 1, THREE.MathUtils.smoothstep( this.speed, 0.03, 0.25 ) + THREE.MathUtils.smoothstep( this.turn, 0.07, 0.4 ) );
 		this._focusHunt( dt, camera.position );
 		const walking = THREE.MathUtils.smoothstep( this.speed, 0.04, 0.35 ) * this.walk;
+		// the goal in the world: following the floor, the intended y is a height above it
+		const goal = _g.copy( I.position );
+		if ( this.floor ) goal.y += this._floorY( dt, I.position, Math.cos( this.stepPhase ), THREE.MathUtils.smoothstep( this.speed, 0.04, 0.35 ) );
 
 		// the base pose: the operator following the intended pose, plus its slow drift (not while
 		// path tracing: the camera has to keep still there)
@@ -395,7 +492,7 @@ export class HandheldMode {
 			const op = this.operator;
 			op.drift = this.drift;
 			op.bursts = this.bursts;
-			op.update( dt, I.position, I.quaternion, { steering: steer } );
+			op.update( dt, goal, I.quaternion, { steering: steer } );
 			const { offset: dOff, rotation: dRot } = op.driftAt( _dv, _dq );
 			base.quaternion.copy( op.quaternion ).multiply( dRot );
 			base.position.copy( op.position ).add( dOff.applyQuaternion( op.quaternion ) );
@@ -403,7 +500,7 @@ export class HandheldMode {
 		} else {
 
 			this.operator.valid = false;
-			base.position.copy( I.position );
+			base.position.copy( goal );
 			base.quaternion.copy( I.quaternion );
 
 		}

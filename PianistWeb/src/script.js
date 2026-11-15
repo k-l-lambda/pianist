@@ -18,7 +18,10 @@
 //                                  # and finds it again (depth of field), `delay` s after the
 //                                  # event; `defocus: true` = the defaults (0, 0.9 s, 1)
 //       handheld: { enabled: true, shake: 0.6, walk: 1, person: true }   # focusHunt: the phone's
-//                                  # focus hunting now and then on quick moves (1; 0 = never)
+//                                  # focus hunting now and then on quick moves (1; 0 = never);
+//                                  # floor: true = follow the venue's floor (the Berlin hall's map):
+//                                  # camera y's are then heights above the floor under the phone,
+//                                  # steps up / down taken as steps (handheldmode.js)
 //     - at: 1
 //       screen: on                 # on | off
 //     - at: 2
@@ -222,7 +225,7 @@ const EASE = {
 	out: t => 1 - ( 1 - t ) * ( 1 - t ),
 };
 
-const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', bursts: 'Handheld camera/Operator bursts', focusHunt: 'Handheld camera/Focus hunting', person: 'Handheld camera/Person (reflections)' };
+const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', bursts: 'Handheld camera/Operator bursts', floor: 'Handheld camera/Follow floor', focusHunt: 'Handheld camera/Focus hunting', person: 'Handheld camera/Person (reflections)' };
 
 const vec = ( a, what ) => {
 
@@ -851,8 +854,11 @@ export class ScriptPlayer {
 
 		const { camera, controls } = this.ctx;
 		camera.position.copy( position );
+		// handheld, following the floor (handheld: { floor: true }): the position's y is a height above the
+		// floor under it, the target a world point; aimed from the eye's real height (the target lowered by the floor)
 		controls.target.copy( target );
-		camera.lookAt( target );
+		controls.target.y -= this.ctx.floorOffset?.( position ) ?? 0;
+		camera.lookAt( controls.target );
 		if ( fov !== undefined && fov !== camera.fov ) {
 
 			camera.fov = fov;
