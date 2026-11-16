@@ -23,6 +23,8 @@ export const RENDER_OPTS = RENDER ? {
 	subframes: Math.max( 1, Math.round( Number( get( 'sub' ) ?? 1 ) ) ),		// renders a frame, across the shutter, the camera jittered between them
 	shutter: Number( get( 'shutter' ) ?? 0.5 ),		// open for this part of the frame (0.5: a 180° shutter)
 	bits: Number( get( 'bits' ) ?? 8 ),		// 8 (rgb24) or 10 (rgb48le)
+	hdr: [ 'hlg', 'pq' ].includes( get( 'hdr' ) ) ? get( 'hdr' ) : null,		// an HDR frame (offline.js hdrQuad: BT.2020, HLG or PQ, 10 bits)
+	hdrPeak: Number( get( 'hdrpeak' ) ?? 1000 ),		// its highlights' peak, nits
 	dither: get( 'dither' ) !== '0',
 	filter: Number( get( 'filter' ) ?? 1.25 ),		// the resolve's window radius (output px)
 	legacy: get( 'legacy' ) === '1',		// the old capture: tone mapped on the canvas, drawImage to the size, PNG

@@ -7,6 +7,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import GUI from 'lil-gui';
 
 import { TextureBaker } from './textures.js';
@@ -295,6 +296,45 @@ composer.addPass( gtaoPass );
 // saturates the Berlin hall's gilt and ivory beyond its renders)
 const hdrClamp = makeHDRClamp( 4096 );		// (ptpost.js: the path tracer's image gets the same)
 composer.addPass( hdrClamp );
+// handheld: the frame's light metered (its exposure lags it: updateExposureLag)
+const meterPass = new ( class extends Pass {
+
+	constructor() {
+
+		super();
+		this.needsSwap = false;
+		this.enabled = false;
+		this.target = new THREE.WebGLRenderTarget( 1, 1, { type: THREE.FloatType, depthBuffer: false } );
+		// the mean log luminance (centre-weighted, a 16 x 32 grid) of the linear frame times the author's exposure
+		this.quad = new FullScreenQuad( new THREE.ShaderMaterial( {
+			uniforms: { tDiffuse: { value: null }, uScale: { value: 1 } },
+			vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }',
+			fragmentShader: `uniform sampler2D tDiffuse; uniform float uScale;
+				void main() {
+					float s = 0.0, w = 0.0;
+					for ( int j = 0; j < 32; ++ j ) for ( int i = 0; i < 16; ++ i ) {
+						vec2 uv = ( vec2( float( i ), float( j ) ) + 0.5 ) / vec2( 16.0, 32.0 ), d = ( uv - 0.5 ) * 2.0;
+						float k = exp( - 1.5 * dot( d, d ) );
+						float l = dot( texture2D( tDiffuse, uv ).rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+						s += k * log( l * uScale + 1e-4 ); w += k;
+					}
+					gl_FragColor = vec4( s / w, 0.0, 0.0, 1.0 );
+				}`,
+			depthTest: false, depthWrite: false,
+		} ) );
+
+	}
+
+	render( renderer, writeBuffer, readBuffer ) {
+
+		this.quad.material.uniforms.tDiffuse.value = readBuffer.texture;
+		renderer.setRenderTarget( this.target );
+		this.quad.render( renderer );
+
+	}
+
+} )();
+composer.addPass( meterPass );
 composer.addPass( bloomPass );
 // depth of field, only for a lens that loses focus for a moment (scripts: `defocus`); off otherwise
 const bokehPass = new BokehPass( scene, camera, { focus: 1, aperture: 0.03, maxblur: 0 } );
@@ -314,8 +354,82 @@ function startDefocus( duration = 0.9, amount = 1 ) {
 
 }
 
+// The lens's focus held by a script (`focus:`, script.js): on a distance (or `near`: the depth at the frame's centre
+// when first read, held), the depth of field on all along, a phone's main camera pushed a little (focused at 1.2 m,
+// the background at 8 m a few pixels soft: BokehShader's blur is linear in the distance from the focus, factor x
+// aperture, capped at maxblur, in screen units); then released over `duration` s: the focus going over in dioptres
+// (1 / d) to the autofocus's (the handheld's centre depth, else the piano), the blur down to 0. While held and
+// releasing, the centre depth's jumps start no refocus (its smoothed value kept at the depth read)
+const LOCK_APERTURE = 0.0021, LOCK_MAXBLUR = 0.016;
+const lensLock = { mode: null, d: null, near: false, blur: 1, t0: 0, duration: 0, ease: null, fromD: 1, fromBlur: 0 };
+const lensNow = { d: 1, blur: 0 };
+
+/** The script's `focus:` (script.js): { distance: 'near' | m, blur } holds, { auto: true, duration, ease } releases. */
+function setFocus( f ) {
+
+	const t = clock.now() / 1000, L = lensLock;
+	if ( f.auto ) {
+
+		if ( ! L.mode ) return;
+		const cur = lockState( t );		// (from where it is: held, or part way through a release)
+		Object.assign( L, { mode: 'release', t0: t, duration: f.duration, ease: f.ease, fromD: cur?.d ?? autoFocusDistance(), fromBlur: cur?.blur ?? 0 } );
+		if ( ! ( f.duration > 0 ) ) L.mode = null;
+		return;
+
+	}
+	Object.assign( L, { mode: 'lock', near: f.distance === 'near', d: f.distance === 'near' ? null : f.distance, blur: f.blur } );
+
+}
+
+/** Where the autofocus would be: the handheld's centre depth, else the piano along the view. */
+function autoFocusDistance() {
+
+	if ( handheld.enabled && handheld.refocus && depthProbe.d !== null ) return THREE.MathUtils.clamp( depthProbe.d, 0.3, 30 );
+	_dof.copy( pianoCentre() ?? controls.target );
+	return THREE.MathUtils.clamp( _dof.sub( camera.position ).dot( camera.getWorldDirection( _dofDir ) ), 0.3, 5 );
+
+}
+
+/** The held focus at `t` ({ d, blur }), or null (the autofocus's). */
+function lockState( t ) {
+
+	const L = lensLock;
+	if ( L.mode === 'lock' ) {
+
+		// (near: the first centre depth read, held; before one, 1 m)
+		if ( L.d === null && L.near && depthProbe.d !== null ) L.d = THREE.MathUtils.clamp( depthProbe.d, 0.2, 30 );
+		lensNow.d = L.d ?? 1; lensNow.blur = L.blur;
+		return lensNow;
+
+	}
+	if ( L.mode === 'release' ) {
+
+		const v = THREE.MathUtils.clamp( ( t - L.t0 ) / L.duration, 0, 1 ), u = L.ease ? L.ease( v ) : v;
+		if ( v >= 1 ) { L.mode = null; return null; }
+		const dio = ( 1 - u ) / L.fromD + u / autoFocusDistance();
+		lensNow.d = 1 / dio; lensNow.blur = L.fromBlur * ( 1 - u );
+		return lensNow;
+
+	}
+	return null;
+
+}
+
 function updateDefocus() {
 
+	const U = bokehPass.uniforms;
+	const held = lockState( clock.now() / 1000 );
+	if ( held ) {
+
+		bokehPass.enabled = held.blur > 0.002;
+		U.focus.value = held.d;
+		U.aperture.value = LOCK_APERTURE * held.blur;
+		U.maxblur.value = LOCK_MAXBLUR * held.blur;
+		U.aspect.value = camera.aspect;
+		return;
+
+	}
+	U.aperture.value = 0.03;
 	let k = 0;
 	const u = defocus.t0 < 0 ? 1 : ( clock.now() / 1000 - defocus.t0 ) / defocus.duration;
 	if ( u > 0 && u < 1 ) {
@@ -332,9 +446,11 @@ function updateDefocus() {
 	if ( ! bokehPass.enabled ) return;
 	// the subject: the piano, along the view (not the orbit target: in handheld mode that sits
 	// just in front of the phone)
+	// (handheld: the depth at the frame's centre, where a phone focuses)
 	_dof.copy( pianoCentre() ?? controls.target );
-	const d = THREE.MathUtils.clamp( _dof.sub( camera.position ).dot( camera.getWorldDirection( _dofDir ) ), 0.3, 5 );
-	const U = bokehPass.uniforms;
+	const d = handheld.enabled && handheld.refocus && depthProbe.d !== null ? THREE.MathUtils.clamp( depthProbe.d, 0.3, 30 )
+		: THREE.MathUtils.clamp( _dof.sub( camera.position ).dot( camera.getWorldDirection( _dofDir ) ), 0.3, 5 );
+
 	U.focus.value = d * ( 1 - 0.6 * Math.min( 1, k ) );
 	U.maxblur.value = DOF_MAXBLUR * k;
 	U.aspect.value = camera.aspect;
@@ -342,6 +458,165 @@ function updateDefocus() {
 }
 
 const _dof = new THREE.Vector3(), _dofDir = new THREE.Vector3();
+
+// Handheld: the phone's autofocus refocusing when the depth at the frame's centre jumps (a door opening on a
+// hall: 0.6 m to 8 m). The centre's depth from a draw of an 8 x 8 window at the middle of the view (2 % of its
+// height: the frustum culls nearly everything) in view depth; its jump in dioptres (1 / d: what a lens has to
+// refocus by; 8 m to 18 m beyond the piano is next to nothing) from its smoothed value (0.3 s) over REFOCUS_JUMP
+// starts a defocus (at most one per REFOCUS_COOL s); the focus is then on that depth
+const REFOCUS_JUMP = 0.35, REFOCUS_COOL = 1.5, REFOCUS_TAU = 0.3, REFOCUS_FAR = 50;
+const depthProbe = {
+	target: new THREE.WebGLRenderTarget( 8, 8, { type: THREE.FloatType } ),
+	cam: new THREE.PerspectiveCamera(),
+	mat: new THREE.ShaderMaterial( {
+		vertexShader: `varying float vZ;
+			void main() {
+				vec4 p = vec4( position, 1.0 );
+				#ifdef USE_INSTANCING
+					p = instanceMatrix * p;
+				#endif
+				vec4 mv = modelViewMatrix * p;
+				vZ = - mv.z;
+				gl_Position = projectionMatrix * mv;
+			}`,
+		fragmentShader: 'varying float vZ; void main() { gl_FragColor = vec4( vZ, 0.0, 0.0, 1.0 ); }',
+		side: THREE.DoubleSide,
+	} ),
+	buf: new Float32Array( 8 * 8 * 4 ), hidden: [], cc: new THREE.Color(),
+	d: null, slow: null, last: - 1, cool: - 1, log: [], pending: false, skip: false,
+};
+// (the readbacks: offline at once, the frame's own (reproducible); real time asynchronous, a frame or two late:
+// a synchronous one drained the GPU's queue, ~3-4 ms a frame each)
+function probeCentreDepth() {
+
+	const P = depthProbe;
+	if ( ! ( handheld.enabled && handheld.refocus ) ) { P.d = P.slow = null; return; }
+	if ( P.pending || ( ! RENDER && ( P.skip = ! P.skip ) ) ) return;		// (real time: every other frame)
+	const cam = P.cam;
+	cam.copy( camera );
+	const H = 400, W = Math.round( H * camera.aspect );
+	cam.setViewOffset( W, H, W / 2 - 4, H / 2 - 4, 8, 8 );
+	cam.updateProjectionMatrix();
+	// what does not write depth, and what draws the scene again itself (mirrors), left out
+	P.hidden.length = 0;
+	scene.traverse( o => {
+
+		if ( o === scene || ! o.visible ) return;
+		const m = o.material;
+		if ( o.isPoints || o.isLine || o.isSprite || ( m && ! Array.isArray( m ) && ( m.transparent || m.depthWrite === false ) ) || o.onBeforeRender !== THREE.Object3D.prototype.onBeforeRender ) { o.visible = false; P.hidden.push( o ); }
+
+	} );
+	const rt = renderer.getRenderTarget(), auto = renderer.autoClear, bg = scene.background, ov = scene.overrideMaterial;
+	const smAuto = renderer.shadowMap.autoUpdate, smNeeds = renderer.shadowMap.needsUpdate, ca = renderer.getClearAlpha();
+	renderer.getClearColor( P.cc );
+	try {
+
+		renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = false;
+		scene.background = null; scene.overrideMaterial = P.mat;
+		renderer.setRenderTarget( P.target );
+		renderer.setClearColor( 0x000000, 0 );
+		renderer.clear();
+		renderer.render( scene, cam );
+		const t = clock.now() / 1000;
+		if ( RENDER ) { renderer.readRenderTargetPixels( P.target, 0, 0, 8, 8, P.buf ); refocusFrom( P.buf, t ); }
+		else {
+
+			P.pending = true;
+			renderer.readRenderTargetPixelsAsync( P.target, 0, 0, 8, 8, P.buf ).then( () => { P.pending = false; if ( handheld.enabled && handheld.refocus ) refocusFrom( P.buf, t ); }, () => { P.pending = false; } );
+
+		}
+
+	} finally {
+
+		for ( const o of P.hidden ) o.visible = true;
+		P.hidden.length = 0;
+		scene.background = bg; scene.overrideMaterial = ov;
+		renderer.shadowMap.autoUpdate = smAuto; renderer.shadowMap.needsUpdate = smNeeds;
+		renderer.setClearColor( P.cc, ca );
+		renderer.autoClear = auto;
+		renderer.setRenderTarget( rt );
+
+	}
+
+}
+
+/** The centre's depth read (8 x 8 view depths, 0: nothing there) at time `t`: a jump starts a defocus. */
+function refocusFrom( buf, t ) {
+
+	const P = depthProbe, v = [];
+	for ( let i = 0; i < 64; ++ i ) { const z = buf[ 4 * i ]; v.push( z > 0 && Number.isFinite( z ) ? z : REFOCUS_FAR ); }
+	v.sort( ( a, b ) => a - b );
+	const d = 0.5 * ( v[ 31 ] + v[ 32 ] ), dio = 1 / d;
+	// (a first frame, a gap, a seek back; the focus held by the script: no refocus, the smoothed value kept at the
+	// depth read, so none on the release's end either)
+	if ( P.slow === null || t - P.last > 1 || t < P.last || lensLock.mode ) P.slow = dio;
+	else {
+
+		const mag = Math.abs( dio - P.slow );
+		if ( mag > REFOCUS_JUMP && t >= P.cool ) {
+
+			const m = Math.min( 1, mag / 1.5 );
+			startDefocus( 0.6 + 0.3 * m, Math.min( 1, 0.5 + 0.5 * m ) );
+			P.cool = t + REFOCUS_COOL;
+			P.log.push( { t, from: 1 / P.slow, to: d } );
+			if ( P.log.length > 50 ) P.log.shift();
+
+		}
+		P.slow += ( dio - P.slow ) * ( 1 - Math.exp( - ( t - P.last ) / REFOCUS_TAU ) );
+
+	}
+	P.last = t;
+	P.d = d;
+
+}
+
+// Handheld: the exposure adapts with a lag, as a phone's. The page's exposure is taken as adapted at once (as
+// set: the author's); the lag is the frame's light (meterPass: log luminance times the author's exposure) against
+// its mean over the last EXPOSURE_LAG s (time weighted), the exposure times exp( EXPOSURE_LAG_K x the
+// difference ): 1 while the light holds, over / under for a moment when it jumps (a door opening)
+const EXPOSURE_LAG = 0.6, EXPOSURE_LAG_K = 0.75;
+const ae = { factor: 1, hist: [], buf: new Float32Array( 4 ), v: null, pending: false };
+const baseExposure = () => settings.exposure * venue.light.exposure;
+function updateExposureLag() {
+
+	if ( ! meterPass.enabled ) {
+
+		if ( ae.factor !== 1 || ae.hist.length ) { ae.factor = 1; ae.hist.length = 0; ae.v = null; renderer.toneMappingExposure = baseExposure(); }
+		return;
+
+	}
+	const t = clock.now() / 1000;
+	if ( RENDER ) { renderer.readRenderTargetPixels( meterPass.target, 0, 0, 1, 1, ae.buf ); exposureLagFrom( ae.buf[ 0 ], t ); }
+	else if ( ! ae.pending ) {
+
+		ae.pending = true;
+		renderer.readRenderTargetPixelsAsync( meterPass.target, 0, 0, 1, 1, ae.buf ).then( () => { ae.pending = false; if ( meterPass.enabled ) exposureLagFrom( ae.buf[ 0 ], t ); }, () => { ae.pending = false; } );
+
+	}
+
+}
+
+/** The frame's metered light `v` (log) at time `t`: the exposure's lag factor. */
+function exposureLagFrom( v, t ) {
+
+	const H = ae.hist;
+	if ( ! Number.isFinite( v ) ) return;
+	if ( H.length && ( t - H[ H.length - 1 ].t > 1 || t < H[ H.length - 1 ].t ) ) H.length = 0;		// (a gap, a seek back)
+	if ( H.length && t === H[ H.length - 1 ].t ) H[ H.length - 1 ].v = v; else H.push( { t, v } );
+	while ( H.length > 2 && H[ 1 ].t <= t - EXPOSURE_LAG ) H.shift();
+	let s = 0, w = 0;
+	for ( let i = 1; i < H.length; ++ i ) {
+
+		const a = Math.max( H[ i - 1 ].t, t - EXPOSURE_LAG ), dt = H[ i ].t - a;
+		if ( dt > 0 ) { s += 0.5 * ( H[ i ].v + H[ i - 1 ].v ) * dt; w += dt; }
+
+	}
+	const mean = w > 0 ? s / w : v;
+	ae.v = v;
+	ae.factor = THREE.MathUtils.clamp( Math.exp( EXPOSURE_LAG_K * ( v - mean ) ), 0.35, 2.8 );
+	renderer.toneMappingExposure = baseExposure() * ae.factor;
+
+}
 
 function applyAO() {
 
@@ -578,7 +853,7 @@ function applyBloom() {
 function refreshLighting() {
 
 	venue.updateLights();
-	renderer.toneMappingExposure = settings.exposure * venue.light.exposure;
+	renderer.toneMappingExposure = settings.exposure * venue.light.exposure * ae.factor;
 	renderer.toneMapping = TONE[ toneChosen ? settings.toneMapping : venue.light.tone ?? settings.toneMapping ];		// (a venue's preset may ask for one)
 	// a preset's fade between two tone mappings (script.js): the two curves mixed (tonemix.js)
 	const tf = venue.light.toneFade;
@@ -754,6 +1029,8 @@ window.addEventListener( 'keydown', event => {
 
 	if ( event.repeat || event.target.closest?.( '.lil-gui' ) ) return;
 	const k = event.key.toLowerCase();
+	// F8: the loaded script again from its start (its first events set the scene back: lights, doors, screen, camera)
+	if ( event.key === 'F8' ) { event.preventDefault(); if ( ! RENDER && scriptPlayer.script ) synth.resume().then( () => { scriptPlayer.stop(); scriptPlayer.play(); } ); return; }
 	if ( event.key === '`' ) { setScreenPower( ! roll.power ); return; }
 	if ( k === 'z' ) { octaveShift = Math.max( - 3, octaveShift - 1 ); return; }
 	if ( k === 'x' ) { octaveShift = Math.min( 3, octaveShift + 1 ); return; }
@@ -918,6 +1195,8 @@ fHand.add( handheld, 'drift', 0, 2, 0.05 ).name( 'Operator drift' );
 fHand.add( handheld, 'bursts' ).name( 'Operator bursts' );
 fHand.add( handheld, 'floor' ).name( 'Follow floor' ).onChange( () => handheld.resetFloor() );
 fHand.add( handheld, 'focusHunt', 0, 2, 0.05 ).name( 'Focus hunting' );
+fHand.add( handheld, 'refocus' ).name( 'Depth refocus' );
+fHand.add( handheld, 'aeLag' ).name( 'Exposure lag' );
 fHand.add( handheld, 'showPerson' ).name( 'Person (reflections)' ).onChange( v => handheld.setShowPerson( v ) );
 // path tracing: a snapshot of the view (a window in the corner), and the scene's state as JSON (the input
 // of an offline path-traced render: tools/render-pt.mjs). (The renderer stays real time; ?mode=pathtrace
@@ -1077,7 +1356,7 @@ function switchVenue( v ) {
 }
 
 const fRender = gui.addFolder( 'Rendering' ).close();
-fRender.add( settings, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' ).onChange( () => renderer.toneMappingExposure = settings.exposure * venue.light.exposure );
+fRender.add( settings, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' ).onChange( () => renderer.toneMappingExposure = settings.exposure * venue.light.exposure * ae.factor );
 fRender.add( settings, 'toneMapping', Object.keys( TONE ) ).name( 'Tone mapping' ).onChange( v => {
 
 	toneChosen = true;		// from now on the GUI's, over the venues' presets
@@ -1217,6 +1496,7 @@ const scriptPlayer = new ScriptPlayer( {
 	// a venue's doors (the Berlin hall's stage doors, src/stagedoors.js); the live path tracer rebuilds its scene
 	setDoor: ( which, open ) => { if ( venue.setDoor ) { venue.setDoor( which, open ); ptDirty = true; } },
 	getDoor: which => venue.door?.( which ) ?? 0,
+	focus: f => setFocus( f ),		// (the script's `focus:`: the lens's focus held / released)
 	// what a preset leaves unset is (for a fade's numbers: the Berlin hall's Recital sets them, its Spotlight not)
 	lightDefaults: () => ( { saturation: 1, bloom: settings.gi ? settings.bloom : 0, bloomThreshold: 0.92 } ),
 	setRollMode: mode => roll.setMode( mode ),
@@ -1642,11 +1922,15 @@ function drawFrame() {
 
 	} else {
 
+		probeCentreDepth();
+		meterPass.enabled = handheld.enabled && handheld.aeLag;
+		meterPass.quad.material.uniforms.uScale.value = baseExposure();
 		venue.beforeRender?.( renderer, camera );		// (Luminara: its floor's reflection)
 		updateScreenMirror();
 		composer.render();
+		updateExposureLag();
 		drawnFrom = composer.readBuffer.texture;
-		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain`;
+		hud.textContent = `Real-time${ settings.gi ? ' · GI' : '' } · ${ Math.round( fps ) } fps · ${ pianoStatus() } · drag to orbit · click keys or A–' to play · Z/X octave · pedals: click, or Q soft / R sostenuto / Space sustain · F8 replay script`;
 
 	}
 
@@ -1681,7 +1965,7 @@ function downloadState() {
 	setTimeout( () => URL.revokeObjectURL( url ), 10000 );
 
 }
-window.__pianist = { captureState: () => captureState( stateContext ), applyState: st => applyState( stateContext, st ), ptSnapshot, scene, camera, renderer, room, hall, luminara, azurea, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, get piano() { return piano; } };
+window.__pianist = { captureState: () => captureState( stateContext ), applyState: st => applyState( stateContext, st ), ptSnapshot, scene, camera, renderer, room, hall, luminara, azurea, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, lens: { get held() { return lensLock.mode ? { mode: lensLock.mode, d: lensNow.d, blur: lensNow.blur } : null; }, get depth() { return depthProbe.d; }, get refocusLog() { return depthProbe.log; }, get exposureLag() { return ae.factor; }, get meter() { return ae.v; } }, get piano() { return piano; } };
 if ( RENDER ) startRender(); else requestAnimationFrame( frame );
 
 // ---------------------------------------------------------------------------
@@ -1934,7 +2218,7 @@ function startRender() {
 				const k = height / 1080, h = wm ? wm.height * k : 0, w = wm && mark.naturalHeight ? h * mark.naturalWidth / mark.naturalHeight : 0;
 				const markOn = wm && mark.complete && mark.naturalWidth && markTex;
 				const rect = markOn ? [ wm.x !== undefined ? width * wm.x - w / 2 : width - wm.right * k - w, height - wm.bottom * k - h, w, h ] : null;
-				const px = offline.read( width, height, { bits: o.bits, dither: o.dither, seed: frameNo, mark: markOn ? { texture: markTex, rect, opacity: wm.opacity } : null } );
+				const px = offline.read( width, height, { bits: o.bits, dither: o.dither, seed: frameNo, hdr: o.hdr, hdrPeak: o.hdrPeak, mark: markOn ? { texture: markTex, rect, opacity: wm.opacity } : null } );
 				return toBase64( px );
 
 			}

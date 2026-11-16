@@ -7,7 +7,7 @@
 //        [--size 1280x720] [--ss 2] [--url http://localhost:5184/] [--no-audio] [--crf 18]
 //        [--watermark "opacity=0.06,right=60,bottom=60,height=96" | off]
 //        [--subframes 1] [--shutter 0.5] [--bits 8|10] [--no-dither] [--filter 1.25] [--hq] [--legacy]
-//        [--query "style=grand-white&preset=Night"] [--frames dir] [--pt 1024]
+//        [--query "style=grand-white&preset=Night"] [--frames dir] [--pt 1024] [--hdr hlg|pq] [--hdr-peak 1000]
 //
 // The frame (src/offline.js): drawn at size x ss in linear light, resolved to the size there (a
 // Blackman-Harris window, --filter its radius in output px), tone mapped, then quantised with dither
@@ -23,6 +23,12 @@
 // its image denoised (src/ptdenoise.js). --pt-steps "256,512": also the frame as it stands at those sample counts
 // (raw and denoised) as <frame>-<spp>spp[-denoised].png in --frames. --pt-shutter s: the open sea's samples spread over a shutter open
 // s of the frame (0..1; default 0: the sea at the frame's time), its glints' motion blur (src/azurea.js).
+//
+// --hdr hlg|pq: a real HDR video (implies --bits 10): HEVC Main10, BT.2020, HLG (ARIB STD-B67, for a 1000 nit
+// display: what phones record and play; on an SDR screen it still shows sensibly) or PQ (SMPTE 2084, HDR10:
+// mastering display and MaxCLL / MaxFALL metadata), tagged hvc1 (iOS, QuickTime). The frame's light (src/offline.js
+// hdrQuad): the SDR curve's midtones kept, its white at 203 nits (BT.2408), the highlights on to --hdr-peak nits
+// (default 1000; HLG at most 1000). --frames PNGs are then 16-bit HLG / PQ signal, not for an SDR viewer.
 //
 // --watermark: the klstudio.png mark drawn into every frame; defaults as on the page (src/main.js
 // WATERMARK: bottom right, 60 px in, opacity 0.06); keys opacity, right, bottom, height (px at
@@ -86,6 +92,8 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--pt-steps' ) opt.ptSteps = val();
 	else if ( a === '--no-audio' ) opt.audio = false;
 	else if ( a === '--watermark' ) opt.watermark = val();
+	else if ( a === '--hdr' ) opt.hdr = val();
+	else if ( a === '--hdr-peak' ) opt.hdrPeak = Number( val() );
 	else if ( a === '-h' || a === '--help' ) {
 
 		console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 40 ).join( '\n' ) );
@@ -99,6 +107,15 @@ for ( let i = 0; i < argv.length; ++ i ) {
 if ( ! script ) throw new Error( 'usage: node tools/render-video.mjs <script.yaml> [--fps 25] [--from 0] [--to s] [--out out.mp4] [--size WxH]' );
 const [ W, H ] = opt.size.split( 'x' ).map( Number );
 if ( opt.pt ) { if ( ! argv.includes( '--ss' ) ) opt.ss = 1; if ( ! argv.includes( '--subframes' ) ) opt.subframes = 1; }
+if ( opt.hdr ) {
+
+	if ( ! [ 'hlg', 'pq' ].includes( opt.hdr ) ) throw new Error( `--hdr ${ opt.hdr }: hlg or pq` );
+	if ( opt.legacy ) throw new Error( '--hdr: not with --legacy' );
+	opt.bits = 10;
+	opt.hdrPeak ??= 1000;
+	if ( opt.hdr === 'hlg' ) opt.hdrPeak = Math.min( opt.hdrPeak, 1000 );
+
+}
 if ( ! [ 8, 10 ].includes( opt.bits ) ) throw new Error( `--bits ${ opt.bits }: 8 or 10` );
 if ( opt.legacy && opt.bits !== 8 ) throw new Error( '--legacy: 8 bits only' );
 opt.crf ??= opt.bits === 10 ? 20 : 18;		// (x265's scale sits a little above x264's for the same quality)
@@ -197,6 +214,7 @@ try {
 	if ( opt.denoise ) hash.set( 'dn', 1 );
 	if ( opt.ptShutter ) hash.set( 'pts', opt.ptShutter );
 	if ( opt.ptSteps ) hash.set( 'ptsteps', opt.ptSteps );
+	if ( opt.hdr ) { hash.set( 'hdr', opt.hdr ); hash.set( 'hdrpeak', opt.hdrPeak ); }
 	const base = new URL( opt.url );
 	if ( opt.query ) base.search = opt.query;
 	await page.goto( new URL( '#?' + hash, base ).href, { waitUntil: 'commit' } );
@@ -208,7 +226,7 @@ try {
 		return ext ? r.getParameter( ext.UNMASKED_RENDERER_WEBGL ) : '?';
 
 	} );
-	console.log( `page ready: drawing ${ info.width }x${ info.height }, captured ${ W }x${ H }, ${ opt.fps } fps, ${ opt.subframes } sub-frame(s), ${ opt.legacy ? 'legacy PNG capture' : `${ opt.bits }-bit${ opt.dither ? ' dithered' : '' }` }${ opt.hq ? ', hq' : '' }${ opt.pt ? `, path traced ${ opt.pt } spp` : '' }, GPU: ${ gl }` );
+	console.log( `page ready: drawing ${ info.width }x${ info.height }, captured ${ W }x${ H }, ${ opt.fps } fps, ${ opt.subframes } sub-frame(s), ${ opt.legacy ? 'legacy PNG capture' : `${ opt.bits }-bit${ opt.dither ? ' dithered' : '' }${ opt.hdr ? `, HDR ${ opt.hdr.toUpperCase() } ${ opt.hdrPeak } nits` : '' }` }${ opt.hq ? ', hq' : '' }${ opt.pt ? `, path traced ${ opt.pt } spp` : '' }, GPU: ${ gl }` );
 	if ( /swiftshader|llvmpipe/i.test( gl ) ) console.warn( 'warning: software GL (check __EGL_VENDOR_LIBRARY_FILENAMES)' );
 
 	// end: --to, else when the script has finished (and its sound has rung out a little)
@@ -222,7 +240,15 @@ try {
 	const input = opt.legacy ? [ '-f', 'image2pipe', '-framerate', String( opt.fps ), '-c:v', 'png', '-i', '-' ]
 		: [ '-f', 'rawvideo', '-pix_fmt', opt.bits === 10 ? 'rgb48le' : 'rgb24', '-s', `${ W }x${ H }`, '-framerate', String( opt.fps ), '-i', '-' ];
 	const tags = [ '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv' ];
-	const encode = opt.legacy ? [ '-c:v', 'libx264', '-preset', 'slow', '-crf', String( opt.crf ), '-pix_fmt', 'yuv420p' ]
+	// HDR: BT.2020 non-constant luminance, HLG / PQ; the x265 VUI likewise; PQ with HDR10's static metadata (a
+	// P3-D65 mastering display of the peak, MaxCLL the peak, MaxFALL a frame's typical mean: the midtones' 203)
+	const trc = opt.hdr === 'pq' ? 'smpte2084' : 'arib-std-b67';
+	const hdrX265 = opt.hdr && [ 'log-level=error', 'colorprim=bt2020', `transfer=${ trc }`, 'colormatrix=bt2020nc', 'range=limited', 'repeat-headers=1',
+		...( opt.hdr === 'pq' ? [ 'hdr10=1', 'hdr10-opt=1', `master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(${ Math.round( opt.hdrPeak * 10000 ) },50)`, `max-cll=${ Math.round( opt.hdrPeak ) },203` ] : [ 'atc-sei=18' ] ) ].join( ':' );
+	const encode = opt.hdr ? [ '-vf', 'scale=out_color_matrix=bt2020nc:out_range=tv:flags=accurate_rnd+full_chroma_int',
+		'-c:v', 'libx265', '-preset', 'slow', '-crf', String( opt.crf ), '-pix_fmt', 'yuv420p10le', '-profile:v', 'main10', '-tag:v', 'hvc1', '-x265-params', hdrX265,
+		'-color_primaries', 'bt2020', '-color_trc', trc, '-colorspace', 'bt2020nc', '-color_range', 'tv' ]
+		: opt.legacy ? [ '-c:v', 'libx264', '-preset', 'slow', '-crf', String( opt.crf ), '-pix_fmt', 'yuv420p' ]
 		: [ '-vf', 'scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int', ...( opt.bits === 10
 			? [ '-c:v', 'libx265', '-preset', 'slow', '-crf', String( opt.crf ), '-pix_fmt', 'yuv420p10le', '-tag:v', 'hvc1', '-x265-params', 'log-level=error:colorprim=bt709:transfer=bt709:colormatrix=bt709' ]
 			: [ '-c:v', 'libx264', '-preset', 'slow', '-crf', String( opt.crf ), '-pix_fmt', 'yuv420p' ] ), ...tags ];

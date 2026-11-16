@@ -234,6 +234,7 @@ export class ConcertHall {
 				if ( ! g ) { this.berlinLoading = false; this._shellChanged( false ); return; }
 				this.floor = await loadFloor( 'berlinhall/floor' );		// (before it shows: a script's first frame may walk on it)
 				this.stageDoors = addStageDoors( g );		// (its stage doors real: before its shaders are compiled)
+				await this.stageDoors?.ready;		// (their corridor faces' textures: in a render's first frame)
 				// its presets and lights first (still hidden: berlinLoading), then its shaders compiled
 				// for those lights (one long freeze at its first frame otherwise), then shown
 				if ( this.active ) this.scene.add( g );
@@ -1324,26 +1325,32 @@ export class ConcertHall {
 		const L = this.light;
 		this.keySpot.intensity = L.key;
 		this.keySpot.color.set( L.keyColor );
-		this.keySpot.visible = L.key > 0;
+		this.keySpot.visible = true;
 		this.topSpot.intensity = L.top;
 		this.topSpot.angle = THREE.MathUtils.degToRad( L.topAngle ?? 24 );
 		this.topSpot.color.set( L.topColor );
-		this.topSpot.visible = L.top > 0;
+		this.topSpot.visible = true;
 		this.wash.intensity = L.wash;
 		this.wash.color.set( L.washColor );
-		this.wash.visible = L.wash > 0;
+		this.wash.visible = true;
 		this._placeLights();
 		const berlin = this.berlinShown;
 		this.house.intensity = L.house;
 		this.house.color.set( L.houseColor );
-		this.house.visible = L.house > 0 && ! berlin;
+		this.house.visible = ! berlin;
 		for ( const c of this.chandeliers ) {
 
 			c.intensity = CHANDELIER_CD * L.house;
 			c.color.set( L.houseColor );
-			c.visible = berlin && L.house > 0;
+			c.visible = berlin;
 
 		}
+		// (the lights stay visible at 0, their shadow maps not redrawn: a light shown or hidden changes the
+		// scene's light count, and every material's program with it: each fade from or to 0 recompiled the whole
+		// Berlin hall, a stall of seconds. The path tracer leaves the dark ones out itself: pathtracer.js buildScene)
+		// (a dark light's shadow map still drawn once (needsUpdate): it must exist, its sampler bound to a depth
+		// texture: without one the frame was black, GL_INVALID_OPERATION texture format / sampler type mismatch)
+		for ( const l of [ this.keySpot, this.topSpot, this.wash, this.house, ...this.chandeliers ] ) if ( l.shadow ) { l.shadow.autoUpdate = l.intensity > 0; l.shadow.needsUpdate = true; }
 		this.materials.lamp.emissiveIntensity = 5 * L.lamps;
 		this.materials.glow.emissiveIntensity = 0.15 + 0.25 * L.house;
 		this.materials.glow.emissive.set( L.houseColor );

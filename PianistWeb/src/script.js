@@ -21,7 +21,9 @@
 //                                  # focus hunting now and then on quick moves (1; 0 = never);
 //                                  # floor: true = follow the venue's floor (the Berlin hall's map):
 //                                  # camera y's are then heights above the floor under the phone,
-//                                  # steps up / down taken as steps (handheldmode.js)
+//                                  # steps up / down taken as steps (handheldmode.js);
+//                                  # refocus: a defocus when the depth at the frame's centre jumps
+//                                  # (true); aeLag: the exposure adapting with a 0.6 s lag (true)
 //     - at: 1
 //       screen: on                 # on | off
 //       door: { which: stage-right, open: 1, duration: 1.4, ease: inOutSine }   # a venue's door
@@ -29,6 +31,14 @@
 //                                  # (-z) or both; open 0 closed .. 1 wide, 90 degrees into the
 //                                  # hall); swung over `duration` s (0: at once); `door: open` |
 //                                  # `door: close` = stage-right, at once
+//       focus: { distance: near, blur: 1 }   # the lens's focus held (depth of field on all along):
+//                                  # on `distance` m, or `near` = the depth at the frame's centre
+//                                  # when first read (handheld refocus), held; `blur` scales it (1:
+//                                  # a phone's main camera pushed a little: focused at 1.2 m, 8 m a
+//                                  # few px soft). `focus: { auto: true, duration: 0.8, ease:
+//                                  # inOutSine }` (or `focus: auto`) gives it back to the
+//                                  # autofocus over `duration` s (the focus moving in dioptres, the
+//                                  # blur down). Held and releasing: no refocus on a depth jump
 //     - at: 2
 //       camera:                    # a move from wherever the camera is, through the keys
 //         duration: 6
@@ -230,7 +240,10 @@ const EASE = {
 	out: t => 1 - ( 1 - t ) * ( 1 - t ),
 };
 
-const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', bursts: 'Handheld camera/Operator bursts', floor: 'Handheld camera/Follow floor', focusHunt: 'Handheld camera/Focus hunting', person: 'Handheld camera/Person (reflections)' };
+// a light preset's intensities faded as they are seen (x the exposure): _presetStep
+const SEEN_LIGHTS = [ 'key', 'top', 'wash', 'house', 'lamps', 'env' ];
+
+const HANDHELD = { enabled: 'Handheld camera/Handheld', shake: 'Handheld camera/Shake', walk: 'Handheld camera/Walking motion', drift: 'Handheld camera/Operator drift', bursts: 'Handheld camera/Operator bursts', floor: 'Handheld camera/Follow floor', focusHunt: 'Handheld camera/Focus hunting', refocus: 'Handheld camera/Depth refocus', aeLag: 'Handheld camera/Exposure lag', person: 'Handheld camera/Person (reflections)' };
 
 const vec = ( a, what ) => {
 
@@ -422,6 +435,23 @@ export class ScriptPlayer {
 			out.door = { which: String( d.which ?? 'stage-right' ), open: THREE.MathUtils.clamp( Number( d.open ?? 1 ), 0, 1 ), duration: Math.max( 0, Number( d.duration ?? 0 ) || 0 ), ease: EASE[ d.ease ?? 'inOutSine' ] ?? EASE.inOutSine };
 			if ( ! Number.isFinite( out.door.open ) ) throw new Error( `${ where }.door.open: 0..1` );
 			out.end = Math.max( out.end, at + out.door.duration );
+
+		}
+		if ( e.focus !== undefined ) {
+
+			const f = typeof e.focus === 'object' ? e.focus : e.focus === 'auto' ? { auto: true } : { distance: e.focus };
+			if ( f.auto ) {
+
+				out.focus = { auto: true, duration: Math.max( 0, Number( f.duration ?? 0.8 ) || 0 ), ease: EASE[ f.ease ?? 'inOutSine' ] ?? EASE.inOutSine };
+				out.end = Math.max( out.end, at + out.focus.duration );
+
+			} else {
+
+				const dist = f.distance === 'near' || f.distance === undefined ? 'near' : Number( f.distance );
+				if ( dist !== 'near' && ! ( dist > 0 ) ) throw new Error( `${ where }.focus.distance: near | metres` );
+				out.focus = { distance: dist, blur: f.blur !== undefined ? Math.max( 0, Number( f.blur ) || 0 ) : 1 };
+
+			}
 
 		}
 		if ( e.defocus !== undefined ) {
@@ -724,6 +754,8 @@ export class ScriptPlayer {
 
 		}
 
+		if ( e.focus ) this.ctx.focus?.( e.focus );		// (held / released: main.js setFocus, on the clock)
+
 		if ( e.door ) {
 
 			// (a door's swing is a tween on the clock: the offline render's frames step it as they step a fade)
@@ -976,6 +1008,22 @@ export class ScriptPlayer {
 			if ( typeof a === 'number' && typeof b === 'number' ) L[ k ] = u >= 1 ? tw.to[ k ] : a + ( b - a ) * u;
 			else if ( isColor( a ) && isColor( b ) ) L[ k ] = '#' + new THREE.Color( a ).lerp( new THREE.Color( b ), u ).getHexString();
 			else L[ k ] = u >= 1 ? tw.to[ k ] : tw.from[ k ];
+
+		}
+		// the lights as they are seen (intensity x exposure) faded linearly, not the intensities and the exposure
+		// apart: their product dipped. Spotlight -> House lights up: the top light 1000 -> 260 under an exposure
+		// 1.25 -> 0.56, the piano a third darker a quarter in while the house lights had barely come up: the
+		// frame darker first, then brighter. Now each light's share of the frame goes one way only
+		const Ea = tw.from.exposure ?? D.exposure, Eb = tw.to.exposure ?? D.exposure;
+		if ( u < 1 && typeof Ea === 'number' && typeof Eb === 'number' && Ea > 0 && Eb > 0 ) {
+
+			const E = Ea + ( Eb - Ea ) * u;
+			for ( const k of SEEN_LIGHTS ) {
+
+				const a = tw.from[ k ] ?? D[ k ], b = tw.to[ k ] ?? D[ k ];
+				if ( typeof a === 'number' && typeof b === 'number' ) L[ k ] = ( a * Ea + ( b * Eb - a * Ea ) * u ) / E;
+
+			}
 
 		}
 		// the tone mapping: the preset's own from the start, the old one's curve mixed in until the end

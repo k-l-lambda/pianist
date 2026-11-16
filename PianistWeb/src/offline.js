@@ -9,6 +9,9 @@
 //                canvas's drawImage did this after the tone mapping, in 8-bit sRGB, where a thin bright
 //                line or highlight averages darker and thinner than the light it is
 //   tone map     three's OutputPass (the renderer's tone mapping, exposure, sRGB), as on the page
+//   (HDR: --hdr hlg|pq, read( { hdr } ): instead of the OutputPass, hdrQuad below: the SDR curve's midtones
+//                kept (its white at 203 nits, BT.2408's reference white), its highlights carried on to the peak,
+//                BT.2020, HLG or PQ; then the finish as below at 10 bits)
 //   finish       the watermark (blended in sRGB, as the 2D canvas did), then quantised with
 //                triangular dither to 8 or 10 bits: smooth gradients (walls, the dome, the sky, the
 //                bloom) without bands; read back top row first as rgb24 or rgb48le for ffmpeg
@@ -16,7 +19,12 @@
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { withToneMix } from './tonemix.js';
+import { withToneMix, toneMix } from './tonemix.js';
+
+// HDR: the SDR curve's luminance from which the highlights go on to the peak (hdrQuad)
+const KNEE = 0.5;
+// the renderer's tone mapping as hdrQuad's `tone`
+const TONE_KIND = { [ THREE.AgXToneMapping ]: 1, [ THREE.ACESFilmicToneMapping ]: 2, [ THREE.NeutralToneMapping ]: 3, [ THREE.CustomToneMapping ]: 4 };
 
 const VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }';
 
@@ -77,13 +85,76 @@ export class OfflineFrame {
 				}`,
 		} ) );
 		this.output = withToneMix( new OutputPass() );
+		// HDR (an HLG or PQ video): the frame's light in display nits, then encoded.
+		//   SDR      the page's own curve (the renderer's tone mapping and exposure, the presets' crossfade
+		//            between two: tonemix.js), its display-linear result s, its luminance ys
+		//   midtones ys below KNEE: ys x 203 nits (an SDR white at HDR's reference white): the frame as the SDR
+		//            one where most of it is (walls, floors, faces of things, the door in the corridor)
+		//   highlights  from the knee on, more and more the scene's own luminance Y (pre-curve) on a curve
+		//            to the peak, H = 203 G Y / ( 1 + 203 G Y / peak ), G set so that it meets the SDR at the
+		//            knee (the knee's scene value found per frame on a grey ramp: any curve, the crossfade
+		//            too); the larger of the two, so never below the SDR's: the lamps, the spot on the lacquer,
+		//            the screen, the crystal go up to the peak where the SDR curve pressed them under 1
+		//   colour   the SDR curve's (its hue and its highlights' desaturation, ACES's or AgX's), scaled to H;
+		//            then BT.709 -> BT.2020 primaries (linear), capped at the peak per channel
+		//   encoded  HLG (BT.2100: the inverse OOTF for a 1000 nit display, gamma 1.2, then the OETF; 203 nits
+		//            at 75 % signal) or PQ (SMPTE 2084, absolute nits)
+		this.hdrQuad = new FullScreenQuad( new THREE.ShaderMaterial( {
+			toneMapped: false,
+			uniforms: { src: { value: null }, toneMappingExposure: { value: 1 }, ptToneMix: toneMix, tone: { value: 1 }, mode: { value: 1 }, peak: { value: 1000 }, white: { value: 203 }, knee: { value: KNEE } },
+			vertexShader: VERT,
+			fragmentShader: /* glsl */`
+				uniform sampler2D src; uniform int tone, mode; uniform float peak, white, knee; varying vec2 vUv;
+				${ THREE.ShaderChunk.tonemapping_pars_fragment }
+				vec3 sdr( vec3 c ) {
+					if ( tone == 1 ) return AgXToneMapping( c );
+					if ( tone == 2 ) return ACESFilmicToneMapping( c );
+					if ( tone == 3 ) return NeutralToneMapping( c );
+					if ( tone == 4 ) return CustomToneMapping( c );
+					return saturate( toneMappingExposure * c );
+				}
+				float lum709( vec3 c ) { return dot( c, vec3( 0.2126, 0.7152, 0.0722 ) ); }
+				float kneeAt() {		// (the grey whose SDR luminance is the knee: bisection)
+					float lo = 0.0, hi = 1.0;
+					for ( int i = 0; i < 24; ++ i ) { if ( lum709( sdr( vec3( hi ) ) ) >= knee ) break; lo = hi; hi *= 2.0; }
+					for ( int i = 0; i < 22; ++ i ) { float m = 0.5 * ( lo + hi ); if ( lum709( sdr( vec3( m ) ) ) < knee ) lo = m; else hi = m; }
+					return 0.5 * ( lo + hi );
+				}
+				float hlgOETF( float e ) { return e <= 1.0 / 12.0 ? sqrt( 3.0 * e ) : 0.17883277 * log( 12.0 * e - 0.28466892 ) + 0.55991073; }
+				float pq( float n ) { float p = pow( clamp( n, 0.0, 1.0 ), 0.1593017578125 ); return pow( ( 0.8359375 + 18.8515625 * p ) / ( 1.0 + 18.6875 * p ), 78.84375 ); }
+				void main() {
+					vec3 x = max( texture2D( src, vUv ).rgb, 0.0 );
+					vec3 s = max( sdr( x ), 0.0 );
+					float ys = lum709( s ), Y = lum709( x );
+					float G = knee / ( kneeAt() * max( 1e-3, 1.0 - white * knee / peak ) );
+					float hmid = white * ys, hhi = white * G * Y / ( 1.0 + white * G * Y / peak );
+					float H = mix( hmid, max( hmid, hhi ), smoothstep( knee, 1.0, ys ) );
+					vec3 d = ys > 1e-7 ? s * ( H / ys ) : s * white;		// (nits, BT.709 linear)
+					d = mat3( 0.6274, 0.0691, 0.0164, 0.3293, 0.9195, 0.0880, 0.0433, 0.0114, 0.8956 ) * d;		// (BT.2087: to BT.2020)
+					d = max( d, 0.0 );
+					float mc = max( d.r, max( d.g, d.b ) );
+					if ( mc > peak ) d *= peak / mc;
+					vec3 e;
+					if ( mode == 1 ) {
+						// HLG: the display light (a 1000 nit display) back to the scene light (inverse OOTF), then the OETF
+						vec3 f = d / 1000.0;
+						float yd = dot( f, vec3( 0.2627, 0.6780, 0.0593 ) );
+						vec3 es = yd > 0.0 ? f * pow( yd, ( 1.0 - 1.2 ) / 1.2 ) : vec3( 0.0 );
+						es = clamp( es, 0.0, 1.0 );
+						e = vec3( hlgOETF( es.r ), hlgOETF( es.g ), hlgOETF( es.b ) );
+					} else {
+						e = vec3( pq( d.r / 10000.0 ), pq( d.g / 10000.0 ), pq( d.b / 10000.0 ) );
+					}
+					gl_FragColor = vec4( e, 1.0 );
+				}`,
+		} ) );
 		// the watermark (src/main.js WATERMARK: its rect, px from the top-left), then the quantisation; the
 		// rows flipped (the encoder's first row is the top)
 		this.finishQuad = new FullScreenQuad( new THREE.ShaderMaterial( {
-			uniforms: { src: { value: null }, mark: { value: null }, markRect: { value: new THREE.Vector4() }, markOpacity: { value: 0 }, outSize: { value: new THREE.Vector2() }, levels: { value: 255 }, dither: { value: 1 }, seed: { value: 0 } },
+			uniforms: { src: { value: null }, mark: { value: null }, markRect: { value: new THREE.Vector4() }, markOpacity: { value: 0 }, markGain: { value: 1 }, outSize: { value: new THREE.Vector2() }, levels: { value: 255 }, dither: { value: 1 }, seed: { value: 0 } },
 			vertexShader: VERT,
 			fragmentShader: /* glsl */`
-				uniform sampler2D src, mark; uniform vec4 markRect; uniform float markOpacity, levels, dither, seed; uniform vec2 outSize; varying vec2 vUv;
+				uniform sampler2D src, mark; uniform vec4 markRect; uniform float markOpacity, markGain, levels, dither, seed; uniform vec2 outSize; varying vec2 vUv;
 				float hash( vec3 p ) { p = fract( p * vec3( 0.1031, 0.1030, 0.0973 ) ); p += dot( p, p.yxz + 33.33 ); return fract( ( p.x + p.y ) * p.z ); }
 				void main() {
 					// (the target's first row read is the image's top: the source sampled flipped; px from the top-left, as the canvas)
@@ -91,7 +162,7 @@ export class OfflineFrame {
 					vec3 c = texture2D( src, uv ).rgb;
 					if ( markOpacity > 0.0 && px.x >= markRect.x && px.y >= markRect.y && px.x < markRect.x + markRect.z && px.y < markRect.y + markRect.w ) {
 						vec4 m = texture2D( mark, ( px - markRect.xy ) / markRect.zw );
-						c = mix( c, m.rgb, m.a * markOpacity );		// (source-over in sRGB values, as the 2D canvas)
+						c = mix( c, m.rgb * markGain, m.a * markOpacity );		// (source-over in sRGB values, as the 2D canvas; HDR: in the signal, its white at reference white's)
 					}
 					// triangular dither, ±1 step, a new pattern each frame (no fixed grain): the gradients' steps
 					// become noise finer than the eye's threshold, and the encoder's rounding keeps them so
@@ -132,9 +203,12 @@ export class OfflineFrame {
 	/**
 	 * The frame at `width` × `height`: resolved, tone mapped, watermarked, quantised to `bits` (8: rgb24,
 	 * 10: rgb48le, the 10 bits in a 16-bit word), top row first. `mark`: { texture, rect: [ x, y, w, h ]
-	 * px from the top-left, opacity } or null; `dither` false for none (the old, banded output).
+	 * px from the top-left, opacity } or null; `dither` false for none (the old, banded output). `hdr`: 'hlg' or
+	 * 'pq' (10 bits, BT.2020: hdrQuad), `hdrPeak` its highlights' peak in nits (HLG: at most 1000).
 	 */
-	read( width, height, { bits = 8, mark = null, dither = true, seed = 0 } = {} ) {
+	read( width, height, { bits = 8, mark = null, dither = true, seed = 0, hdr = null, hdrPeak = 1000 } = {} ) {
+
+		if ( hdr ) bits = 10;
 
 		const r = this.renderer, was = { target: r.getRenderTarget(), auto: r.autoClear, cc: r.getClearColor( new THREE.Color() ), ca: r.getClearAlpha() };
 		for ( const t of [ this.linear, this.toned, this.out8, this.out16 ] ) if ( t.width !== width || t.height !== height ) t.setSize( width, height );
@@ -143,15 +217,31 @@ export class OfflineFrame {
 		const R = this.resolveQuad.material.uniforms;
 		R.src.value = this.accum.texture; R.srcSize.value.set( this.accum.width, this.accum.height ); R.outSize.value.set( width, height );
 		r.setRenderTarget( this.linear ); this.resolveQuad.render( r );
-		// tone map (OutputPass: to its write buffer when not to the screen)
-		this.output.renderToScreen = false;
-		this.output.clear = false;
-		this.output.render( r, this.toned, this.linear );
+		if ( hdr ) {
+
+			// HDR: hdrQuad (the renderer's curve and exposure, as the OutputPass would take them)
+			const H = this.hdrQuad.material.uniforms;
+			H.src.value = this.linear.texture;
+			H.toneMappingExposure.value = r.toneMappingExposure;
+			H.tone.value = TONE_KIND[ r.toneMapping ] ?? 0;
+			H.mode.value = hdr === 'pq' ? 2 : 1;
+			H.peak.value = hdr === 'pq' ? hdrPeak : Math.min( hdrPeak, 1000 );
+			r.setRenderTarget( this.toned ); this.hdrQuad.render( r );
+
+		} else {
+
+			// tone map (OutputPass: to its write buffer when not to the screen)
+			this.output.renderToScreen = false;
+			this.output.clear = false;
+			this.output.render( r, this.toned, this.linear );
+
+		}
 		// finish
 		const F = this.finishQuad.material.uniforms, ten = bits === 10, target = ten ? this.out16 : this.out8;
 		F.src.value = this.toned.texture; F.outSize.value.set( width, height );
 		F.levels.value = ten ? 1023 : 255; F.dither.value = dither ? 1 : 0; F.seed.value = seed % 4096;
 		F.mark.value = mark?.texture ?? null; F.markOpacity.value = mark ? mark.opacity : 0;
+		F.markGain.value = hdr === 'pq' ? 0.58 : hdr ? 0.75 : 1;		// (reference white, 203 nits, in the signal)
 		if ( mark ) F.markRect.value.set( ...mark.rect );
 		r.setRenderTarget( target ); this.finishQuad.render( r );
 		// read back: rgba, then rgb (the alpha dropped)

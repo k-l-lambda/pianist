@@ -53,42 +53,79 @@ title: Berlin hall — an introduction
 seed: 1
 
 timeline:
-  # the entrance: in the corridor behind the stage-right door (+z), facing it, closed; it swings open
+  # the entrance: in the corridor behind the stage-right door (+z), close to it (only part of the leaf in view), facing the piano beyond; it swings open
   # into the hall (pushed), the spotlit piano beyond; Spotlight, the chandeliers out
   - at: 0
     handheld: { enabled: true, shake: 1, walk: 1, drift: 0.2, bursts: false, person: true, floor: true }
     set:
       Lighting/Preset: Spotlight
-      Lighting/Chandeliers: 0
+      # (everything but the spot at its darkest from the first frame: the preset's own wash, chandeliers,
+      # candelabras off, the ambient at half (0.06: the door still reads); they come up with the fade to House)
+      Lighting/Chandeliers: 0.001
+      Lighting/Stage wash: 0.02
+      Lighting/Candelabras: 0.02
+      Lighting/Ambient (probe): 0.06
     screen: off
     door: { which: stage-right, open: 0 }
-    camera: { position: [ -2.25, 1.30, 10.00 ], target: [ -2.25, 1.15, 8.19 ], fov: 70 }
+    focus: { distance: near, blur: 1 }    # (on the door leaf, the hall beyond soft, until it is half open)
+    camera: { position: [ -2.40, 1.25, 8.80 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }
   - after: 0.35
     door: { which: stage-right, open: 1, duration: 1.3, ease: inOutSine }
-  # through the door (the view turning from it to the piano), off the terrace (0.35), down the side
-  # step (0.17) and across the stage to the keyboard: two steps down
+  # two steps through the door onto the terrace (0.35), facing the piano all the way
   - after: 0.35
     camera:
-      duration: 9.5
+      duration: 2.3
       ease: inOutSine
       path:
-        - { position: [ -2.25, 1.30, 8.60 ], target: [ -1.20, 1.00, 0.40 ], fov: 70 }
-        - { position: [ -2.25, 1.30, 7.75 ], target: [ -0.30, 1.00, 0.40 ], fov: 70 }
-        - { position: [ -1.95, 1.30, 6.70 ], target: [ 0.00, 1.00, 0.40 ], fov: 70 }
-        - { position: [ -1.10, 1.30, 5.20 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }
-        - { position: [ 0.00, 1.30, 3.20 ], target: [ 0.00, 1.00, 0.20 ], fov: 66 }
-        - { position: [ 0.65, 1.30, 1.90 ], target: [ 0.00, 1.00, 0.10 ], fov: 62 }
-  # the screen powers on as the user steps through; the house lights and the chandeliers come up together (4 s)
-  - after: 3.3
+        - { position: [ -2.30, 1.30, 8.10 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }
+        - { position: [ -2.20, 1.30, 7.45 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }
+        - { position: [ -2.15, 1.30, 6.85 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }
+  # the door half open (1.0 s): the focus going over to the hall (0.8 s)
+  - after: 0.3
+    focus: { auto: true, duration: 0.8, ease: inOutSine }
+  # standing, a zoom in on the piano (~2 s): the screen powering on
+  - after: 2.0
+    camera:
+      duration: 0.7
+      ease: inOutSine
+      path:
+        - { position: [ -2.15, 1.30, 6.85 ], target: [ 0.00, 1.05, 0.20 ], fov: 31 }
+  # the screen powers on; the house lights and the chandeliers come up together (4 s)
+  - after: 1.0
     screen: on
     duration: 4
     ease: inOutSine
     set:
       Lighting/Preset: House lights up
-  - after: 6.1    # Assistant: 晚上好，我是智慧钢琴助手小音。今天想听点什么？ (the boot animation done)
+  # back out, a look left (the organ and the choir behind the stage) ...
+  - after: 1.7
+    camera:
+      duration: 1.2
+      ease: inOutSine
+      path:
+        - { position: [ -2.15, 1.30, 6.85 ], target: [ -9.00, 3.20, 4.50 ], fov: 70 }
+  # ... and round to the right over the stalls, through the front (level: never over the head)
+  - after: 1.8
+    camera:
+      duration: 1.5
+      ease: inOutSine
+      path:
+        - { position: [ -2.15, 1.30, 6.85 ], target: [ 2.00, 3.00, -4.00 ], fov: 70 }
+        - { position: [ -2.15, 1.30, 6.85 ], target: [ 12.00, 2.80, 6.00 ], fov: 70 }
+  # then back to the piano, walking up to it: off the terrace, down the side step, across the stage, close
+  - after: 1.5
+    camera:
+      duration: 4.6
+      ease: inOutSine
+      path:
+        - { position: [ -1.70, 1.30, 6.30 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }
+        - { position: [ -1.00, 1.30, 4.90 ], target: [ 0.00, 1.00, 0.30 ], fov: 68 }
+        - { position: [ 0.00, 1.30, 3.20 ], target: [ 0.00, 1.00, 0.20 ], fov: 66 }
+        - { position: [ 0.65, 1.30, 1.90 ], target: [ 0.00, 1.00, 0.10 ], fov: 62 }
+  - after: 0.35    # Assistant: 晚上好，我是智慧钢琴助手小音。今天想听点什么？ (as the walk to the piano begins)
     midi: { play: yin/berlinhall-good-evening.mid, roll: voice, think: 0, subtitle: 晚上好，我是智慧钢琴助手小音。今天想听点什么？ }
   # leaning in over the end of the bench: the screen and the keys, close (~2 s)
-  - after: 0.25
+  - after: 4.25    # (arriving at the piano)
     camera:
       duration: 1.2
       ease: inOutSine
@@ -105,10 +142,11 @@ timeline:
     audio: { play: user/berlinhall/brilliant.opus, volume: 0.25 }
   - after: 1.3    # up at the ceiling and the chandeliers
     camera:
-      duration: 1.4
+      duration: 1.8
       ease: inOutSine
       path:
-        - { position: [ 0.85, 1.30, 2.25 ], target: [ 5.00, 9.00, 3.50 ], fov: 70 }
+        - { position: [ 0.85, 1.30, 2.25 ], target: [ -1.00, 4.20, -5.00 ], fov: 70 }    # (through the front, not over the head)
+        - { position: [ 0.85, 1.30, 2.25 ], target: [ 8.00, 7.50, 3.50 ], fov: 70 }
   - after: 1.18    # User: 小音，你知道这里是哪吗？
     audio: { play: user/berlinhall/do-you-know-where.opus, volume: 0.3 }
   - after: 0.32    # and right, over the stalls

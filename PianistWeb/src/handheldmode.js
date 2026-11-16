@@ -124,6 +124,8 @@ export class HandheldMode {
 		this._floor = { level: null, step: null, wait: 0, last: new THREE.Vector3( 1e9, 0, 0 ), y: 0 };
 		// the phone's autofocus hunting now and then on a quick move (ctx.defocus); 0 = never
 		this.focusHunt = 1;
+		this.refocus = true;			// refocus when the depth at the frame's centre jumps (main.js probeCentreDepth)
+		this.aeLag = true;			// the exposure adapting with a lag (0.6 s; main.js updateExposureLag)
 		this._hunt = { on: false, peak: 0, cool: 0, dist: null, radial: 0, rand: mulberry( RENDER ? 23 : Date.now() ) };		// offline: reproducible
 		this.steering = false;			// a drag on the view (any button) is in progress
 		this.person = new Person();

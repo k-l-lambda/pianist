@@ -34,7 +34,20 @@ export function fitTextureSize( pt, scene, budget = 1.5 * 2 ** 30 ) {
 export function buildScene( pt, scene, camera ) {
 
 	fitTextureSize( pt, scene );
-	return withRGBAColors( scene, () => withSingleMaterials( scene, () => withPTMaterials( scene, () => pt.setScene( scene, camera ) ) ) );
+	// lights at 0 left out (the raster keeps them visible, so that a fade through 0 does not recompile every
+	// program: hall.js updateLights): here they would only take light samples
+	const dark = [];
+	scene.traverseVisible( o => { if ( o.isLight && ! o.isAmbientLight && o.intensity <= 0 ) dark.push( o ); } );
+	for ( const l of dark ) l.visible = false;
+	try {
+
+		return withRGBAColors( scene, () => withSingleMaterials( scene, () => withPTMaterials( scene, () => pt.setScene( scene, camera ) ) ) );
+
+	} finally {
+
+		for ( const l of dark ) l.visible = true;
+
+	}
 
 }
 
