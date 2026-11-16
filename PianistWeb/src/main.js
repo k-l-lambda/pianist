@@ -1214,6 +1214,9 @@ const scriptPlayer = new ScriptPlayer( {
 	camera, controls, gui, setScreenPower,
 	// handheld, following the floor: the camera's y is its height above the floor there (the target's aim from the eye's real height)
 	floorOffset: p => handheld.enabled && handheld.floor ? venue.floorHeight?.( p.x, p.z ) ?? 0 : 0,
+	// a venue's doors (the Berlin hall's stage doors, src/stagedoors.js); the live path tracer rebuilds its scene
+	setDoor: ( which, open ) => { if ( venue.setDoor ) { venue.setDoor( which, open ); ptDirty = true; } },
+	getDoor: which => venue.door?.( which ) ?? 0,
 	// what a preset leaves unset is (for a fade's numbers: the Berlin hall's Recital sets them, its Spotlight not)
 	lightDefaults: () => ( { saturation: 1, bloom: settings.gi ? settings.bloom : 0, bloomThreshold: 0.92 } ),
 	setRollMode: mode => roll.setMode( mode ),

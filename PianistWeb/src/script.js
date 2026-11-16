@@ -24,6 +24,11 @@
 //                                  # steps up / down taken as steps (handheldmode.js)
 //     - at: 1
 //       screen: on                 # on | off
+//       door: { which: stage-right, open: 1, duration: 1.4, ease: inOutSine }   # a venue's door
+//                                  # (the Berlin hall's stage doors: stage-right (+z), stage-left
+//                                  # (-z) or both; open 0 closed .. 1 wide, 90 degrees into the
+//                                  # hall); swung over `duration` s (0: at once); `door: open` |
+//                                  # `door: close` = stage-right, at once
 //     - at: 2
 //       camera:                    # a move from wherever the camera is, through the keys
 //         duration: 6
@@ -410,6 +415,15 @@ export class ScriptPlayer {
 		}
 
 		if ( e.screen !== undefined ) out.screen = e.screen === true || e.screen === 'on';
+		if ( e.door !== undefined ) {
+
+			const d = typeof e.door === 'object' ? e.door : { open: e.door === 'open' || e.door === true ? 1 : 0 };
+			if ( typeof e.door === 'string' && ! [ 'open', 'close', 'closed' ].includes( e.door ) ) throw new Error( `${ where }.door: open | close | { which, open, duration, ease }` );
+			out.door = { which: String( d.which ?? 'stage-right' ), open: THREE.MathUtils.clamp( Number( d.open ?? 1 ), 0, 1 ), duration: Math.max( 0, Number( d.duration ?? 0 ) || 0 ), ease: EASE[ d.ease ?? 'inOutSine' ] ?? EASE.inOutSine };
+			if ( ! Number.isFinite( out.door.open ) ) throw new Error( `${ where }.door.open: 0..1` );
+			out.end = Math.max( out.end, at + out.door.duration );
+
+		}
 		if ( e.defocus !== undefined ) {
 
 			const d = typeof e.defocus === 'object' ? e.defocus : {};
@@ -609,6 +623,7 @@ export class ScriptPlayer {
 
 			const u = tw.ease( THREE.MathUtils.clamp( ( this.time - tw.t0 ) / tw.duration, 0, 1 ) );
 			if ( tw.preset ) { this._presetStep( tw, u ); tw.done = u >= 1; continue; }
+			if ( tw.door ) { this.ctx.setDoor?.( tw.door, tw.from + ( tw.to - tw.from ) * u ); tw.done = u >= 1; continue; }
 			tw.controller.setValue( tw.from + ( tw.to - tw.from ) * u );
 			if ( u >= 1 || this.time - tw.finished > 0.25 ) {
 
@@ -706,6 +721,20 @@ export class ScriptPlayer {
 			const d = e.defocus;
 			this._pending.push( { at: t0 + d.delay, run: () => this.ctx.defocus?.( d.duration, d.amount ) } );
 			parts.push( () => this.time < t0 + d.delay + d.duration );
+
+		}
+
+		if ( e.door ) {
+
+			// (a door's swing is a tween on the clock: the offline render's frames step it as they step a fade)
+			const d = e.door;
+			this._tweens = this._tweens.filter( tw => tw.door !== d.which );
+			if ( d.duration > 0 ) {
+
+				this._tweens.push( { door: d.which, from: this.ctx.getDoor?.( d.which ) ?? 0, to: d.open, t0, duration: d.duration, ease: d.ease } );
+				parts.push( () => this.time < t0 + d.duration );
+
+			} else this.ctx.setDoor?.( d.which, d.open );
 
 		}
 

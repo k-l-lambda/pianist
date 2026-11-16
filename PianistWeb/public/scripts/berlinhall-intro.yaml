@@ -30,7 +30,10 @@
 # again for the music at the end, standing in the stalls.
 # The user enters by the stage-right door (seen from the stage facing the hall; the +z side, the
 # keyboard's side, so the piano is in view at once): a plain single door in the stage's side wall at
-# x -2.7..-1.8, z +8.19, onto a side terrace at y 0.35, two steps (0.17 each) above the stage; a 0.17 m riser runs along the back of the stage
+# x -2.7..-1.8, z +8.19 (src/stagedoors.js: the scan's painted door made a leaf on hinges, swinging
+# into the hall, with a short corridor behind it), onto a side terrace at y 0.35, two steps (0.17 each)
+# above the stage. The film opens in that corridor, facing the closed door: it swings open (pushed,
+# `door:`), the hall dark but for the spotlit piano beyond, and the user walks through; a 0.17 m riser runs along the back of the stage
 # (x < -1.25, behind the piano). The camera follows the floor (handheld: { floor: true }; the hall's
 # floor map, public/berlinhall/floor.bin from tools/hall-floor.mjs): its y's here are heights above the
 # floor under the phone (1.30; 1.20 leaning in to the screen), and each change of floor is taken as a
@@ -50,27 +53,33 @@ title: Berlin hall — an introduction
 seed: 1
 
 timeline:
-  # the entrance: in by the stage-right door (+z), the piano in view at once, its keyboard
-  # side towards the door. Spotlight, the chandeliers out
+  # the entrance: in the corridor behind the stage-right door (+z), facing it, closed; it swings open
+  # into the hall (pushed), the spotlit piano beyond; Spotlight, the chandeliers out
   - at: 0
     handheld: { enabled: true, shake: 1, walk: 1, drift: 0.2, bursts: false, person: true, floor: true }
     set:
       Lighting/Preset: Spotlight
       Lighting/Chandeliers: 0
     screen: off
-    camera: { position: [ -2.25, 1.30, 8.00 ], target: [ 0.00, 1.00, 0.40 ], fov: 70 }
-  # off the terrace (0.35), down the side step (0.17) and across the stage to the keyboard: two steps down
-  - after: 0.05
+    door: { which: stage-right, open: 0 }
+    camera: { position: [ -2.25, 1.30, 10.00 ], target: [ -2.25, 1.15, 8.19 ], fov: 70 }
+  - after: 0.35
+    door: { which: stage-right, open: 1, duration: 1.3, ease: inOutSine }
+  # through the door (the view turning from it to the piano), off the terrace (0.35), down the side
+  # step (0.17) and across the stage to the keyboard: two steps down
+  - after: 0.35
     camera:
-      duration: 7.5
+      duration: 9.5
       ease: inOutSine
       path:
+        - { position: [ -2.25, 1.30, 8.60 ], target: [ -1.20, 1.00, 0.40 ], fov: 70 }
+        - { position: [ -2.25, 1.30, 7.75 ], target: [ -0.30, 1.00, 0.40 ], fov: 70 }
         - { position: [ -1.95, 1.30, 6.70 ], target: [ 0.00, 1.00, 0.40 ], fov: 70 }
         - { position: [ -1.10, 1.30, 5.20 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }
         - { position: [ 0.00, 1.30, 3.20 ], target: [ 0.00, 1.00, 0.20 ], fov: 66 }
         - { position: [ 0.65, 1.30, 1.90 ], target: [ 0.00, 1.00, 0.10 ], fov: 62 }
-  # the screen powers on as the user comes in; the house lights and the chandeliers come up together (4 s)
-  - after: 1.15
+  # the screen powers on as the user steps through; the house lights and the chandeliers come up together (4 s)
+  - after: 3.3
     screen: on
     duration: 4
     ease: inOutSine

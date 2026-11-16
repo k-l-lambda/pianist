@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { boxProjectUV } from './geometry.js';
 import { BERLIN, BERLIN_CHANDELIERS, berlinStatus, berlinToHall, loadBerlinHall, setBerlinChandelierMode, setBerlinLamps } from './berlinhall.js';
+import { addStageDoors } from './stagedoors.js';
 
 // dimensions (m), hall frame; about 0.65 of the real hall
 export const HALL = {
@@ -232,6 +233,7 @@ export class ConcertHall {
 				setBerlinChandelierMode( g, this.mode );
 				if ( ! g ) { this.berlinLoading = false; this._shellChanged( false ); return; }
 				this.floor = await loadFloor( 'berlinhall/floor' );		// (before it shows: a script's first frame may walk on it)
+				this.stageDoors = addStageDoors( g );		// (its stage doors real: before its shaders are compiled)
 				// its presets and lights first (still hidden: berlinLoading), then its shaders compiled
 				// for those lights (one long freeze at its first frame otherwise), then shown
 				if ( this.active ) this.scene.add( g );
@@ -316,10 +318,29 @@ export class ConcertHall {
 
 		const F = this.berlinShown ? this.floor : null;
 		if ( ! F ) return null;
+		const door = this.stageDoors?.floorAt( x, z );		// (the corridors behind the stage doors: not on the map)
+		if ( door !== null && door !== undefined ) return door;
 		const i = Math.floor( ( x - F.minX ) / F.res ), j = Math.floor( ( z - F.minZ ) / F.res );
 		if ( i < 0 || j < 0 || i >= F.nx || j >= F.nz ) return null;
 		const v = F.h[ j * F.nx + i ];
 		return v === F.none ? null : v / 1000 + F.base;
+
+	}
+
+	/**
+	 * The Berlin hall's stage doors (src/stagedoors.js): `which` 'stage-right' (+z), 'stage-left' (-z) or
+	 * 'both', `open` 0 (closed) .. 1 (90 degrees, into the hall). No-op in the procedural hall.
+	 */
+	setDoor( which, open ) {
+
+		this.stageDoors?.set( which, open );
+
+	}
+
+	/** A stage door's opening (0..1; 0 when there are none). */
+	door( which ) {
+
+		return this.stageDoors?.get( which ) ?? 0;
 
 	}
 
