@@ -35,7 +35,7 @@ import { ScriptPlayer } from './script.js';
 import { PianoRoll, excludeFromGTAO } from './pianoroll.js';
 import { PITCH_MIN, PITCH_MAX } from './keyboard.js';
 import { RENDER, RENDER_OPTS, clock, reseedRandom } from './rendermode.js';
-import { OfflineFrame, toBase64, halton2 } from './offline.js';
+import { OfflineFrame, toBase64, halton2, METER_W, METER_H } from './offline.js';
 import { AudioLog, renderAudio, roomAPI } from './renderaudio.js';
 
 const HQ_OFFLINE = RENDER && RENDER_OPTS.hq;		// the offline quality profile (rendermode.js `hq`): finer mirrors, probe and AO
@@ -570,51 +570,106 @@ function refocusFrom( buf, t ) {
 
 }
 
-// Handheld: the exposure adapts with a lag, as a phone's. The page's exposure is taken as adapted at once (as
-// set: the author's); the lag is the frame's light (meterPass: log luminance times the author's exposure) against
-// its mean over the last EXPOSURE_LAG s (time weighted), the exposure times exp( EXPOSURE_LAG_K x the
-// difference ): 1 while the light holds, over / under for a moment when it jumps (a door opening)
+// Exposure. A preset's own (venue.light.exposure: the Berlin hall's Spotlight 1.25, House 0.56) is an adaptation set
+// by hand per lighting, blind to what the camera sees. With auto exposure (offline renders by default, rendermode `ae`;
+// the page: Render/Auto exposure, off by default) the frame's own light decides instead:
+//   exposure = settings.exposure x AE_K / L
+// L the frame's metered light: linear, before any exposure, the centre-weighted geometric mean of its luminance
+// (offline: the frame's own sum, offline.js meter(), the path tracer's image too; the page: meterPass, a frame late).
+// AE_K: the Berlin hall at House lights up comes out as its preset had it (berlinhall-intro's frames by the piano,
+// lights up: L ~ AE_CAL_L at exposure 0.56). `aeStrength` below 1 mixes it with the preset's, in log; `aeLimit` keeps
+// it within that many EV of AE_REF (House's). Without the handheld camera each frame is exposed for its own light;
+// the handheld camera's follows the mean light of the past `aeWindow` s (0.8; time weighted, the frame's own
+// included): over / under for a moment when the light jumps (the door opening), settled within the window.
+// Without auto exposure the handheld camera keeps a lag on the preset's exposure (EXPOSURE_LAG, as before): 1 while
+// the light holds, over / under for a moment when it jumps.
+const AE_REF = 0.56, AE_CAL_L = 0.0491, AE_K = AE_REF * AE_CAL_L;
+settings.autoExposure = RENDER ? RENDER_OPTS.ae : params.get( 'ae' ) === '1';
+const AE = { strength: RENDER ? RENDER_OPTS.aeStrength : 1, limit: RENDER ? RENDER_OPTS.aeLimit : 2.5, window: RENDER ? RENDER_OPTS.aeWindow : 0.8, last: null };
 const EXPOSURE_LAG = 0.6, EXPOSURE_LAG_K = 0.75;
 const ae = { factor: 1, hist: [], buf: new Float32Array( 4 ), v: null, pending: false };
-const baseExposure = () => settings.exposure * venue.light.exposure;
+// ?fixexp=<v>: the lights' exposure fixed at v whatever the preset (theirs is an adaptation of its own: Spotlight
+// 1.25, House 0.56), the scene at its own brightness; for comparisons (with the handheld exposure lag off)
+const FIXED_EXPOSURE = params.has( 'fixexp' ) ? Number( params.get( 'fixexp' ) ) : null;
+const lightExposure = () => FIXED_EXPOSURE ?? venue.light.exposure;
+const baseExposure = () => settings.exposure * lightExposure();
+/** A log value `v` at time `t` into the history `H`; its time-weighted mean over the past `win` s (the newest included). */
+function windowMean( H, v, t, win ) {
+
+	if ( ! ( win > 0 ) ) { H.length = 0; return v; }
+	if ( H.length && ( t - H[ H.length - 1 ].t > 1 || t < H[ H.length - 1 ].t ) ) H.length = 0;		// (a gap, a seek back)
+	if ( H.length && t === H[ H.length - 1 ].t ) H[ H.length - 1 ].v = v; else H.push( { t, v } );		// (a frame metered again: the path tracer's image after the raster's)
+	while ( H.length > 2 && H[ 1 ].t <= t - win ) H.shift();
+	let sum = 0, w = 0;
+	for ( let i = 1; i < H.length; ++ i ) {
+
+		const a = Math.max( H[ i - 1 ].t, t - win ), dt = H[ i ].t - a;
+		if ( dt > 0 ) { sum += 0.5 * ( H[ i ].v + H[ i - 1 ].v ) * dt; w += dt; }
+
+	}
+	return w > 0 ? sum / w : v;
+
+}
+
 function updateExposureLag() {
 
+	if ( RENDER && settings.autoExposure ) return;		// (offline: each frame exposed from its own sum, aeOffline)
 	if ( ! meterPass.enabled ) {
 
 		if ( ae.factor !== 1 || ae.hist.length ) { ae.factor = 1; ae.hist.length = 0; ae.v = null; renderer.toneMappingExposure = baseExposure(); }
 		return;
 
 	}
-	const t = clock.now() / 1000;
-	if ( RENDER ) { renderer.readRenderTargetPixels( meterPass.target, 0, 0, 1, 1, ae.buf ); exposureLagFrom( ae.buf[ 0 ], t ); }
+	const t = clock.now() / 1000, from = v => settings.autoExposure ? autoExposureFrom( v, t ) : exposureLagFrom( v, t );
+	if ( RENDER ) { renderer.readRenderTargetPixels( meterPass.target, 0, 0, 1, 1, ae.buf ); from( ae.buf[ 0 ] ); }
 	else if ( ! ae.pending ) {
 
 		ae.pending = true;
-		renderer.readRenderTargetPixelsAsync( meterPass.target, 0, 0, 1, 1, ae.buf ).then( () => { ae.pending = false; if ( meterPass.enabled ) exposureLagFrom( ae.buf[ 0 ], t ); }, () => { ae.pending = false; } );
+		renderer.readRenderTargetPixelsAsync( meterPass.target, 0, 0, 1, 1, ae.buf ).then( () => { ae.pending = false; if ( meterPass.enabled ) from( ae.buf[ 0 ] ); }, () => { ae.pending = false; } );
 
 	}
 
 }
 
-/** The frame's metered light `v` (log) at time `t`: the exposure's lag factor. */
+/** The frame's metered light `v` (log, times the preset's exposure) at time `t`: the exposure's lag factor (no auto exposure). */
 function exposureLagFrom( v, t ) {
 
-	const H = ae.hist;
 	if ( ! Number.isFinite( v ) ) return;
-	if ( H.length && ( t - H[ H.length - 1 ].t > 1 || t < H[ H.length - 1 ].t ) ) H.length = 0;		// (a gap, a seek back)
-	if ( H.length && t === H[ H.length - 1 ].t ) H[ H.length - 1 ].v = v; else H.push( { t, v } );
-	while ( H.length > 2 && H[ 1 ].t <= t - EXPOSURE_LAG ) H.shift();
-	let s = 0, w = 0;
-	for ( let i = 1; i < H.length; ++ i ) {
-
-		const a = Math.max( H[ i - 1 ].t, t - EXPOSURE_LAG ), dt = H[ i ].t - a;
-		if ( dt > 0 ) { s += 0.5 * ( H[ i ].v + H[ i - 1 ].v ) * dt; w += dt; }
-
-	}
-	const mean = w > 0 ? s / w : v;
+	const mean = windowMean( ae.hist, v, t, EXPOSURE_LAG );
 	ae.v = v;
 	ae.factor = THREE.MathUtils.clamp( Math.exp( EXPOSURE_LAG_K * ( v - mean ) ), 0.35, 2.8 );
 	renderer.toneMappingExposure = baseExposure() * ae.factor;
+
+}
+
+/** Auto exposure: the frame's metered light `v` (log luminance, before any exposure) at time `t`; the exposure set. */
+function autoExposureFrom( v, t ) {
+
+	if ( ! Number.isFinite( v ) ) return null;
+	const mean = windowMean( ae.hist, v, t, handheld.enabled ? AE.window : 0 );
+	const lim = Math.LN2 * AE.limit, lnRef = Math.log( AE_REF );
+	const lnAuto = THREE.MathUtils.clamp( Math.log( AE_K ) - mean, lnRef - lim, lnRef + lim );
+	const s = AE.strength, lnE = ( 1 - s ) * Math.log( lightExposure() ) + s * lnAuto;
+	ae.v = v;
+	ae.factor = Math.exp( lnE ) / lightExposure();
+	renderer.toneMappingExposure = baseExposure() * ae.factor;
+	return AE.last = { t, L: Math.exp( v ), Lmean: Math.exp( mean ), exposure: Math.exp( lnE ), ev: ( lnE - lnRef ) / Math.LN2 };
+
+}
+
+/** Offline: the frame's sum metered (offline.js meter(): per cell, centre-weighted here) and exposed. */
+function aeMeterCells( cells, W, H ) {
+
+	let sum = 0, w = 0;
+	for ( let j = 0; j < H; ++ j ) for ( let i = 0; i < W; ++ i ) {
+
+		const v = cells[ j * W + i ];
+		if ( ! Number.isFinite( v ) ) continue;
+		const dx = ( ( i + 0.5 ) / W - 0.5 ) * 2, dy = ( ( j + 0.5 ) / H - 0.5 ) * 2, k = Math.exp( - 1.5 * ( dx * dx + dy * dy ) );
+		sum += k * v; w += k;
+
+	}
+	return w > 0 ? sum / w : NaN;
 
 }
 
@@ -853,7 +908,7 @@ function applyBloom() {
 function refreshLighting() {
 
 	venue.updateLights();
-	renderer.toneMappingExposure = settings.exposure * venue.light.exposure * ae.factor;
+	renderer.toneMappingExposure = baseExposure() * ae.factor;
 	renderer.toneMapping = TONE[ toneChosen ? settings.toneMapping : venue.light.tone ?? settings.toneMapping ];		// (a venue's preset may ask for one)
 	// a preset's fade between two tone mappings (script.js): the two curves mixed (tonemix.js)
 	const tf = venue.light.toneFade;
@@ -1356,7 +1411,8 @@ function switchVenue( v ) {
 }
 
 const fRender = gui.addFolder( 'Rendering' ).close();
-fRender.add( settings, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' ).onChange( () => renderer.toneMappingExposure = settings.exposure * venue.light.exposure * ae.factor );
+fRender.add( settings, 'exposure', 0.1, 4, 0.01 ).name( 'Exposure' ).onChange( () => renderer.toneMappingExposure = baseExposure() * ae.factor );
+fRender.add( settings, 'autoExposure' ).name( 'Auto exposure' ).onChange( () => { ae.hist.length = 0; ae.factor = 1; renderer.toneMappingExposure = baseExposure(); } );		// (the frame's light sets the exposure: autoExposureFrom)
 fRender.add( settings, 'toneMapping', Object.keys( TONE ) ).name( 'Tone mapping' ).onChange( v => {
 
 	toneChosen = true;		// from now on the GUI's, over the venues' presets
@@ -1923,8 +1979,9 @@ function drawFrame() {
 	} else {
 
 		probeCentreDepth();
-		meterPass.enabled = handheld.enabled && handheld.aeLag;
-		meterPass.quad.material.uniforms.uScale.value = baseExposure();
+		// (the meter: auto exposure on the page (offline it meters the frame's own sum), else the handheld camera's lag)
+		meterPass.enabled = settings.autoExposure ? ! RENDER : handheld.enabled && handheld.aeLag;
+		meterPass.quad.material.uniforms.uScale.value = settings.autoExposure ? 1 : baseExposure();
 		venue.beforeRender?.( renderer, camera );		// (Luminara: its floor's reflection)
 		updateScreenMirror();
 		composer.render();
@@ -1965,7 +2022,7 @@ function downloadState() {
 	setTimeout( () => URL.revokeObjectURL( url ), 10000 );
 
 }
-window.__pianist = { captureState: () => captureState( stateContext ), applyState: st => applyState( stateContext, st ), ptSnapshot, scene, camera, renderer, room, hall, luminara, azurea, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, lens: { get held() { return lensLock.mode ? { mode: lensLock.mode, d: lensNow.d, blur: lensNow.blur } : null; }, get depth() { return depthProbe.d; }, get refocusLog() { return depthProbe.log; }, get exposureLag() { return ae.factor; }, get meter() { return ae.v; } }, get piano() { return piano; } };
+window.__pianist = { captureState: () => captureState( stateContext ), applyState: st => applyState( stateContext, st ), ptSnapshot, scene, camera, renderer, room, hall, luminara, azurea, get venue() { return venue; }, settings, setStyle, setMode, pathTracer, controls, noteOn, noteOff, pedal, roll, composer, handheld, probe, setScreenPower, scriptPlayer, synth, midiPlayer, bokehPass, lens: { get held() { return lensLock.mode ? { mode: lensLock.mode, d: lensNow.d, blur: lensNow.blur } : null; }, get depth() { return depthProbe.d; }, get refocusLog() { return depthProbe.log; }, get exposureLag() { return ae.factor; }, get meter() { return ae.v; }, get autoExposure() { return AE.last; } }, get piano() { return piano; } };
 if ( RENDER ) startRender(); else requestAnimationFrame( frame );
 
 // ---------------------------------------------------------------------------
@@ -1984,6 +2041,15 @@ function startRender() {
 	// the frame's linear light, accumulated over its sub-frames, resolved and quantised (src/offline.js);
 	// the composer stops before its tone mapping (the output pass: the offline frame's)
 	const offline = new OfflineFrame( renderer, { filter: o.filter } );
+	// auto exposure: the frame's sum metered and its exposure set before it is read (autoExposureFrom); at the frame's
+	// time, so the path tracer's image (metered after the raster's, the same time) replaces the raster's in the window
+	const aeOffline = () => {
+
+		if ( ! settings.autoExposure ) return;
+		const r = autoExposureFrom( aeMeterCells( offline.meter(), METER_W, METER_H ), clock.now() / 1000 );
+		if ( o.aeLog && r ) console.warn( `ae frame ${ frameNo } t ${ r.t.toFixed( 3 ) } L ${ r.L.toFixed( 5 ) } Lwin ${ r.Lmean.toFixed( 5 ) } exposure ${ r.exposure.toFixed( 4 ) } ev ${ r.ev.toFixed( 3 ) } preset ${ lightExposure().toFixed( 3 ) }` );
+
+	};
 	composer.renderToScreen = false;
 	outputPass.enabled = false;
 	const SUB = o.subframes, shutter = Math.min( 1, Math.max( 0, o.shutter ) );
@@ -2041,6 +2107,7 @@ function startRender() {
 			if ( drawFrames && drawnFrom ) offline.accumulate( drawnFrom );
 
 		}
+		if ( drawFrames ) aeOffline();
 		frameNo ++;
 
 	};
@@ -2117,7 +2184,7 @@ function startRender() {
 					const keep = ptSnapshot.denoise; ptSnapshot.denoise = dn;
 					const lin = ptLinear.renderLinear( renderer, ptSnapshot.linearTexture(), ptPostParams() );
 					ptSnapshot.denoise = keep;
-					offline.begin( size.x, size.y, 1 ); offline.accumulate( lin.texture );
+					offline.begin( size.x, size.y, 1 ); offline.accumulate( lin.texture ); aeOffline();
 					ptStepFrames.push( { spp, denoised: dn, width: W, height: H, px: await toBase64( offline.read( W, H, { bits: 8, dither: o.dither, seed: frameNo } ) ) } );
 
 				}
@@ -2130,6 +2197,7 @@ function startRender() {
 		const lin = ptLinear.renderLinear( renderer, ptSnapshot.linearTexture(), ptPostParams() );
 		offline.begin( size.x, size.y, 1 );
 		offline.accumulate( lin.texture );
+		aeOffline();		// (the path tracer's image metered: its own light, not the raster's)
 
 	};
 	const ready = ( async () => {

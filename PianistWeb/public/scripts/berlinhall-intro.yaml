@@ -115,7 +115,7 @@ timeline:
   # then back to the piano, walking up to it: off the terrace, down the side step, across the stage, close
   - after: 1.5
     camera:
-      duration: 4.6
+      duration: 1.6
       ease: inOutSine
       path:
         - { position: [ -1.70, 1.30, 6.30 ], target: [ 0.00, 1.00, 0.30 ], fov: 70 }

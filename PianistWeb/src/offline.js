@@ -26,6 +26,9 @@ const KNEE = 0.5;
 // the renderer's tone mapping as hdrQuad's `tone`
 const TONE_KIND = { [ THREE.AgXToneMapping ]: 1, [ THREE.ACESFilmicToneMapping ]: 2, [ THREE.NeutralToneMapping ]: 3, [ THREE.CustomToneMapping ]: 4 };
 
+// the meter's grid (meter())
+export const METER_W = 16, METER_H = 32;
+
 const VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }';
 
 export class OfflineFrame {
@@ -83,6 +86,28 @@ export class OfflineFrame {
 					// (the sum's alpha: the weights added, 1 when all sub-frames came; divided out in case not)
 					gl_FragColor = vec4( sum / max( alpha, 1e-6 ), 1.0 );
 				}`,
+		} ) );
+		// the meter (autoExposure, main.js): the frame's light, linear, before any exposure: per cell of a 16 x 32 grid
+		// the mean log luminance of 8 x 8 points in it (main.js weights the cells, centre-weighted)
+		this.meterTarget = rt( THREE.FloatType );
+		this.meterTarget.setSize( METER_W, METER_H );
+		this.meterBuf = new Float32Array( 4 * METER_W * METER_H );
+		this.meterQuad = new FullScreenQuad( new THREE.ShaderMaterial( {
+			uniforms: { src: { value: null } },
+			vertexShader: VERT,
+			fragmentShader: /* glsl */`
+				uniform sampler2D src; varying vec2 vUv;
+				void main() {
+					vec2 cell = vec2( ${ METER_W }.0, ${ METER_H }.0 ), c0 = floor( vUv * cell ) / cell;
+					float s = 0.0;
+					for ( int j = 0; j < 8; ++ j ) for ( int i = 0; i < 8; ++ i ) {
+						vec4 t = texture2D( src, c0 + ( vec2( float( i ), float( j ) ) + 0.5 ) / ( 8.0 * cell ) );
+						float l = dot( t.rgb / max( t.a, 1e-6 ), vec3( 0.2126, 0.7152, 0.0722 ) );		// (the sum's alpha: the sub-frames' weights)
+						s += log( max( l, 0.0 ) + 1e-4 );
+					}
+					gl_FragColor = vec4( s / 64.0, 0.0, 0.0, 1.0 );
+				}`,
+			depthTest: false, depthWrite: false,
 		} ) );
 		this.output = withToneMix( new OutputPass() );
 		// HDR (an HLG or PQ video): the frame's light in display nits, then encoded.
@@ -197,6 +222,20 @@ export class OfflineFrame {
 		r.setRenderTarget( was.target );
 		r.autoClear = was.auto;
 		this.count ++;
+
+	}
+
+	/** The frame's metered light (the sum so far): the cells' mean log luminance, METER_W x METER_H, rows from the bottom. */
+	meter() {
+
+		const r = this.renderer, was = r.getRenderTarget();
+		this.meterQuad.material.uniforms.src.value = this.accum.texture;
+		r.setRenderTarget( this.meterTarget ); this.meterQuad.render( r );
+		r.readRenderTargetPixels( this.meterTarget, 0, 0, METER_W, METER_H, this.meterBuf );
+		r.setRenderTarget( was );
+		const cells = new Float32Array( METER_W * METER_H );
+		for ( let i = 0; i < cells.length; ++ i ) cells[ i ] = this.meterBuf[ 4 * i ];
+		return cells;
 
 	}
 

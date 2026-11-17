@@ -25,6 +25,14 @@ export const RENDER_OPTS = RENDER ? {
 	bits: Number( get( 'bits' ) ?? 8 ),		// 8 (rgb24) or 10 (rgb48le)
 	hdr: [ 'hlg', 'pq' ].includes( get( 'hdr' ) ) ? get( 'hdr' ) : null,		// an HDR frame (offline.js hdrQuad: BT.2020, HLG or PQ, 10 bits)
 	hdrPeak: Number( get( 'hdrpeak' ) ?? 1000 ),		// its highlights' peak, nits
+	// auto exposure (main.js autoExposure): the frame's own metered light sets its exposure (ae=0: the presets' as on the page);
+	// aes its strength (1: the frame's alone; below, mixed in log with the preset's), aelim its range in EV either side of
+	// the reference, aew the handheld camera's window (s: the mean of the past aew s of metered light)
+	ae: get( 'ae' ) !== '0',
+	aeStrength: Number( get( 'aes' ) ?? 1 ),
+	aeLimit: Number( get( 'aelim' ) ?? 2.5 ),
+	aeWindow: Number( get( 'aew' ) ?? 0.8 ),
+	aeLog: get( 'aelog' ) === '1',		// each frame's meter and exposure to the console (a warning: the driver prints it)
 	dither: get( 'dither' ) !== '0',
 	filter: Number( get( 'filter' ) ?? 1.25 ),		// the resolve's window radius (output px)
 	legacy: get( 'legacy' ) === '1',		// the old capture: tone mapped on the canvas, drawImage to the size, PNG

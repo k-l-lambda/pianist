@@ -8,6 +8,7 @@
 //        [--watermark "opacity=0.06,right=60,bottom=60,height=96" | off]
 //        [--subframes 1] [--shutter 0.5] [--bits 8|10] [--no-dither] [--filter 1.25] [--hq] [--legacy]
 //        [--query "style=grand-white&preset=Night"] [--frames dir] [--pt 1024] [--hdr hlg|pq] [--hdr-peak 1000]
+//        [--ae on|off] [--ae-strength 1] [--ae-limit 2.5] [--ae-window 0.8] [--ae-log]
 //
 // The frame (src/offline.js): drawn at size x ss in linear light, resolved to the size there (a
 // Blackman-Harris window, --filter its radius in output px), tone mapped, then quantised with dither
@@ -29,6 +30,14 @@
 // mastering display and MaxCLL / MaxFALL metadata), tagged hvc1 (iOS, QuickTime). The frame's light (src/offline.js
 // hdrQuad): the SDR curve's midtones kept, its white at 203 nits (BT.2408), the highlights on to --hdr-peak nits
 // (default 1000; HLG at most 1000). --frames PNGs are then 16-bit HLG / PQ signal, not for an SDR viewer.
+//
+// --ae on|off: auto exposure (default on): each frame's exposure from its own light (its linear sum metered before
+// any exposure, centre-weighted geometric mean; the path tracer's image when --pt), not the lighting preset's (src/main.js
+// autoExposureFrom: calibrated so the Berlin hall at House lights up comes out as its preset had it). --ae-strength s:
+// below 1 mixed with the preset's exposure in log (0: the preset's alone). --ae-limit EV: kept within that many EV of
+// the reference (House's 0.56). --ae-window s: the handheld camera's (scripts' handheld mode) exposure follows the mean
+// light of the past s seconds (0.8), over / under for a moment when the light jumps; without it each frame its own.
+// --ae-log: each frame's meter and exposure printed. --ae off: the presets' exposure, as on the page.
 //
 // --watermark: the klstudio.png mark drawn into every frame; defaults as on the page (src/main.js
 // WATERMARK: bottom right, 60 px in, opacity 0.06); keys opacity, right, bottom, height (px at
@@ -94,6 +103,11 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	else if ( a === '--watermark' ) opt.watermark = val();
 	else if ( a === '--hdr' ) opt.hdr = val();
 	else if ( a === '--hdr-peak' ) opt.hdrPeak = Number( val() );
+	else if ( a === '--ae' ) opt.ae = val();
+	else if ( a === '--ae-strength' ) opt.aeStrength = Number( val() );
+	else if ( a === '--ae-limit' ) opt.aeLimit = Number( val() );
+	else if ( a === '--ae-window' ) opt.aeWindow = Number( val() );
+	else if ( a === '--ae-log' ) opt.aeLog = true;
 	else if ( a === '-h' || a === '--help' ) {
 
 		console.log( fs.readFileSync( fileURLToPath( import.meta.url ), 'utf8' ).split( '\n' ).slice( 1, 40 ).join( '\n' ) );
@@ -215,6 +229,11 @@ try {
 	if ( opt.ptShutter ) hash.set( 'pts', opt.ptShutter );
 	if ( opt.ptSteps ) hash.set( 'ptsteps', opt.ptSteps );
 	if ( opt.hdr ) { hash.set( 'hdr', opt.hdr ); hash.set( 'hdrpeak', opt.hdrPeak ); }
+	if ( opt.ae !== undefined ) { if ( ! [ 'on', 'off' ].includes( opt.ae ) ) throw new Error( `--ae ${ opt.ae }: on or off` ); hash.set( 'ae', opt.ae === 'on' ? 1 : 0 ); }
+	if ( opt.aeStrength !== undefined ) hash.set( 'aes', opt.aeStrength );
+	if ( opt.aeLimit !== undefined ) hash.set( 'aelim', opt.aeLimit );
+	if ( opt.aeWindow !== undefined ) hash.set( 'aew', opt.aeWindow );
+	if ( opt.aeLog ) hash.set( 'aelog', 1 );
 	const base = new URL( opt.url );
 	if ( opt.query ) base.search = opt.query;
 	await page.goto( new URL( '#?' + hash, base ).href, { waitUntil: 'commit' } );
@@ -226,7 +245,7 @@ try {
 		return ext ? r.getParameter( ext.UNMASKED_RENDERER_WEBGL ) : '?';
 
 	} );
-	console.log( `page ready: drawing ${ info.width }x${ info.height }, captured ${ W }x${ H }, ${ opt.fps } fps, ${ opt.subframes } sub-frame(s), ${ opt.legacy ? 'legacy PNG capture' : `${ opt.bits }-bit${ opt.dither ? ' dithered' : '' }${ opt.hdr ? `, HDR ${ opt.hdr.toUpperCase() } ${ opt.hdrPeak } nits` : '' }` }${ opt.hq ? ', hq' : '' }${ opt.pt ? `, path traced ${ opt.pt } spp` : '' }, GPU: ${ gl }` );
+	console.log( `page ready: drawing ${ info.width }x${ info.height }, captured ${ W }x${ H }, ${ opt.fps } fps, ${ opt.subframes } sub-frame(s), ${ opt.legacy ? 'legacy PNG capture' : `${ opt.bits }-bit${ opt.dither ? ' dithered' : '' }${ opt.hdr ? `, HDR ${ opt.hdr.toUpperCase() } ${ opt.hdrPeak } nits` : '' }` }${ opt.hq ? ', hq' : '' }${ opt.ae === 'off' ? ', preset exposure' : ', auto exposure' }${ opt.pt ? `, path traced ${ opt.pt } spp` : '' }, GPU: ${ gl }` );
 	if ( /swiftshader|llvmpipe/i.test( gl ) ) console.warn( 'warning: software GL (check __EGL_VENDOR_LIBRARY_FILENAMES)' );
 
 	// end: --to, else when the script has finished (and its sound has rung out a little)

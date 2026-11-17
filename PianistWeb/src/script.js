@@ -23,7 +23,10 @@
 //                                  # camera y's are then heights above the floor under the phone,
 //                                  # steps up / down taken as steps (handheldmode.js);
 //                                  # refocus: a defocus when the depth at the frame's centre jumps
-//                                  # (true); aeLag: the exposure adapting with a 0.6 s lag (true)
+//                                  # (true); aeLag: the exposure adapting with a 0.6 s lag (true; on
+//                                  # the preset's exposure, when auto exposure is off)
+//       set: { "Render/Auto exposure": true }   # the frame's light sets the exposure (offline renders:
+//                                  # on unless --ae off; handheld: the mean light of the past 0.8 s)
 //     - at: 1
 //       screen: on                 # on | off
 //       door: { which: stage-right, open: 1, duration: 1.4, ease: inOutSine }   # a venue's door
