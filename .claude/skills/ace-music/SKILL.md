@@ -82,9 +82,14 @@ and the mood. Fix BPM, key and time signature with the flags rather than in word
   electronic percussion" turned into dense percussion halfway through.
 - Brightness comes from the register and the voicing ("upper register", "open, luminous major
   voicings", "glassy bell tones") together with a major key.
-- **A mode named in words is not followed.** "lydian colour" in E major gave no A# in any sample.
-  Ask for the chords themselves, or accept plain major. A stronger LM (4B) or an XL DiT may follow
-  it better; not tested.
+- **A mode named in words is not followed; spell out the harmony.** "lydian colour" alone gave no A#
+  in E major, in any sample. Naming the note and the chords ("E Lydian, A sharp prominent: chords
+  Emaj9#11, F#/E, Bmaj7#11, C#m11"; "whole-tone runs (C D E F# G# A#)"; "a second layer in B flat
+  major, a tritone away, Bbmaj7 over E bass") brought A# into 3 of 4 seeds. One seed was clearly
+  polytonal (Bb and F about as strong as E's notes). One stayed plain major. Use 4+ seeds and pick.
+  A stronger LM (4B) or an XL DiT may follow better; not tested.
+- "No drums" is not always obeyed. With "brass swells, choir" in the caption, 2 of 4 seeds
+  still had broadband rhythmic hits.
 - Sci-fi feel: "shimmering synth pads, crystalline arpeggios, glassy FM bells, wide stereo, long
   lush reverb, slowly evolving textures".
 
@@ -101,6 +106,11 @@ screen.
 - **Tempo**: beat tracking often reports double the real tempo. 141-144 for a 72 BPM piece is right.
 - **Key**: a correlation of 0.9 or more means the piece clearly sits in that key. Whether a mode's
   note is present shows in the pitch-class list (lydian on E needs A#), not in the key name.
+  A low correlation (~0.5) with two foreign sets both strong can mean real polytonality.
+- To judge a mode or a second key, compare the share of each pitch class: the mode's note against
+  the plain note (A# against A for E Lydian), and the second key's own notes (F, Bb for B flat major).
+  Do this over the whole piece and per 20 s window.
+  - A whole-tone set's share is 50 % by chance. A short run hardly moves the average; listen for it.
 - **Trailing silence**: with `--duration 90` the music sometimes ends at ~81 s and the rest is
   near silence. Trim it (`ffmpeg -t`), or ask for a longer duration and cut.
 - **Spectrogram**: piano reads as separate onsets with decays; pads read as long flat bands;
