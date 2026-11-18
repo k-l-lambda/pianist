@@ -23,6 +23,7 @@ const MAX_STREAKS = RENDER ? 2048 : 512;
 // see PART_VS: embers per second from each of a sounding key's emitters (1 .. EMITTERS, a velocity
 // 0..1 scales the rate), x3 right after the strike; smoke, ash and flames (streaks) per key and second
 const EMITTERS = 3, EMBER_RATE = [ 200, 240 ];
+const CARRY = EMITTERS + 3;			// fractional-birth slots per key
 const SMOKE = 3, ASH = 8, STREAKS = 0.75, STREAK_STRIKE = 0.105;
 const FLAME_COLOR = null;			// the flames' colour, null: the roll's (e.g. 0xff4020 for red ones)
 const MAX_FLARES = RENDER ? 512 : 128;		// hit flares drawn at once
@@ -48,6 +49,51 @@ const MUSIC_FADE_IN = 0.6;			// s, a music (blue) file's roll fading in when it 
 									// start with silence, their bars come in from the top				// s, bars left on the screen (a paused file) fading out when the next file loads
 const VOICE_SPEED = 6;				// fall speed vs music (shorter look-ahead: bars stretch, arrival times unchanged)
 const VOICE_COLOR = '#19e07a';
+// timbres: a multi-timbre file's notes (each note's GM program, d.program from midi.js; the drum channel,
+// MIDI channel 10, its own) are coloured by their instrument family, a hue each, and each family has its
+// own particles. Within a family the programs (GM's eight per family) shift the hue and the lightness a
+// little (TIMBRE_SHADE), the drum kit's pieces likewise (by drum note: kick, snare, hats, toms, cymbals),
+// so two string parts or a kick and a hi-hat still read apart. The piano family takes the roll colour
+// (GUI) with program 0 exactly it: a piano-only file looks as before. Colours are additive light on the
+// black screen: a bright hue (yellow) would outshine a deep one (the roll's blue) several times, so each is
+// scaled towards the roll colour's luminance (partly: TIMBRE_EVEN), never brightened.
+// Styles (the particles: PART_VS's kinds; RING_VS):
+//   ember   the piano's embers, smoke, ash and flames (also the plucked: guitar, bass, ethnic)
+//   ribbon  strings and ensembles: long silky threads curling up the flow
+//   ring    mallets (chromatic percussion: vibraphone, celesta, bells): ripples from the strike, twinkling stars
+//   puff    winds, brass, organ: soft rising puffs (breath), a few specks
+//   mote    synths, pads, effects: slow pulsing orbs
+//   burst   drums and percussive: a fan of sparks from the strike and a small quick ripple
+export const TIMBRE_FAMILIES = [
+	{ name: 'piano', color: null, style: 'ember' },			// (null: the roll colour)
+	{ name: 'chromatic percussion', color: '#14d6c4', style: 'ring' },
+	{ name: 'organ', color: '#d07cff', style: 'puff' },
+	{ name: 'guitar', color: '#ff9a1a', style: 'ember' },
+	{ name: 'bass', color: '#ff5522', style: 'ember' },
+	{ name: 'strings', color: '#ff3a86', style: 'ribbon' },
+	{ name: 'ensemble', color: '#ff62b8', style: 'ribbon' },
+	{ name: 'brass', color: '#ffc21a', style: 'puff' },
+	{ name: 'reed', color: '#b8e01a', style: 'puff' },
+	{ name: 'pipe', color: '#4ee08a', style: 'puff' },
+	{ name: 'synth lead', color: '#ff4dd2', style: 'mote' },
+	{ name: 'synth pad', color: '#9a52ff', style: 'mote' },
+	{ name: 'synth effects', color: '#4dd0ff', style: 'mote' },
+	{ name: 'ethnic', color: '#e8a860', style: 'ember' },
+	{ name: 'percussive', color: '#ffe3c4', style: 'burst' },
+	{ name: 'sound effects', color: '#8ab0ff', style: 'mote' },
+	{ name: 'drums', color: '#ffe8d0', style: 'burst' },		// (the drum channel, whatever its program)
+];
+const DRUMS = 16;
+const STYLES = [ 'ember', 'ribbon', 'ring', 'puff', 'mote', 'burst' ];
+const [ EMBER, RIBBON, RING, PUFF, MOTE, BURST ] = STYLES.map( ( _, i ) => i );
+const TIMBRE_STYLE = TIMBRE_FAMILIES.map( f => STYLES.indexOf( f.style ) );
+// per shade (a program's place in its family, 0..7; a drum's group): hue (turns) and lightness offsets
+const TIMBRE_SHADE = [ [ 0, 0 ], [ 0.03, 0.1 ], [ - 0.03, - 0.08 ], [ 0.055, 0 ], [ - 0.055, 0.12 ], [ 0.015, - 0.12 ], [ - 0.015, 0.06 ], [ 0.07, - 0.05 ] ];
+const TIMBRE_EVEN = 0.6;		// how far a colour's luminance is brought to the roll colour's (0 none, 1 equal)
+/** a drum note's group in the GM kit (its shade): kick, snare, hi-hats, toms, cymbals, the rest */
+const drumShade = p => p <= 36 ? 0 : p === 38 || p === 40 || p === 37 || p === 39 ? 1 : p === 42 || p === 44 || p === 46 ? 3 : p >= 41 && p <= 50 ? 2 : p >= 49 && p <= 59 ? 4 : 5;
+const MAX_RINGS = RENDER ? 1024 : 256;		// ripples drawn at once (a ring buffer)
+const RIBBON_RATE = [ 70, 70 ], GLINT_RATE = 30, PUFF_RATE = 7, MOTE_RATE = 9, BURST_SPARKS = [ 10, 16 ];
 // subtitle band at the top of the screen (voice MIDI): what the piano is saying, appearing as it
 // is said. Sizes in metres on the screen; the bars fade in below the band while it shows.
 const SUB_MARGIN = 0.010;			// above the text (from the screen's top edge)
@@ -370,12 +416,15 @@ const BAR_VS = /* glsl */`
 	attribute vec2 corner;
 	attribute vec4 aRect;			// x0, y0, x1, y1 (plane coords, m)
 	attribute vec2 aInfo;			// velocity 0..1, sounding (1 while the note plays)
+	attribute vec3 aColor;			// the bar's colour (its timbre's: PianoRoll.palette; the live colour for live bars)
 	uniform float uGlow;
 	varying vec2 vP;				// position relative to the rect centre (m)
 	varying vec2 vHalf;
 	varying vec2 vInfo;
 	varying float vY;
+	varying vec3 vColor;
 	void main() {
+		vColor = aColor;
 		vec2 c = 0.5 * ( aRect.xy + aRect.zw );
 		vHalf = 0.5 * ( aRect.zw - aRect.xy );
 		vec2 p = c + ( corner * 2.0 - 1.0 ) * ( vHalf + uGlow );
@@ -387,7 +436,6 @@ const BAR_VS = /* glsl */`
 `;
 
 const BAR_FS = /* glsl */`
-	uniform vec3 uColor;
 	uniform float uGlow;
 	uniform float uHeight;
 	uniform float uIntensity;
@@ -395,6 +443,7 @@ const BAR_FS = /* glsl */`
 	varying vec2 vHalf;
 	varying vec2 vInfo;
 	varying float vY;
+	varying vec3 vColor;
 	float sdRoundBox( vec2 p, vec2 b, float r ) {
 		vec2 q = abs( p ) - b + r;
 		return length( max( q, 0.0 ) ) + min( max( q.x, q.y ), 0.0 ) - r;
@@ -411,7 +460,7 @@ const BAR_FS = /* glsl */`
 		float rim = smoothstep( - 0.0025, 0.0, d ) * core;
 		float opacity = 0.04 + 0.96 * pow( clamp( vInfo.x, 0.0, 1.0 ), 1.3 );
 		float lit = 0.85 + 0.3 * vInfo.y;
-		vec3 col = ( uColor * core * lit * ( 1.0 + 0.12 * rim ) + uColor * glow * ( 0.38 + 0.4 * vInfo.y ) * 0.15 ) * opacity;		// halo at 15%
+		vec3 col = ( vColor * core * lit * ( 1.0 + 0.12 * rim ) + vColor * glow * ( 0.38 + 0.4 * vInfo.y ) * 0.15 ) * opacity;		// halo at 15%
 		// fade in at the top of the plane, clip below the hit line
 		col *= smoothstep( uHeight, uHeight - 0.04, vY ) * step( 0.0, vY );
 		gl_FragColor = vec4( col * uIntensity, 1.0 );
@@ -435,10 +484,13 @@ const CLIP = /* glsl */`
 const FLARE_VS = /* glsl */`
 	attribute vec2 corner;
 	attribute vec3 aFlare;			// x, half width, strength
+	attribute vec3 aFlareColor;		// the key's sounding timbre's colour
 	varying vec2 vUv;
 	varying float vS;
 	varying vec2 vLocal;
+	varying vec3 vFC;
 	void main() {
+		vFC = aFlareColor;
 		vUv = corner * 2.0 - 1.0;
 		vS = aFlare.z;
 		vec2 p = vec2( aFlare.x + vUv.x * ( aFlare.y + 0.026 ), vUv.y * 0.015 );		// half the height it had (0.03)
@@ -448,16 +500,16 @@ const FLARE_VS = /* glsl */`
 `;
 
 const FLARE_FS = /* glsl */`
-	uniform vec3 uColor;
 	uniform float uIntensity;
 	varying vec2 vUv;
 	varying float vS;
 	varying vec2 vLocal;
+	varying vec3 vFC;
 	${ CLIP }
 	void main() {
 		float f = exp( - dot( vUv * vec2( 4.4, 5.2 ), vUv * vec2( 4.4, 5.2 ) ) );		// outer halo at half the reach
 		float core = exp( - dot( vUv * vec2( 4.0, 9.0 ), vUv * vec2( 4.0, 9.0 ) ) );
-		vec3 col = mix( uColor, vec3( 1.0 ), 0.65 ) * core * 2.6 + uColor * f * 1.1 * 0.15;		// outer halo at 15%
+		vec3 col = mix( vFC, vec3( 1.0 ), 0.65 ) * core * 2.6 + vFC * f * 1.1 * 0.15;		// outer halo at 15%
 		gl_FragColor = vec4( col * vS * uIntensity * inScreen( vLocal ), 1.0 );
 	}
 `;
@@ -497,14 +549,30 @@ const FIELD = /* glsl */`
 	float h( float n ) { return fract( sin( n ) * 43758.5453 ); }
 `;
 
+// The kinds (aSpawn.z = kind + 16 * live): the piano's (and the plucked families') 0 embers, 1 smoke, 2
+// ash, as above; then one look per instrument family of a multi-timbre file (TIMBRE_STYLE):
+//  3 ribbon (strings, ensembles): dense soft motes streamed from 1-2 slowly wandering emitters per note,
+//    rising slowly and following the flow strongly: consecutive motes take one path, a silky thread
+//    that sways and curls up the screen for ~3 s (the bowed note's long breath)
+//  4 glint (mallets, chromatic percussion): small four-pointed stars that twinkle (each its own rate
+//    and phase) as they drift up, fewer as the struck note dies away; with the rings (RING_VS)
+//  5 puff (winds, brass, organ): soft round puffs that rise steadily, swelling and fading (breath)
+//  6 mote (synths, pads, effects): glowing orbs with a halo, pulsing slowly, drifting up and about
+//    for a few seconds (a pad's slow light)
+//  7 burst (drums, percussive): sparks flung out from the hit line at the strike, upwards in a fan,
+//    braked hard (drag), falling a little: a short radial burst, white-hot to the colour in ~0.4 s
+// Each particle carries its own colour (aTint: its timbre's, or the live colour).
 const PART_VS = /* glsl */`
-	attribute vec4 aSpawn;			// t0, seed, kind + 4 * live, strength; position: birth (x, y), emitter seed
+	attribute vec4 aSpawn;			// t0, seed, kind + 16 * live, strength; position: birth (x, y), emitter seed
+	attribute vec3 aTint;			// its colour
 	uniform float uTime;
 	uniform float uScale;			// px per metre at unit distance
 	varying float vA;
 	varying float vKind;
 	varying float vAge;
-	varying float vLive;
+	varying float vT;				// its age (s)
+	varying float vSeed;
+	varying vec3 vTint;
 	varying vec3 vC;				// the sprite's centre, view space
 	varying vec3 vAx, vAy;			// the roll plane's x and y axes, view space
 	varying float vPx;				// the sprite's half size, view-space metres at the centre's depth
@@ -514,51 +582,94 @@ const PART_VS = /* glsl */`
 		float t0 = aSpawn.x, s = aSpawn.y, code = aSpawn.z, e = position.z;
 		vAx = mat3( modelViewMatrix ) * vec3( 1.0, 0.0, 0.0 );
 		vAy = mat3( modelViewMatrix ) * vec3( 0.0, 1.0, 0.0 );
-		float live = step( 2.5, code ); float kind = code - 4.0 * live;
-		bool ember = kind < 0.5, smoke = abs( kind - 1.0 ) < 0.5;
-		float life = ember ? mix( 1.6, 2.6, h( s * 3.1 ) ) : smoke ? mix( 4.0, 6.0, h( s * 3.1 ) ) : mix( 3.0, 4.5, h( s * 3.1 ) );
+		float live = step( 15.5, code ); float kind = code - 16.0 * live;
+		int K = int( kind + 0.5 );
+		bool ember = K == 0, smoke = K == 1;
+		vTint = aTint; vSeed = s;
+		// per kind: its life (s), rise (m/s), own drift, how much it follows the flow, the step
+		float life, rise, follow = 1.0, dstep = 0.1;
+		vec2 own = vec2( h( s * 6.3 ) - 0.5, h( s * 2.9 ) - 0.5 );
+		if ( ember ) {
+			// the rise and its start are the emitter's (e), not the ember's, so that one emitter's embers
+			// keep to one thread; each wanders off it a little (the thread widens to a glittering band as
+			// it rises), a few strays further
+			life = mix( 1.6, 2.6, h( s * 3.1 ) ); rise = mix( 0.065, 0.095, h( e * 7.7 ) );
+			own *= mix( 0.012, 0.04, step( 0.93, h( s * 5.3 ) ) ); dstep = 0.04;
+		} else if ( smoke ) {
+			life = mix( 4.0, 6.0, h( s * 3.1 ) ); rise = mix( 0.015, 0.03, h( s * 7.7 ) ); own *= 0.012; follow = 0.5;
+		} else if ( K == 2 ) {
+			life = mix( 3.0, 4.5, h( s * 3.1 ) ); rise = mix( 0.025, 0.045, h( s * 7.7 ) ); own *= 0.012;
+		} else if ( K == 3 ) {
+			// ribbon: the emitter's rise and lean (one thread per emitter), a hair of its own spread
+			life = mix( 2.6, 3.6, h( s * 3.1 ) ); rise = mix( 0.028, 0.042, h( e * 7.7 ) );
+			own = own * 0.003 + vec2( ( h( e * 4.9 ) - 0.5 ) * 0.02, 0.0 ); follow = 1.3; dstep = 0.06;
+		} else if ( K == 4 ) {
+			life = mix( 0.8, 1.6, h( s * 3.1 ) ); rise = mix( 0.015, 0.03, h( s * 7.7 ) ); own *= 0.012; follow = 0.5; dstep = 0.08;
+		} else if ( K == 5 ) {
+			life = mix( 1.8, 2.8, h( s * 3.1 ) ); rise = mix( 0.035, 0.055, h( s * 7.7 ) ); own *= 0.008; follow = 0.45;
+		} else if ( K == 6 ) {
+			life = mix( 2.5, 4.0, h( s * 3.1 ) ); rise = mix( 0.008, 0.018, h( s * 7.7 ) ); own *= 0.012; follow = 0.8;
+		} else {
+			life = mix( 0.35, 0.6, h( s * 3.1 ) ); rise = 0.0;
+		}
 		float age = uTime - t0;
-		vKind = kind; vLive = live;
-		vAge = age / life;
+		vKind = kind;
+		vAge = age / life; vT = age;
 		if ( ! ( age >= 0.0 && age <= life ) ) {		// (also NaN)
 			gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
 			gl_PointSize = 0.0;
 			vA = 0.0;
 			return;
 		}
-		// embers: the rise and its start are the emitter's (e), not the ember's, so that one
-		// emitter's embers keep to one thread; each wanders off it a little (the thread widens to a
-		// glittering band as it rises), a few strays further
-		float rise = ember ? mix( 0.065, 0.095, h( e * 7.7 ) ) : smoke ? mix( 0.015, 0.03, h( s * 7.7 ) ) : mix( 0.025, 0.045, h( s * 7.7 ) );
-		float stray = ember ? step( 0.93, h( s * 5.3 ) ) : 1.0;
-		vec2 own = vec2( h( s * 6.3 ) - 0.5, h( s * 2.9 ) - 0.5 ) * ( ember ? mix( 0.012, 0.04, stray ) : 0.012 );
-		float follow = smoke ? 0.5 : 1.0;
-		float dstep = ember ? 0.04 : 0.1;
 		vec2 q = position.xy;
-		float t = 0.0;
-		for ( int i = 0; i < 90; i ++ ) {
-			if ( t >= age ) break;
-			float d = min( dstep, age - t );
-			float r1 = rise * ( 0.35 + 0.65 * smoothstep( 0.0, 0.3, t ) );
-			vec2 v1 = vec2( 0.0, r1 ) + own + follow * field( q, t0 + t );
-			vec2 qm = q + 0.5 * d * v1;
-			float r2 = rise * ( 0.35 + 0.65 * smoothstep( 0.0, 0.3, t + 0.5 * d ) );
-			q += d * ( vec2( 0.0, r2 ) + own + follow * field( qm, t0 + t + 0.5 * d ) );
-			q.y = max( q.y, 0.0 );			// not below the hit line
-			t += d;
+		if ( K == 7 ) {
+			// burst: flung out in a fan above the hit line (10-170 deg), its speed braked by drag (tau
+			// 0.1 s: it travels speed * tau at most), a little fall
+			float ang = mix( 0.17, 2.97, h( s * 2.3 ) ), sp = mix( 0.12, 0.42, h( s * 5.9 ) ) * ( 0.6 + 0.4 * aSpawn.w ), tau = 0.1;
+			q += vec2( cos( ang ), sin( ang ) ) * sp * tau * ( 1.0 - exp( - age / tau ) ) - vec2( 0.0, 0.03 * age * age );
+			q.y = max( q.y, 0.0 );
+		} else {
+			float t = 0.0;
+			for ( int i = 0; i < 90; i ++ ) {
+				if ( t >= age ) break;
+				float d = min( dstep, age - t );
+				float r1 = rise * ( 0.35 + 0.65 * smoothstep( 0.0, 0.3, t ) );
+				vec2 v1 = vec2( 0.0, r1 ) + own + follow * field( q, t0 + t );
+				vec2 qm = q + 0.5 * d * v1;
+				float r2 = rise * ( 0.35 + 0.65 * smoothstep( 0.0, 0.3, t + 0.5 * d ) );
+				q += d * ( vec2( 0.0, r2 ) + own + follow * field( qm, t0 + t + 0.5 * d ) );
+				q.y = max( q.y, 0.0 );			// not below the hit line
+				t += d;
+			}
 		}
-		float z = 0.002 + ( smoke ? 0.006 : 0.003 ) * h( s * 4.1 );
+		float z = 0.002 + ( smoke || K == 5 ? 0.006 : 0.003 ) * h( s * 4.1 );
 		vec4 mv = modelViewMatrix * vec4( q, z, 1.0 );
 		gl_Position = projectionMatrix * mv;
 		vC = mv.xyz;
 		vCl = q;
 		float size, a;
+		bool soft = smoke || K == 4 || K == 5 || K == 6;		// (big sprites: not dimmed as sub-pixel specks)
 		if ( ember ) {
 			size = mix( 0.0009, 0.0015, h( s * 6.7 ) ) * ( h( s * 8.1 ) < 0.1 ? 1.8 : 1.0 );
 			a = smoothstep( 0.0, 0.04, age ) * pow( max( 1.0 - vAge, 0.0 ), 1.2 );
 		} else if ( smoke ) {
 			size = mix( 0.025, 0.04, h( s * 6.7 ) ) * ( 1.0 + 1.2 * vAge );
 			a = smoothstep( 0.0, 0.3, vAge ) * pow( max( 1.0 - vAge, 0.0 ), 1.5 );
+		} else if ( K == 3 ) {
+			size = mix( 0.0014, 0.0022, h( s * 6.7 ) );
+			a = smoothstep( 0.0, 0.08, age ) * pow( max( 1.0 - vAge, 0.0 ), 1.1 );
+		} else if ( K == 4 ) {
+			size = mix( 0.0035, 0.006, h( s * 6.7 ) );
+			a = smoothstep( 0.0, 0.05, age ) * pow( max( 1.0 - vAge, 0.0 ), 1.3 );
+		} else if ( K == 5 ) {
+			size = mix( 0.009, 0.015, h( s * 6.7 ) ) * ( 1.0 + 1.5 * vAge );
+			a = smoothstep( 0.0, 0.15, vAge ) * pow( max( 1.0 - vAge, 0.0 ), 1.4 );
+		} else if ( K == 6 ) {
+			size = mix( 0.005, 0.009, h( s * 6.7 ) );
+			a = smoothstep( 0.0, 0.2, vAge ) * pow( max( 1.0 - vAge, 0.0 ), 1.2 );
+		} else if ( K == 7 ) {
+			size = mix( 0.0012, 0.002, h( s * 6.7 ) );
+			a = pow( max( 1.0 - vAge, 0.0 ), 1.5 );
 		} else {
 			size = mix( 0.0008, 0.0012, h( s * 6.7 ) );
 			a = smoothstep( 0.0, 0.15, vAge ) * pow( max( 1.0 - vAge, 0.0 ), 1.2 );
@@ -568,26 +679,27 @@ const PART_VS = /* glsl */`
 		gl_PointSize = clamp( px, 1.0, 512.0 );
 		vPx = 0.5 * gl_PointSize * max( - mv.z, 0.05 ) / max( uScale, 1.0 );
 		// (sub-pixel specks: dimmer, as the sprite cannot shrink below 1 px)
-		vA = aSpawn.w * a * ( smoke ? 1.0 : clamp( px, 0.0, 1.0 ) );
+		vA = aSpawn.w * a * ( soft ? 1.0 : clamp( px, 0.0, 1.0 ) );
 	}
 `;
 
 const PART_FS = /* glsl */`
-	const float PART_BRIGHT = 0.25;		// embers, smoke and ash, all of them
-	uniform vec3 uColor;
-	uniform vec3 uLiveColor;
+	const float PART_BRIGHT = 0.25;		// all the particles
 	uniform float uIntensity;
 	varying float vA;
 	varying float vKind;
 	varying float vAge;
-	varying float vLive;
+	varying float vT;
+	varying float vSeed;
+	varying vec3 vTint;
 	varying vec3 vC;
 	varying vec3 vAx, vAy;
 	varying float vPx;
 	varying vec2 vCl;
 	${ CLIP }
+	float hf( float n ) { return fract( sin( n ) * 43758.5453 ); }
 	void main() {
-		vec3 base = mix( uColor, uLiveColor, vLive );
+		vec3 base = vTint;
 		vec2 c = gl_PointCoord * 2.0 - 1.0;
 		float r2 = dot( c, c );
 		if ( r2 > 1.0 ) discard;
@@ -601,19 +713,82 @@ const PART_FS = /* glsl */`
 		vec2 local = vec2( dot( d, vAx ) / dot( vAx, vAx ), dot( d, vAy ) / dot( vAy, vAy ) ) + vCl;
 		float clip = inScreen( local );
 		if ( clip <= 0.0 ) discard;
-		vec3 col;
-		if ( vKind > 0.5 && vKind < 1.5 ) {
+		int K = int( vKind + 0.5 );
+		vec3 white = vec3( 1.0, 0.97, 0.95 ), col;
+		float u = vAge;
+		if ( K == 1 ) {
 			col = base * 0.03 * ( 1.0 - r2 ) * ( 1.0 - r2 );		// smoke: dim, the roll's hue darkened
-		} else if ( vKind > 1.5 ) {
+		} else if ( K == 2 ) {
 			col = base * 0.5 * exp( - r2 * 3.0 );				// ash: dim specks
+		} else if ( K == 3 ) {
+			// ribbon: lit at its root, the colour along the thread, dimming as it rises
+			vec3 k = mix( mix( base, white, 0.45 ), base, smoothstep( 0.0, 0.25, u ) ) * mix( 1.0, 0.35, smoothstep( 0.4, 1.0, u ) );
+			col = k * 5.5 * exp( - r2 * 2.5 );
+		} else if ( K == 4 ) {
+			// glint: a four-pointed star, twinkling at its own rate
+			float star = exp( - abs( c.x ) * 16.0 ) * exp( - c.y * c.y * 4.0 ) + exp( - abs( c.y ) * 16.0 ) * exp( - c.x * c.x * 4.0 );
+			float core = exp( - r2 * 22.0 );
+			float tw = 0.25 + 0.75 * pow( 0.5 + 0.5 * sin( vT * mix( 9.0, 17.0, hf( vSeed * 3.3 ) ) + 6.283 * hf( vSeed * 1.7 ) ), 3.0 );
+			col = mix( base, white, 0.45 ) * ( star * 1.3 + core * 3.0 ) * tw;
+		} else if ( K == 5 ) {
+			col = base * ( 0.1 * ( 1.0 - r2 ) * ( 1.0 - r2 ) + 0.06 * exp( - r2 * 8.0 ) );		// puff: soft, a faint core
+		} else if ( K == 6 ) {
+			// mote: an orb (a near-white core in a halo of its colour), pulsing slowly
+			float pulse = 0.65 + 0.35 * sin( vT * mix( 2.0, 4.0, hf( vSeed * 5.1 ) ) + 6.283 * hf( vSeed * 2.3 ) );
+			col = ( base * exp( - r2 * 5.0 ) * 0.4 + mix( base, white, 0.6 ) * exp( - r2 * 70.0 ) * 3.0 ) * pulse;
+		} else if ( K == 7 ) {
+			vec3 k = mix( white, base, smoothstep( 0.0, 0.45, u ) );		// burst: white-hot -> the colour
+			col = k * 6.0 * exp( - r2 * 3.0 );
 		} else {
 			// ember: white-hot (the threads at the hit line) -> lit -> the roll colour -> dim
 			vec3 hot = vec3( 1.0, 0.96, 0.94 ), lit = mix( base, vec3( 1.0 ), 0.5 ), cool = base * 0.2;
-			float u = vAge;
 			vec3 k = u < 0.2 ? mix( hot, lit, u / 0.2 ) : u < 0.45 ? mix( lit, base, ( u - 0.2 ) / 0.25 ) : mix( base, cool, ( u - 0.45 ) / 0.55 );
 			col = k * 5.0 * exp( - r2 * 2.5 );
 		}
 		gl_FragColor = vec4( col * vA * uIntensity * PART_BRIGHT * clip, 1.0 );
+	}
+`;
+
+// rings (mallets: the struck bar's ring; drums: a small, quick one): a ripple from where the note meets
+// the hit line, expanding fast then slowing (ease out), thinning and fading; a fainter echo inside it,
+// a little shimmer round it. Its lower half is below the hit line: clipped (the screen's glass)
+const RING_VS = /* glsl */`
+	attribute vec2 corner;
+	attribute vec4 aRing;			// x, y, t0, seed
+	attribute vec3 aRingInfo;		// strength, its last radius (m), its life (s)
+	attribute vec3 aRingColor;
+	uniform float uTime;
+	varying vec2 vD;				// from the centre (m)
+	varying vec2 vLocal;
+	varying float vR, vW, vA, vU, vSeed;
+	varying vec3 vRC;
+	void main() {
+		float age = uTime - aRing.z, life = aRingInfo.z, u = age / life;
+		vRC = aRingColor; vSeed = aRing.w; vU = u;
+		if ( ! ( age >= 0.0 && age <= life ) ) { gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 ); vA = 0.0; return; }
+		vR = aRingInfo.y * ( 1.0 - pow( 1.0 - u, 2.4 ) );
+		vW = mix( 0.0008, 0.0035, u );
+		float half_ = vR + 4.0 * vW;
+		vD = ( corner * 2.0 - 1.0 ) * half_;
+		vLocal = aRing.xy + vD;
+		vA = aRingInfo.x * smoothstep( 0.0, 0.03, age ) * pow( max( 1.0 - u, 0.0 ), 1.6 );
+		gl_Position = projectionMatrix * modelViewMatrix * vec4( vLocal, 0.003, 1.0 );
+	}
+`;
+
+const RING_FS = /* glsl */`
+	uniform float uIntensity;
+	varying vec2 vD;
+	varying vec2 vLocal;
+	varying float vR, vW, vA, vU, vSeed;
+	varying vec3 vRC;
+	${ CLIP }
+	void main() {
+		float d = length( vD );
+		float ring = exp( - pow( ( d - vR ) / vW, 2.0 ) ) + 0.4 * exp( - pow( ( d - 0.62 * vR ) / ( 1.4 * vW ), 2.0 ) );
+		float shimmer = 0.75 + 0.25 * sin( atan( vD.y, vD.x ) * 9.0 + vU * 8.0 + vSeed );
+		vec3 col = mix( vRC, vec3( 1.0 ), 0.35 * ( 1.0 - vU ) ) * ring * shimmer * 0.35;
+		gl_FragColor = vec4( col * vA * uIntensity * inScreen( vLocal ), 1.0 );
 	}
 `;
 
@@ -624,6 +799,8 @@ const STREAK_VS = /* glsl */`
 	attribute vec2 corner;
 	attribute vec4 aStreak;			// birth x, birth y, t0, seed
 	attribute vec2 aStreakInfo;		// strength, live
+	attribute vec3 aStreakColor;	// its colour (its note's timbre, or the live colour)
+	varying vec3 vSC;
 	uniform float uTime;
 	uniform float uScale;
 	varying vec2 vUv;
@@ -678,6 +855,7 @@ const STREAK_VS = /* glsl */`
 		float age = uTime - t0;
 		vUv = corner * 2.0 - 1.0;
 		vLive = aStreakInfo.y;
+		vSC = aStreakColor;
 		if ( ! ( age >= 0.0 && age <= life ) ) {
 			gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
 			vA = 0.0;
@@ -721,8 +899,9 @@ const STREAK_VS = /* glsl */`
 const STREAK_FS = /* glsl */`
 	const float FLAME_BRIGHT = 0.6;		// the flames overall
 	uniform vec3 uFlame;
-	uniform vec3 uLiveFlame;
+	uniform float uFlameFixed;		// 1: FLAME_COLOR (uFlame) for every flame, 0: each its own colour
 	uniform float uIntensity;
+	varying vec3 vSC;
 	varying vec2 vUv;
 	varying float vA;
 	varying float vLive;
@@ -740,7 +919,7 @@ const STREAK_FS = /* glsl */`
 		float soft = mix( 1.2, 2.6, r ), sharp = mix( 5.0, 11.0, r );		// the feather's falloff: wide -> tight
 		float body = exp( - x * x * soft ) * smoothstep( 0.0, 0.2, half_ );
 		float core = exp( - x * x * sharp ) * smoothstep( 0.25, 0.6, half_ );
-		vec3 base = mix( uFlame, uLiveFlame, vLive );
+		vec3 base = mix( vSC, uFlame, uFlameFixed );
 		// the feather in the note's colour, kept dim enough not to tone-map to white (bright blue
 		// reads white under AgX); only the core goes white-hot
 		float feather = max( body - core, 0.0 );
@@ -800,6 +979,9 @@ export class PianoRoll {
 		this.voiceColor = new THREE.Color( VOICE_COLOR );
 		this.color = this.musicColor.clone();		// the colour in use; uniforms share this object
 		this.liveColor = new THREE.Color( '#ff2a36' );	// notes played on the keyboard, rising
+		this.byTimbre = true;			// a multi-timbre file: each family its colour and particles (TIMBRE_FAMILIES); false: all as the piano
+		this.palette = new Float32Array( TIMBRE_FAMILIES.length * 8 * 3 );		// linear RGB per family and shade (_applyColor)
+		this.timbres = [];				// the loaded file's: [{ family, name, program, channel, notes, color }]
 		this.intensity = 1.0;
 		this.power = false;				// screen on/off: the roll only shows while on
 		this.powerLevel = 0;			// faded 0..1
@@ -819,8 +1001,10 @@ export class PianoRoll {
 			const geo = quadCorners( new THREE.InstancedBufferGeometry() );
 			this.rect = new THREE.InstancedBufferAttribute( new Float32Array( MAX_BARS * 4 ), 4 ).setUsage( THREE.DynamicDrawUsage );
 			this.info = new THREE.InstancedBufferAttribute( new Float32Array( MAX_BARS * 2 ), 2 ).setUsage( THREE.DynamicDrawUsage );
+			this.barColor = new THREE.InstancedBufferAttribute( new Float32Array( MAX_BARS * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			geo.setAttribute( 'aRect', this.rect );
 			geo.setAttribute( 'aInfo', this.info );
+			geo.setAttribute( 'aColor', this.barColor );
 			geo.instanceCount = 0;
 			this.barUniforms = { uColor: { value: this.color }, uGlow: { value: 0.006 }, uHeight: { value: 0.3 }, uIntensity: { value: 1 } };
 			this.bars = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: BAR_VS, fragmentShader: BAR_FS, uniforms: this.barUniforms, ...common } ) );
@@ -834,8 +1018,10 @@ export class PianoRoll {
 			const ghost = quadCorners( new THREE.InstancedBufferGeometry() );
 			this.ghostRect = new THREE.InstancedBufferAttribute( new Float32Array( MAX_BARS * 4 ), 4 );
 			this.ghostInfo = new THREE.InstancedBufferAttribute( new Float32Array( MAX_BARS * 2 ), 2 );
+			this.ghostColor = new THREE.InstancedBufferAttribute( new Float32Array( MAX_BARS * 3 ), 3 );
 			ghost.setAttribute( 'aRect', this.ghostRect );
 			ghost.setAttribute( 'aInfo', this.ghostInfo );
+			ghost.setAttribute( 'aColor', this.ghostColor );
 			ghost.instanceCount = 0;
 			this.ghostUniforms = { uColor: { value: new THREE.Color() }, uGlow: this.barUniforms.uGlow, uHeight: this.barUniforms.uHeight, uIntensity: { value: 0 } };
 			this.ghostBars = new THREE.Mesh( ghost, new THREE.ShaderMaterial( { vertexShader: BAR_VS, fragmentShader: BAR_FS, uniforms: this.ghostUniforms, ...common } ) );
@@ -855,8 +1041,10 @@ export class PianoRoll {
 			const geo = quadCorners( new THREE.InstancedBufferGeometry() );
 			this.liveRect = new THREE.InstancedBufferAttribute( new Float32Array( MAX_LIVE * 4 ), 4 ).setUsage( THREE.DynamicDrawUsage );
 			this.liveInfo = new THREE.InstancedBufferAttribute( new Float32Array( MAX_LIVE * 2 ), 2 ).setUsage( THREE.DynamicDrawUsage );
+			this.liveBarColor = new THREE.InstancedBufferAttribute( new Float32Array( MAX_LIVE * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			geo.setAttribute( 'aRect', this.liveRect );
 			geo.setAttribute( 'aInfo', this.liveInfo );
+			geo.setAttribute( 'aColor', this.liveBarColor );
 			geo.instanceCount = 0;
 			this.liveUniforms = { uColor: { value: this.liveColor }, uGlow: this.barUniforms.uGlow, uHeight: this.barUniforms.uHeight, uIntensity: { value: 1 } };
 			this.liveBars = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: BAR_VS, fragmentShader: BAR_FS, uniforms: this.liveUniforms, ...common } ) );
@@ -955,7 +1143,9 @@ export class PianoRoll {
 
 			const geo = quadCorners( new THREE.InstancedBufferGeometry() );
 			this.flare = new THREE.InstancedBufferAttribute( new Float32Array( MAX_FLARES * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
+			this.flareColor = new THREE.InstancedBufferAttribute( new Float32Array( MAX_FLARES * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			geo.setAttribute( 'aFlare', this.flare );
+			geo.setAttribute( 'aFlareColor', this.flareColor );
 			geo.instanceCount = 0;
 			this.flareUniforms = { uColor: { value: this.color }, uIntensity: { value: 1 }, uClip: this.clipUniform };
 			this.flares = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: FLARE_VS, fragmentShader: FLARE_FS, uniforms: this.flareUniforms, ...common } ) );
@@ -967,7 +1157,9 @@ export class PianoRoll {
 			// the same for the notes played on the keyboard, in the live colour (own levels per key)
 			const lgeo = quadCorners( new THREE.InstancedBufferGeometry() );
 			this.liveFlare = new THREE.InstancedBufferAttribute( new Float32Array( ( PITCH_MAX + 1 ) * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
+			this.liveFlareColor = new THREE.InstancedBufferAttribute( new Float32Array( ( PITCH_MAX + 1 ) * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			lgeo.setAttribute( 'aFlare', this.liveFlare );
+			lgeo.setAttribute( 'aFlareColor', this.liveFlareColor );
 			lgeo.instanceCount = 0;
 			this.liveFlareUniforms = { uColor: { value: this.liveColor }, uIntensity: this.liveUniforms.uIntensity, uClip: this.clipUniform };
 			this.liveFlares = new THREE.Mesh( lgeo, new THREE.ShaderMaterial( { vertexShader: FLARE_VS, fragmentShader: FLARE_FS, uniforms: this.liveFlareUniforms, ...common } ) );
@@ -984,8 +1176,10 @@ export class PianoRoll {
 			const geo = new THREE.BufferGeometry();
 			this.pPos = new THREE.BufferAttribute( new Float32Array( MAX_PARTICLES * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			this.pSpawn = new THREE.BufferAttribute( new Float32Array( MAX_PARTICLES * 4 ).fill( - 1e6 ), 4 ).setUsage( THREE.DynamicDrawUsage );
+			this.pTint = new THREE.BufferAttribute( new Float32Array( MAX_PARTICLES * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			geo.setAttribute( 'position', this.pPos );
 			geo.setAttribute( 'aSpawn', this.pSpawn );
+			geo.setAttribute( 'aTint', this.pTint );
 			this.partUniforms = { uColor: { value: this.color }, uLiveColor: { value: this.liveColor }, uTime: { value: 0 }, uScale: { value: 1000 }, uIntensity: { value: 1 }, uClip: this.clipUniform };
 			this.points = new THREE.Points( geo, new THREE.ShaderMaterial( { vertexShader: PART_VS, fragmentShader: PART_FS, uniforms: this.partUniforms, ...common } ) );
 			this.points.frustumCulled = false;
@@ -1000,7 +1194,8 @@ export class PianoRoll {
 			this._frame = 0;							// update count (one stream / one burst per key and frame)
 			this._streamed = new Int32Array( 256 ).fill( - 1 );		// file notes by pitch, live ones at 128 + pitch
 			this._burst = new Int32Array( 256 ).fill( - 1 );
-			this._carry = new Float32Array( 256 * ( EMITTERS + 2 ) );		// fractional births per key: emitters, smoke, ash
+			this._carry = new Float32Array( 256 * CARRY );		// fractional births per key: emitters, smoke, ash (or a style's own)
+			this._tint = [ 1, 1, 1 ];					// the colour of the particles being put (_put)
 
 		}
 
@@ -1010,11 +1205,13 @@ export class PianoRoll {
 			const geo = quadCorners( new THREE.InstancedBufferGeometry() );
 			this.sAttr = new THREE.InstancedBufferAttribute( new Float32Array( MAX_STREAKS * 4 ).fill( - 1e6 ), 4 ).setUsage( THREE.DynamicDrawUsage );
 			this.sInfo = new THREE.InstancedBufferAttribute( new Float32Array( MAX_STREAKS * 2 ), 2 ).setUsage( THREE.DynamicDrawUsage );
+			this.sColor = new THREE.InstancedBufferAttribute( new Float32Array( MAX_STREAKS * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
 			geo.setAttribute( 'aStreak', this.sAttr );
 			geo.setAttribute( 'aStreakInfo', this.sInfo );
+			geo.setAttribute( 'aStreakColor', this.sColor );
 			geo.instanceCount = MAX_STREAKS;			// (dead ones collapse in the shader)
 			const flame = FLAME_COLOR === null ? null : new THREE.Color( FLAME_COLOR );
-			this.streakUniforms = { uFlame: { value: flame ?? this.color }, uLiveFlame: { value: flame ?? this.liveColor }, uTime: this.partUniforms.uTime, uScale: this.partUniforms.uScale, uIntensity: this.partUniforms.uIntensity, uClip: this.clipUniform };
+			this.streakUniforms = { uFlame: { value: flame ?? new THREE.Color() }, uFlameFixed: { value: flame ? 1 : 0 }, uTime: this.partUniforms.uTime, uScale: this.partUniforms.uScale, uIntensity: this.partUniforms.uIntensity, uClip: this.clipUniform };
 			this.streaks = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: STREAK_VS, fragmentShader: STREAK_FS, uniforms: this.streakUniforms, ...common } ) );
 			this.streaks.frustumCulled = false;
 			this.streaks.renderOrder = 12;
@@ -1022,6 +1219,28 @@ export class PianoRoll {
 			this.group.add( this.streaks );
 			this.sNext = 0;
 			this.sDirty = false;
+
+		}
+
+		// rings (mallets, drums: RING_VS), a ring buffer of quads
+		{
+
+			const geo = quadCorners( new THREE.InstancedBufferGeometry() );
+			this.rAttr = new THREE.InstancedBufferAttribute( new Float32Array( MAX_RINGS * 4 ).fill( - 1e6 ), 4 ).setUsage( THREE.DynamicDrawUsage );
+			this.rInfo = new THREE.InstancedBufferAttribute( new Float32Array( MAX_RINGS * 3 ).fill( 1 ), 3 ).setUsage( THREE.DynamicDrawUsage );
+			this.rColor = new THREE.InstancedBufferAttribute( new Float32Array( MAX_RINGS * 3 ), 3 ).setUsage( THREE.DynamicDrawUsage );
+			geo.setAttribute( 'aRing', this.rAttr );
+			geo.setAttribute( 'aRingInfo', this.rInfo );
+			geo.setAttribute( 'aRingColor', this.rColor );
+			geo.instanceCount = MAX_RINGS;			// (dead ones collapse in the shader)
+			this.ringUniforms = { uTime: this.partUniforms.uTime, uIntensity: this.partUniforms.uIntensity, uClip: this.clipUniform };
+			this.rings = new THREE.Mesh( geo, new THREE.ShaderMaterial( { vertexShader: RING_VS, fragmentShader: RING_FS, uniforms: this.ringUniforms, ...common } ) );
+			this.rings.frustumCulled = false;
+			this.rings.renderOrder = 12;
+			this.rings.userData.noAO = true;
+			this.group.add( this.rings );
+			this.rNext = 0;
+			this.rDirty = false;
 
 		}
 
@@ -1058,12 +1277,14 @@ export class PianoRoll {
 		this.notes = null;
 		this.events = null;
 		this.playing = new Float32Array( 128 );	// per pitch: velocity of the sounding note (0 = idle)
+		this.keyColor = new Float32Array( 128 * 3 );	// per pitch: the colour of its strongest sounding note (kept once released: its glow and flare fade in it)
 		this.flareDrive = new Float32Array( 128 );	// per pitch: a hit flare's pumping this frame (0.55 + 0.45 vel)
 		this.flareLevel = new Float32Array( 128 );	// per pitch: the hit flare's brightness (decaying, pumped)
 		this.liveFlareDrive = new Float32Array( 128 );	// the same for the live notes (independent of the file's)
 		this.liveFlareLevel = new Float32Array( 128 );
 		this.prevPos = 0;
 		this.time = 0;
+		this._applyColor();		// (the palette)
 
 	}
 
@@ -1133,6 +1354,8 @@ export class PianoRoll {
 		if ( ! n || ! this.group.visible ) return;
 		this.ghostRect.array.set( this.rect.array.subarray( 0, n * 4 ) );
 		this.ghostInfo.array.set( this.info.array.subarray( 0, n * 2 ) );
+		this.ghostColor.array.set( this.barColor.array.subarray( 0, n * 3 ) );
+		this.ghostColor.needsUpdate = true;
 		for ( let i = 0; i < n; ++ i ) this.ghostInfo.array[ i * 2 + 1 ] = 0;		// none sounding
 		this.ghostRect.needsUpdate = this.ghostInfo.needsUpdate = true;
 		this.ghostBars.geometry.instanceCount = n;
@@ -1154,7 +1377,10 @@ export class PianoRoll {
 			const off = d.subtype === 'noteOff' || ( d.subtype === 'noteOn' && d.velocity === 0 );
 			if ( d.subtype === 'noteOn' && ! off ) {
 
-				const n = { on: e.time, off: Infinity, pitch: p, vel: d.velocity / 127, x: pitchX( p ), w: isBlack( p ) ? 0.0098 : WHITE_PITCH * 0.74 };
+				// its timbre: the family (the drum channel its own), the shade within it (palette index tc)
+				const fam = d.channel === 9 ? DRUMS : ( d.program ?? 0 ) >> 3, shade = fam === DRUMS ? drumShade( p ) : ( d.program ?? 0 ) & 7;
+				const n = { on: e.time, off: Infinity, pitch: p, vel: d.velocity / 127, x: pitchX( p ), w: isBlack( p ) ? 0.0098 : WHITE_PITCH * 0.74,
+					fam, tc: fam * 8 + shade, program: d.program ?? 0, channel: d.channel };
 				notes.push( n );
 				if ( ! open.has( p ) ) open.set( p, [] );
 				open.get( p ).push( n );
@@ -1171,6 +1397,17 @@ export class PianoRoll {
 		for ( const n of notes ) if ( n.off === Infinity ) n.off = Math.max( end, n.on + 500 );
 		notes.sort( ( a, b ) => a.on - b.on );
 		this.notes = notes;
+		// the file's timbres (a family per channel and program), for the GUI and checks
+		const tim = new Map();
+		for ( const n of notes ) {
+
+			const k = `${ n.channel }|${ n.program }`;
+			if ( ! tim.has( k ) ) tim.set( k, { family: TIMBRE_FAMILIES[ n.fam ].name, style: TIMBRE_FAMILIES[ n.fam ].style, program: n.program, channel: n.channel, tc: n.tc, notes: 0 } );
+			++ tim.get( k ).notes;
+
+		}
+		this.timbres = [ ...tim.values() ];
+		this._applyColor();
 		this.maxDur = notes.reduce( ( m, n ) => Math.max( m, n.off - n.on ), 0 );
 		this.events = events;
 
@@ -1536,6 +1773,43 @@ export class PianoRoll {
 
 		this.color.copy( this.mode === 'voice' ? this.voiceColor : this.musicColor );
 		for ( const g of this.keyGlows.values() ) g.material.color.copy( this.color );
+		// the palette: per family and shade (voice mode, or not by timbre: all the roll colour)
+		const P = this.palette, c = new THREE.Color(), hsl = {}, lum = k => 0.2126 * k.r + 0.7152 * k.g + 0.0722 * k.b;
+		const ref = Math.max( lum( this.color ), 1e-4 );
+		TIMBRE_FAMILIES.forEach( ( f, fi ) => {
+
+			for ( let sh = 0; sh < 8; ++ sh ) {
+
+				if ( this.mode === 'voice' || ! this.byTimbre ) c.copy( this.color );
+				else {
+
+					c.copy( f.color ? new THREE.Color( f.color ) : this.color );
+					if ( sh ) {
+
+						c.getHSL( hsl );
+						c.setHSL( ( hsl.h + TIMBRE_SHADE[ sh ][ 0 ] + 1 ) % 1, hsl.s, THREE.MathUtils.clamp( hsl.l * ( 1 + TIMBRE_SHADE[ sh ][ 1 ] ), 0.05, 0.85 ) );
+
+					}
+
+					// (a bright hue brought down towards the roll colour's luminance, partly; never brightened)
+					if ( f.color ) c.multiplyScalar( Math.min( 1, ( ref / Math.max( lum( c ), 1e-4 ) ) ** TIMBRE_EVEN ) );
+
+				}
+
+				P.set( [ c.r, c.g, c.b ], ( fi * 8 + sh ) * 3 );
+
+			}
+
+		} );
+		for ( const t of this.timbres ) t.color = '#' + c.setRGB( P[ t.tc * 3 ], P[ t.tc * 3 + 1 ], P[ t.tc * 3 + 2 ] ).getHexString();
+
+	}
+
+	/** Colour and particles by timbre (a multi-timbre file), or all as the piano (GUI). */
+	setByTimbre( on ) {
+
+		this.byTimbre = !! on;
+		this._applyColor();
 
 	}
 
@@ -1649,7 +1923,9 @@ export class PianoRoll {
 
 		this.playing.fill( 0 );
 		const drive = this.flareDrive.fill( 0 );		// per pitch: the strongest sounding note's pumping
-		const rect = this.rect.array, info = this.info.array, flare = this.flare.array;
+		const rect = this.rect.array, info = this.info.array, flare = this.flare.array, bcol = this.barColor.array, fcol = this.flareColor.array;
+		const pal = this.palette, kc = this.keyColor, strongest = this._strongest ??= new Float32Array( 128 );
+		strongest.fill( 0 );
 		let nb = 0, nf = 0;
 		const horizon = pos + lookahead * 1000;
 		const emit = this.particles && this.mode !== 'voice' && player.playing;
@@ -1674,6 +1950,8 @@ export class PianoRoll {
 				info[ nb * 2 ] = n.vel;
 				// lit while it sounds, with its key's flare (relative to that note's settled peak)
 				info[ nb * 2 + 1 ] = n.on <= pos ? Math.min( 1, this.flareLevel[ n.pitch ] / ( FLARE_GAIN * ( 0.55 + 0.45 * n.vel ) ) ) : 0;
+				const tc = n.tc ?? 0;
+				bcol[ nb * 3 ] = pal[ tc * 3 ]; bcol[ nb * 3 + 1 ] = pal[ tc * 3 + 1 ]; bcol[ nb * 3 + 2 ] = pal[ tc * 3 + 2 ];
 				++ nb;
 
 			}
@@ -1681,8 +1959,16 @@ export class PianoRoll {
 			if ( sounding ) {
 
 				this.playing[ n.pitch ] = Math.max( this.playing[ n.pitch ], 0.35 + 0.65 * n.vel );
+				const tc = n.tc ?? 0;
+				// (the key's colour: its loudest sounding note's)
+				if ( n.vel + 1e-3 > strongest[ n.pitch ] ) { strongest[ n.pitch ] = n.vel + 1e-3; kc[ n.pitch * 3 ] = pal[ tc * 3 ]; kc[ n.pitch * 3 + 1 ] = pal[ tc * 3 + 1 ]; kc[ n.pitch * 3 + 2 ] = pal[ tc * 3 + 2 ]; }
 
-				if ( emit ) this._emitNote( n.pitch, n.x, n.w, Math.min( y1, this.height ), n.vel, n.on > burstFrom, dt, false );
+				if ( emit ) {
+
+					this._tint[ 0 ] = pal[ tc * 3 ]; this._tint[ 1 ] = pal[ tc * 3 + 1 ]; this._tint[ 2 ] = pal[ tc * 3 + 2 ];
+					this._emitNote( n.pitch, n.x, n.w, Math.min( y1, this.height ), n.vel, n.on > burstFrom, dt, false, this.byTimbre ? TIMBRE_STYLE[ n.fam ?? 0 ] : EMBER );
+
+				}
 
 			}
 
@@ -1700,6 +1986,7 @@ export class PianoRoll {
 				flare[ nf * 3 ] = pitchX( p );
 				flare[ nf * 3 + 1 ] = ( isBlack( p ) ? 0.0098 : WHITE_PITCH * 0.74 ) / 2;
 				flare[ nf * 3 + 2 ] = fl[ p ];
+				fcol[ nf * 3 ] = kc[ p * 3 ]; fcol[ nf * 3 + 1 ] = kc[ p * 3 + 1 ]; fcol[ nf * 3 + 2 ] = kc[ p * 3 + 2 ];
 				++ nf;
 
 			}
@@ -1712,11 +1999,17 @@ export class PianoRoll {
 		this.info.clearUpdateRanges();
 		this.rect.addUpdateRange( 0, nb * 4 );
 		this.info.addUpdateRange( 0, nb * 2 );
+		this.barColor.needsUpdate = true;
+		this.barColor.clearUpdateRanges();
+		this.barColor.addUpdateRange( 0, nb * 3 );
 		this.bars.geometry.instanceCount = nb;
 		this.drawnColor.copy( this.color );
 		this.flare.needsUpdate = true;
 		this.flare.clearUpdateRanges();
 		this.flare.addUpdateRange( 0, nf * 3 );
+		this.flareColor.needsUpdate = true;
+		this.flareColor.clearUpdateRanges();
+		this.flareColor.addUpdateRange( 0, nf * 3 );
 		this.flares.geometry.instanceCount = nf;
 
 		this._flushParticles();
@@ -1736,7 +2029,7 @@ export class PianoRoll {
 		for ( const note of this.liveNotes ) if ( note.off === null ) drive[ note.pitch ] = Math.max( drive[ note.pitch ], 0.55 + 0.45 * note.vel );
 		// the hit flares of the held keys: as the file's (always decaying, pumped by a held note at a
 		// rate set by its velocity), on the live clock, so a paused file doesn't stop them
-		const lf = this.liveFlare.array;
+		const lf = this.liveFlare.array, lc = this.liveFlareColor.array;
 		let nf = 0;
 		for ( let p = PITCH_MIN; p <= PITCH_MAX; ++ p ) {
 
@@ -1747,6 +2040,7 @@ export class PianoRoll {
 				lf[ nf * 3 ] = pitchX( p );
 				lf[ nf * 3 + 1 ] = ( isBlack( p ) ? 0.0098 : WHITE_PITCH * 0.74 ) / 2;
 				lf[ nf * 3 + 2 ] = fl[ p ];
+				lc[ nf * 3 ] = this.liveColor.r; lc[ nf * 3 + 1 ] = this.liveColor.g; lc[ nf * 3 + 2 ] = this.liveColor.b;
 				++ nf;
 
 			}
@@ -1756,6 +2050,9 @@ export class PianoRoll {
 		this.liveFlare.needsUpdate = true;
 		this.liveFlare.clearUpdateRanges();
 		this.liveFlare.addUpdateRange( 0, nf * 3 );
+		this.liveFlareColor.needsUpdate = true;
+		this.liveFlareColor.clearUpdateRanges();
+		this.liveFlareColor.addUpdateRange( 0, nf * 3 );
 		this.liveFlares.geometry.instanceCount = nf;
 		let n = 0, keep = 0;
 		for ( const note of this.liveNotes ) {
@@ -1774,10 +2071,13 @@ export class PianoRoll {
 			rect[ n * 4 + 3 ] = Math.min( y1, this.height + 0.05 );
 			info[ n * 2 ] = note.vel;
 			info[ n * 2 + 1 ] = note.lit;
+			const bc = this.liveBarColor.array;
+			bc[ n * 3 ] = this.liveColor.r; bc[ n * 3 + 1 ] = this.liveColor.g; bc[ n * 3 + 2 ] = this.liveColor.b;
 			++ n;
 			// held: it smoulders like a file note (along the bar from the hit line), in the live colour
 			if ( emit && note.off === null && dt > 0 ) {
 
+				this._tint[ 0 ] = this.liveColor.r; this._tint[ 1 ] = this.liveColor.g; this._tint[ 2 ] = this.liveColor.b;
 				this._emitNote( 128 + note.pitch, note.x, note.w, Math.min( y1, this.height ), note.vel, ! note.burst, dt, true );
 				note.burst = true;
 
@@ -1791,6 +2091,9 @@ export class PianoRoll {
 		this.liveInfo.clearUpdateRanges();
 		this.liveRect.addUpdateRange( 0, n * 4 );
 		this.liveInfo.addUpdateRange( 0, n * 2 );
+		this.liveBarColor.needsUpdate = true;
+		this.liveBarColor.clearUpdateRanges();
+		this.liveBarColor.addUpdateRange( 0, n * 3 );
 		this.liveBars.geometry.instanceCount = n;
 
 	}
@@ -1810,7 +2113,7 @@ export class PianoRoll {
 	 * in time; a strike lifts their rate for a moment (spread over time, not born at once). Smoke and
 	 * ash from higher up, now and then a flame from the hit line.
 	 */
-	_emitNote( key, x, w, len, vel, strike, dt, live ) {
+	_emitNote( key, x, w, len, vel, strike, dt, live, style = EMBER ) {
 
 		if ( this._streamed[ key ] === this._frame ) return;
 		this._streamed[ key ] = this._frame;
@@ -1823,8 +2126,9 @@ export class PianoRoll {
 		const since = now - this._strikeAt[ key ];
 		const note = key * 7.31 + ( this._strikeAt[ key ] * 13.7 ) % 1000;		// this note's emitters
 		const boost = 1 + 2 * Math.exp( - Math.max( 0, since ) / 0.15 );
-		const v = 0.6 + 0.4 * vel, c = this._carry, base = key * ( EMITTERS + 2 );
+		const v = 0.6 + 0.4 * vel, c = this._carry, base = key * CARRY;
 		const L = Math.max( 0.002, len ), hw = w / 2;
+		if ( style !== EMBER ) { this._emitStyle( style, key, x, w, L, vel, strike, since, note, t0, now, dt, live ); return; }
 		const ne = 1 + Math.min( EMITTERS - 1, Math.floor( vel * EMITTERS + hash( note ) * 0.999 ) );
 		for ( let e = 0; e < ne; ++ e ) {
 
@@ -1865,6 +2169,88 @@ export class PianoRoll {
 
 	}
 
+	/**
+	 * The other families' particles (see TIMBRE_FAMILIES, PART_VS's kinds 3-7, RING_VS), over the frame
+	 * just gone: `since` s from the strike, `note` the note's seed, births spread over [ t0, now ] by the
+	 * per-key fractional carry (any frame rate the same rate).
+	 */
+	_emitStyle( style, key, x, w, L, vel, strike, since, note, t0, now, dt, live ) {
+
+		const c = this._carry, base = key * CARRY, hw = w / 2;
+		// n births at `rate` per s into carry slot `slot`
+		const births = ( slot, rate ) => { const n = c[ base + slot ] + rate * dt, k = Math.floor( n ); c[ base + slot ] = n - k; return k; };
+		if ( style === RIBBON ) {
+
+			// 1-2 emitters near the bar's foot, wandering slowly (each a thread); a bowed swell at the start
+			const ne = vel > 0.55 ? 2 : 1, rate = ( RIBBON_RATE[ 0 ] + RIBBON_RATE[ 1 ] * vel ) * ( 1 + 0.8 * Math.exp( - Math.max( 0, since ) / 0.3 ) );
+			for ( let e = 0; e < ne; ++ e ) {
+
+				const es = ( note + e * 5.3 ) % 997, ox = ( hash( es * 1.7 ) * 2 - 1 ) * 0.6 * hw, w1 = 0.8 + 1.2 * hash( es * 4.3 ), p1 = 6.283 * hash( es * 2.1 );
+				const k = births( e, rate );
+				for ( let j = 0; j < k; ++ j ) {
+
+					const tb = Math.min( now, t0 + ( j + 0.5 ) * dt / k );
+					this._put( x + ox + hw * 0.35 * Math.sin( w1 * tb + p1 ), 0.002 + 0.003 * hash( es * 3.9 ), es, tb, this._rand() * 100, 3, live, 0.55 + 0.45 * vel );
+
+				}
+
+			}
+
+		} else if ( style === RING ) {
+
+			// the strike: a ripple (two for a loud one, the second later and smaller); then twinkling stars
+			// along the bar's foot, fewer as the struck note rings away
+			if ( strike ) {
+
+				this._putRing( x, 0.002, t0, this._rand() * 100, 0.7 + 0.3 * vel, ( 0.02 + 0.025 * vel ), 1.1 + 0.5 * this._rand(), live );
+				if ( vel > 0.5 ) this._putRing( x, 0.002, t0 + 0.12, this._rand() * 100, 0.45 * vel, 0.6 * ( 0.02 + 0.025 * vel ), 1.0, live );
+
+			}
+
+			const k = births( 0, GLINT_RATE * ( 0.4 + 0.6 * vel ) * ( 0.3 + 0.7 * Math.exp( - Math.max( 0, since ) / 0.6 ) ) + ( strike ? 3 / Math.max( dt, 1e-3 ) : 0 ) );
+			for ( let j = 0; j < Math.min( k, 12 ); ++ j )
+				this._put( x + ( this._rand() - 0.5 ) * 2.4 * w, 0.003 + Math.min( L, 0.03 ) * this._rand(), 0, t0 + this._rand() * dt, this._rand() * 100, 4, live, 0.6 + 0.4 * vel );
+
+		} else if ( style === PUFF ) {
+
+			// breath: soft puffs rising from just above the hit line (a couple at the attack), a few specks
+			const k = births( 0, PUFF_RATE * ( 0.5 + 0.5 * vel ) ) + ( strike ? 2 : 0 );
+			for ( let j = 0; j < k; ++ j )
+				this._put( x + ( this._rand() - 0.5 ) * 1.2 * w, 0.004 + 0.008 * this._rand(), 0, t0 + this._rand() * dt, this._rand() * 100, 5, live, 0.6 + 0.4 * vel );
+			const a = births( 1, 6 * ( 0.5 + 0.5 * vel ) );
+			for ( let j = 0; j < a; ++ j )
+				this._put( x + ( this._rand() - 0.5 ) * 2 * w, 0.01 + 0.05 * this._rand(), 0, t0 + this._rand() * dt, this._rand() * 100, 2, live, 0.6 + 0.4 * vel );
+
+		} else if ( style === MOTE ) {
+
+			const k = births( 0, MOTE_RATE * ( 0.5 + 0.5 * vel ) ) + ( strike ? 3 : 0 );
+			for ( let j = 0; j < k; ++ j )
+				this._put( x + ( this._rand() - 0.5 ) * 2 * w, 0.003 + 0.04 * this._rand() * Math.min( 1, L / 0.04 ), 0, t0 + this._rand() * dt, this._rand() * 100, 6, live, 0.6 + 0.4 * vel );
+
+		} else if ( style === BURST ) {
+
+			// the strike only: a fan of sparks and a small, quick ripple
+			if ( ! strike ) return;
+			const k = Math.round( BURST_SPARKS[ 0 ] + BURST_SPARKS[ 1 ] * vel );
+			for ( let j = 0; j < k; ++ j ) this._put( x + ( this._rand() - 0.5 ) * 0.5 * w, 0.002, 0, t0 + this._rand() * 0.004, this._rand() * 100, 7, live, 0.6 + 0.4 * vel );
+			this._putRing( x, 0.002, t0, this._rand() * 100, 0.5 + 0.3 * vel, 0.012 + 0.01 * vel, 0.45, live );
+
+		}
+
+	}
+
+	/** a ripple: centre (x, y), birth time, seed, strength, its last radius (m), its life (s) */
+	_putRing( x, y, t0, seed, strength, radius, life, live ) {
+
+		const i = this.rNext, a = this.rAttr.array, b = this.rInfo.array, col = this.rColor.array, t = this._tint;
+		a.set( [ x, y, t0, seed ], i * 4 );
+		b.set( [ strength, radius, life ], i * 3 );
+		col.set( t, i * 3 );
+		this.rNext = ( i + 1 ) % MAX_RINGS;
+		this.rDirty = true;
+
+	}
+
 	/** one particle: birth place (x, y), emitter seed, birth time, seed, kind, live, strength */
 	_put( x, y, es, t0, seed, kind, live, strength ) {
 
@@ -1874,8 +2260,10 @@ export class PianoRoll {
 		pos[ i * 3 + 2 ] = es;
 		sp[ i * 4 ] = t0;
 		sp[ i * 4 + 1 ] = seed;
-		sp[ i * 4 + 2 ] = kind + ( live ? 4 : 0 );
+		sp[ i * 4 + 2 ] = kind + ( live ? 16 : 0 );
 		sp[ i * 4 + 3 ] = strength;
+		const tn = this.pTint.array, t = this._tint;
+		tn[ i * 3 ] = t[ 0 ]; tn[ i * 3 + 1 ] = t[ 1 ]; tn[ i * 3 + 2 ] = t[ 2 ];
 		if ( this.pDirtyCount === 0 ) this.pDirtyFrom = i;
 		++ this.pDirtyCount;
 		this.pNext = ( i + 1 ) % MAX_PARTICLES;
@@ -1891,6 +2279,7 @@ export class PianoRoll {
 		a[ i * 4 + 3 ] = seed;
 		b[ i * 2 ] = strength;
 		b[ i * 2 + 1 ] = live ? 1 : 0;
+		this.sColor.array.set( this._tint, i * 3 );
 		this.sNext = ( i + 1 ) % MAX_STREAKS;
 		this.sDirty = true;
 
@@ -1900,14 +2289,21 @@ export class PianoRoll {
 
 		if ( this.sDirty ) {
 
-			this.sAttr.needsUpdate = this.sInfo.needsUpdate = true;		// (small: the whole ring)
+			this.sAttr.needsUpdate = this.sInfo.needsUpdate = this.sColor.needsUpdate = true;		// (small: the whole ring)
 			this.sDirty = false;
+
+		}
+
+		if ( this.rDirty ) {
+
+			this.rAttr.needsUpdate = this.rInfo.needsUpdate = this.rColor.needsUpdate = true;		// (small: the whole ring)
+			this.rDirty = false;
 
 		}
 
 		if ( ! this.pDirtyCount ) return;
 		const from = this.pDirtyFrom, count = Math.min( this.pDirtyCount, MAX_PARTICLES );
-		for ( const [ attr, k ] of [ [ this.pPos, 3 ], [ this.pSpawn, 4 ] ] ) {
+		for ( const [ attr, k ] of [ [ this.pPos, 3 ], [ this.pSpawn, 4 ], [ this.pTint, 3 ] ] ) {
 
 			attr.clearUpdateRanges();
 			const first = Math.min( count, MAX_PARTICLES - from );
@@ -1953,8 +2349,10 @@ export class PianoRoll {
 		const n = Math.max( 1, Math.ceil( dt / ( 1 / 120 ) ) ), h = dt / n;
 		for ( const [ pitch, g ] of this.keyGlows ) {
 
-			let target = 0;
-			if ( ! off ) for ( const [ q, w ] of this._keyNeighbours.get( pitch ) ) target = Math.max( target, this.playing[ q ] * w );
+			let target = 0, from = - 1;
+			if ( ! off ) for ( const [ q, w ] of this._keyNeighbours.get( pitch ) ) if ( this.playing[ q ] * w > target ) { target = this.playing[ q ] * w; from = q; }
+			// (tinted by the timbre lighting it, its strongest neighbour's; kept while it lets go)
+			if ( from >= 0 ) g.material.color.setRGB( this.keyColor[ from * 3 ], this.keyColor[ from * 3 + 1 ], this.keyColor[ from * 3 + 2 ] );
 			const u = g.userData;
 			let l = u.level, v = u.vel ?? 0;
 			if ( l === target && v === 0 ) continue;

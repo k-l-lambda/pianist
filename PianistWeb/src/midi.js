@@ -10,7 +10,8 @@
 //    key/hammer/damper presses and pedal (CC64 sustain, CC66 sostenuto, CC67 soft) moves.
 // Tempo scales file time; seeking or stopping releases every note and pedal the file holds.
 //
-// Everything plays as the piano: program and bank changes are ignored, and of the
+// Everything plays as the piano: program and bank changes are ignored (for the sound: each note
+// carries its channel's program, d.program, for the roll's colours), and of the
 // controllers only the three pedals are used (volume, expression, modulation, pitch bend
 // etc. would otherwise detune or silence the piano, and stay set for the next file).
 
@@ -38,6 +39,7 @@ export function parseMidiEvents( buffer ) {
 	const events = [];
 	const seen = new Set();
 	let time = 0, lastTime = - 1;
+	const program = new Map();		// channel -> its GM program (0-based) at this point of the file
 	for ( const [ { event }, delta ] of seq ) {
 
 		time += delta;
@@ -48,7 +50,11 @@ export function parseMidiEvents( buffer ) {
 
 		}
 
+		// (program changes are not played (the piano plays everything), but each note keeps its channel's
+		// program, `d.program`: the roll colours a multi-timbre file's notes and picks their particles by it)
+		if ( event.type === 'channel' && event.subtype === 'programChange' ) { program.set( event.channel, event.programNumber ); continue; }
 		if ( event.type !== 'channel' || ! kinds.has( event.subtype ) ) continue;
+		if ( event.subtype === 'noteOn' || event.subtype === 'noteOff' ) event.program = program.get( event.channel ) ?? 0;
 		if ( event.subtype === 'controller' && ! PEDALS[ event.controllerType ] ) continue;
 		const key = `${ event.subtype }|${ event.channel }|${ event.noteNumber ?? event.controllerType ?? '' }|${ event.value ?? '' }`;
 		if ( seen.has( key ) ) continue;
