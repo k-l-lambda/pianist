@@ -136,5 +136,20 @@ screen.
   separate steps, before generating.
 - `run.json`'s `cot_*` fields can come back empty even when thinking ran and used your metadata.
   The plan is in the log (`# Caption`, `- bpm: ...`).
+- **Memory for the larger models.** The XL DiTs ship **FP32** weights (`acestep-v15-xl-turbo`: 4 x
+  5 GB = 20 GB). Loading them takes that much **host RAM** before the move to the GPU. With
+  `--offload` (`offload_to_cpu`, `offload_dit_to_cpu`), the idle models also stay in host RAM.
+  - A 4B LM + XL-turbo load with offload reached 30.9 GB RSS and was OOM-killed. On a 62 GB
+    machine shared with other jobs it filled swap and stalled the whole box.
+  - Before using XL, convert the weights to BF16 (half the size).
+  - Run large loads under a memory cap, so an overrun kills only that job:
+    `systemd-run --user --scope -p MemoryMax=<n>G <ace-python> generate.py ...`.
+  - The 4B LM next to the 2B turbo DiT needs ~16 GB of VRAM, more than a 24 GB card has free
+    when ~7 GB is taken. With `--offload` it fits.
+- The 4B LM did not follow a spelt-out mode better than the 1.7B in one test (2 seeds), but it
+  dropped the unwanted drums. The same seed gives different music with a different LM.
+- `hf download` can hang on a bad CDN address (0-byte `.incomplete`, no progress). Downloading the
+  same `resolve/main/<file>` URLs with `curl -L -C -` (resumable), with sizes checked against
+  `https://huggingface.co/api/models/<repo>/tree/main?recursive=1`, works around it.
 - Installing into a uv-made venv: it has no pip, and `pip` on the PATH may be the system's or the
   user's (`~/.local`). Use `uv pip install --python <venv>/bin/python ...`.
