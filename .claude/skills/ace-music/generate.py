@@ -34,6 +34,8 @@ ap.add_argument('--shift', type=float, default=3.0, help='3.0 for turbo models')
 ap.add_argument('--guidance', type=float, default=7.0, help='CFG, non-turbo models only')
 ap.add_argument('--no-think', action='store_true', help='skip the LM plan (faster, the DiT alone)')
 ap.add_argument('--lm-backend', default='pt', choices=['pt', 'vllm'])
+ap.add_argument('--offload', action='store_true',
+                help='keep idle models on the CPU (the LM while the DiT runs and back): for XL + 4B on 24 GB')
 ap.add_argument('--name', default='ace')
 ap.add_argument('--format', default='wav', choices=['wav', 'flac', 'mp3', 'wav32'])
 a = ap.parse_args()
@@ -55,13 +57,14 @@ os.makedirs(a.out, exist_ok=True)
 
 t0 = time.time()
 dit = AceStepHandler()
-msg, ok = dit.initialize_service(project_root=ace, config_path=a.dit, device='cuda')
+msg, ok = dit.initialize_service(project_root=ace, config_path=a.dit, device='cuda',
+                                 offload_to_cpu=a.offload, offload_dit_to_cpu=a.offload)
 if not ok: sys.exit(f'DiT init failed: {msg}')
 llm = None
 if not a.no_think:
     llm = LLMHandler()
     msg, ok = llm.initialize(checkpoint_dir=os.path.join(ace, 'checkpoints'), lm_model_path=a.lm,
-                             backend=a.lm_backend, device='cuda')
+                             backend=a.lm_backend, device='cuda', offload_to_cpu=a.offload)
     if not ok: sys.exit(f'LM init failed: {msg}')
 t1 = time.time()
 
@@ -91,7 +94,7 @@ for au, seed in zip(res.audios, seeds):
 
 info = {'caption': caption, 'lyrics': lyrics, 'bpm': a.bpm, 'key': a.key, 'timesig': a.timesig,
         'duration': a.duration, 'dit': a.dit, 'lm': None if a.no_think else a.lm, 'steps': a.steps,
-        'shift': a.shift, 'think': not a.no_think, 'load_s': round(t1 - t0, 1),
+        'shift': a.shift, 'think': not a.no_think, 'offload': a.offload, 'load_s': round(t1 - t0, 1),
         'gen_s': round(t2 - t1, 1), 'files': files}
 json.dump(info, open(os.path.join(a.out, 'run.json'), 'w'), ensure_ascii=False, indent=1)
 print(json.dumps(info, ensure_ascii=False, indent=1))
