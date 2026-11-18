@@ -47,6 +47,19 @@ from acestep.handler import AceStepHandler
 from acestep.llm_inference import LLMHandler
 from acestep.inference import GenerationParams, GenerationConfig, generate_music
 
+# acestep's LM loader calls from_pretrained without a dtype, so transformers 4.x loads the BF16
+# weights as FP32 and casts on the GPU (`.to(device).to(dtype)`): a 4B LM takes ~16 GB there before
+# shrinking, which with an XL DiT does not fit 24 GB. Load it as BF16 in the first place.
+import torch
+import acestep.llm_inference as _li
+_Auto = _li.AutoModelForCausalLM
+class _AutoBF16:
+    @staticmethod
+    def from_pretrained(*args, **kw):
+        if 'torch_dtype' not in kw and 'dtype' not in kw: kw['torch_dtype'] = torch.bfloat16
+        return _Auto.from_pretrained(*args, **kw)
+_li.AutoModelForCausalLM = _AutoBF16
+
 read = lambda p: open(p, encoding='utf-8').read().strip()
 caption = a.caption if a.caption is not None else read(a.caption_file)
 lyrics = a.lyrics if a.lyrics is not None else (read(a.lyrics_file) if a.lyrics_file else '')

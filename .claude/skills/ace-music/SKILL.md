@@ -87,7 +87,9 @@ and the mood. Fix BPM, key and time signature with the flags rather than in word
   Emaj9#11, F#/E, Bmaj7#11, C#m11"; "whole-tone runs (C D E F# G# A#)"; "a second layer in B flat
   major, a tritone away, Bbmaj7 over E bass") brought A# into 3 of 4 seeds. One seed was clearly
   polytonal (Bb and F about as strong as E's notes). One stayed plain major. Use 4+ seeds and pick.
-  A stronger LM (4B) or an XL DiT may follow better; not tested.
+  The 4B LM, alone or with the XL DiT, did not follow the mode better (2 seeds each): A# stayed
+  at 4-7 % and A natural came back. The 4B + XL seed 37 had the highest E-Lydian share (80 %),
+  but by fewer foreign notes, not by more A#. Use more seeds, not a bigger model.
 - "No drums" is not always obeyed. With "brass swells, choir" in the caption, 2 of 4 seeds
   still had broadband rhythmic hits.
 - Sci-fi feel: "shimmering synth pads, crystalline arpeggios, glassy FM bells, wide stereo, long
@@ -141,11 +143,23 @@ screen.
   `--offload` (`offload_to_cpu`, `offload_dit_to_cpu`), the idle models also stay in host RAM.
   - A 4B LM + XL-turbo load with offload reached 30.9 GB RSS and was OOM-killed. On a 62 GB
     machine shared with other jobs it filled swap and stalled the whole box.
-  - Before using XL, convert the weights to BF16 (half the size).
+  - Before using XL, convert the weights to BF16 (half the size): load and save shard by shard
+    (`safetensors` `load_file` -> `.to(torch.bfloat16)` -> `save_file`), copy the config and the
+    `.py` files, and rewrite `model.safetensors.index.json`'s `total_size`. One 5 GB shard at a time
+    peaks at ~10 GB RSS; 20 GB -> 9.3 GB in 7 min. Load it as `--dit <new dir name>`: turbo is read
+    from `config.json` (`is_turbo`), not from the name.
+  - **The LM loads as FP32**: acestep calls `from_pretrained` without a dtype and casts on the GPU
+    (`.to(device).to(dtype)`). The 4B LM's BF16 weights then take ~16 GB of VRAM before shrinking,
+    and 4B + XL fails with `CUDA out of memory` on 24 GB. `generate.py` patches the loader to load
+    BF16 directly. With that, 4B LM + XL-turbo (BF16) runs fully on a free 24 GB card without
+    offload: 20.5 GB peak VRAM, 6.5 GB host RSS, load 76 s, 2 x 100 s in 177 s.
   - Run large loads under a memory cap, so an overrun kills only that job:
     `systemd-run --user --scope -p MemoryMax=<n>G <ace-python> generate.py ...`.
-  - The 4B LM next to the 2B turbo DiT needs ~16 GB of VRAM, more than a 24 GB card has free
-    when ~7 GB is taken. With `--offload` it fits.
+  - The 4B LM next to the 2B turbo DiT needed ~16 GB of VRAM with the FP32 load (before the fix
+    above), more than a 24 GB card had free with ~7 GB taken; `--offload` made it fit. Prefer
+    freeing the GPU to offloading: offload keeps whole models in host RAM.
+  - `systemd-run --scope` does not keep the current directory: give absolute paths, or
+    `--working-directory`.
 - The 4B LM did not follow a spelt-out mode better than the 1.7B in one test (2 seeds), but it
   dropped the unwanted drums. The same seed gives different music with a different LM.
 - `hf download` can hang on a bad CDN address (0-byte `.incomplete`, no progress). Downloading the
