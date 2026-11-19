@@ -43,7 +43,7 @@ GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
 const BAR = { cx: - 2.5, cz: 6.7 };				// the bar's arc (its front towards +z), the bottle wall behind it
-const BAR_SCALE = 1.0;					// a hospitality island, not a foreground wall
+const BAR_SCALE = 0.82;					// a hospitality island, not a foreground wall
 const STAIRS = { cx: - 12.5, cz: 6.5, r0: 0.9, r1: 2.8, rise: 6.4, steps: 30, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
 const MEZZ = { x0: WALL.x0, x1: - 14.0, z0: - 2.0, z1: WALL.z1, y: 6.4 };
 const COVE = { cx: - 0.5, cz: 6.0, r: 7.2, soffit: 5.0 };
@@ -783,8 +783,8 @@ export class Azurea {
 			// The reference composition leaves breathing room above the piano and shows the reflective floor;
 			// these are deliberately wider and higher than the old low, bar-dominant views.
 			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
-			'Lobby wide': { position: V( - 1.0, 3.3, 16.5 ), target: V( - 1.0, 2.5, 3.8 ) },
-			'Reference wide': { position: V( 0.0, 3.2, 17.2 ), target: V( - 1.5, 2.35, 3.7 ) },
+			'Lobby wide': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
+			'Reference wide': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
 			'Piano hero': { position: V( 2.8, 1.8, 2.0 ), target: V( - 0.3, 0.75, - 3.4 ) },
 			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
 			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
@@ -831,6 +831,9 @@ export class Azurea {
 			const c = new THREE.Shape( fp.map( ( [ x, z ] ) => new THREE.Vector2( x, z ) ) );
 			c.holes.push( new THREE.Path().absarc( COVE.cx, COVE.cz, COVE.r, 0, 2 * Math.PI, false ) );
 			add( new THREE.ShapeGeometry( c, 1 ).rotateX( Math.PI / 2 ).translate( 0, H, 0 ), M.ceiling );		// ((x, z) -> (x, 0, z), facing down)
+			// Close the annular gap around the recessed cove. Without this ceiling ring, a wide camera sees the sky
+			// through the enlarged cove and the lobby loses the reference's strong ceiling plane and scale cue.
+			add( new THREE.RingGeometry( COVE.soffit, COVE.r, 160 ).rotateX( Math.PI / 2 ).translate( COVE.cx, H - 0.045, COVE.cz ), M.ceiling );
 
 		}
 		// the walls (left, right, front: plaster), the mezzanine (marble on it, lacquer round, plaster under)
