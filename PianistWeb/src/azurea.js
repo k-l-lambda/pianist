@@ -36,7 +36,7 @@ const D = Math.PI / 180;
 const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
-const H = 9.2;									// the ceiling
+const H = 7.8;									// the ceiling
 const WALL = { x0: - 17, x1: 13, z1: 18.5 };		// the side walls, the front wall
 const GLASS = { cx: - 2, cz: 21.4, r: 26 };		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
@@ -75,8 +75,9 @@ SKY.h = SKY.r * ( SKY.pa1 - SKY.pa0 ) / 3; SKY.y0 = SKY.eye - SKY.h / 3;
 
 // the pack's pieces: [ slug, x, z, yaw (rad: its front +z turned to face (sin, cos)) ]
 const LAYOUT = [
-	[ 'sofa', 5.6, 3.4, Math.PI ],
+	[ 'sofa', 5.6, 3.4, Math.PI ], [ 'sofa', 8.7, 8.0, - 0.45 ],
 	[ 'lounge-chair', 4.1, 0.5, Math.atan2( 1.5, 1.2 ) ], [ 'lounge-chair', 7.1, 0.5, Math.atan2( - 1.5, 1.2 ) ],
+	[ 'lounge-chair', 7.3, 8.7, 0.3 ], [ 'lounge-chair', 10.5, 7.4, - 1.2 ],
 	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 3.15 * Math.cos( a * D ), BAR.cz + 3.15 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
 	[ 'plant-tall', - 15.2, - 1.0, 0.4 ], [ 'plant-tall', 11.0, - 1.3, - 0.9 ], [ 'plant-tall', - 14.8, 14.0, 2.1 ],
 	[ 'plant-low', 4.8, 5.0, 0.3 ], [ 'plant-low', - 8.0, 13.0, 1.7 ], [ 'plant-low', 10.8, 9.0, - 1.1 ],
@@ -95,7 +96,7 @@ const LAYOUT = [
 // its brightness is the photo's sky's always), clouds (thin high cloud's cover, 0..1), stars (× a night sky's),
 // airglow (the night sky's share of it)
 export const AZUREA_PRESETS = {
-	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 9, sunColor: '#fff4e4', sunAz: - 112, sunEl: 56, moon: false, disc: 1, glitter: 0.6, sky: 1.0, haze: 1.2, skyHue: 0.35, clouds: 0.25, stars: 0, airglow: 0, tint: '#ffffff', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
+	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 9, sunColor: '#fff4e4', sunAz: - 112, sunEl: 56, moon: false, disc: 1, glitter: 0.6, sky: 0.9, haze: 1.0, skyHue: 0.58, clouds: 0.25, stars: 0, airglow: 0, tint: '#d7ecfb', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
 	// (the sun low over the sea, to the right of straight out: az -50)
 	'Golden hour': { wisps: 0, deckLights: 0.35, moonCore: 1, sunCore: 16, seaVis: 22, wind: 0.5, windDir: 90, gust: 0.22, gustScale: 50, paws: 0.6, pawWind: 3.5, pawCover: 1, pawScale: 22, swell: 0.12, swellDir: 90, swellPeriod: 10, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
 	// (the golden hour's light on a calm sea: no wind of its own, a low swell, glassy; cat's paws drifting over it,
@@ -665,6 +666,7 @@ export class Azurea {
 			deckLamp: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 0.4, emissive: new THREE.Color( DECK_LAMP.color ), emissiveIntensity: 2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			// lines of light (the bar's strips, the soffit's rim) and the cove's glow
 			led: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#bfe7ff' ), emissiveIntensity: 3.5, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
+			barLight: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#ffe6bb' ), emissiveIntensity: 2.2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			flower: phys( { color: '#fffdf8', roughness: 0.48, sheen: 0.45, sheenColor: new THREE.Color( '#ffffff' ), sheenRoughness: 0.6 } ),
 			book: phys( { color: '#b9c8d1', roughness: 0.52, clearcoat: 0.25, clearcoatRoughness: 0.2 } ),
 			cove: phys( { color: '#f2f6f8', roughness: 0.9, emissive: new THREE.Color( '#e6f4ff' ), emissiveIntensity: 1, side: THREE.DoubleSide } ),
@@ -886,8 +888,12 @@ export class Azurea {
 		add( new THREE.CylinderGeometry( br * 0.96, br, 0.14, 96 ).translate( bx, 0.07, bz ), M.plinth );
 		add( new THREE.CylinderGeometry( br, br * 0.98, 0.94, 96 ).translate( bx, 0.58, bz ), M.marble );
 		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.07, 96 ).translate( bx, 1.07, bz ), M.marble );
-		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.028, 96 ).translate( bx, 0.16, bz ), M.led );
-		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.028, 96 ).translate( bx, 0.98, bz ), M.led );
+		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.028, 96 ).translate( bx, 0.16, bz ), M.barLight );
+		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.028, 96 ).translate( bx, 0.98, bz ), M.barLight );
+		// warm bar footline, continuous ring under the counter, and the narrow central pier up to the ceiling
+		add( new THREE.CylinderGeometry( br * 1.065, br * 1.065, 0.025, 96 ).translate( bx, 0.13, bz ), M.barLight );
+		add( new THREE.RingGeometry( br * 0.98, br * 1.075, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
+		add( new THREE.CylinderGeometry( 0.78, 0.86, H - 3.62, 64 ).translate( bx, ( H + 3.62 ) / 2, bz ), M.plaster );
 		// The cabinet is deliberately narrower than the counter so the marble top reads as an overhang.
 		const towerR = 1.58 * bs, towerY0 = 1.1, towerY1 = 3.75;
 		add( new THREE.CylinderGeometry( towerR, towerR, towerY1 - towerY0, 96, 1, true ).translate( bx, ( towerY0 + towerY1 ) / 2, bz ), M.bottles );
@@ -906,6 +912,8 @@ export class Azurea {
 			const helix = { ...st, a0, a1: S.top, segs: 120 };
 			add( band( { ...helix, r0: S.r1, r1: S.r1 + 0.06, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
 			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r0, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
+			// thin warm decorative light under the stair's inner edge
+			add( band( { ...helix, r0: S.r0 - 0.065, r1: S.r0 - 0.055, lo: a => yAt( a ) - 0.30, hi: a => yAt( a ) - 0.27, faces: 'o' } ), M.barLight );
 			add( band( { ...helix, r0: S.r1 + 0.02, r1: S.r1 + 0.032, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
 			const pts = []; for ( let i = 0; i <= 120; ++ i ) { const a = a0 + S.sweep * i / 120; pts.push( V( S.cx + ( S.r1 + 0.026 ) * Math.cos( a ), yAt( a ) + 1.03, S.cz + ( S.r1 + 0.026 ) * Math.sin( a ) ) ); }
 			add( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( pts ), 240, 0.022, 10 ), M.chrome );
@@ -916,7 +924,9 @@ export class Azurea {
 		add( new THREE.CylinderGeometry( 0.48, 0.48, 0.05, 64 ).translate( 5.6, 0.405, 1.7 ), M.marble );
 		add( new THREE.CylinderGeometry( 0.32, 0.32, 0.33, 64 ).translate( 5.6, 0.215, 1.7 ), M.tableGlass );
 		add( new THREE.CylinderGeometry( 0.34, 0.34, 0.05, 64 ).translate( 5.6, 0.025, 1.7 ), M.chrome );
-		add( new THREE.CircleGeometry( 1.75, 96 ).rotateX( - Math.PI / 2 ).translate( 5.6, 0.004, 1.6 ), M.rug );
+		// Two round rugs anchor the two sofa groups in the wide reference composition.
+		add( new THREE.CircleGeometry( 2.15, 96 ).rotateX( - Math.PI / 2 ).translate( 6.0, 0.004, 2.4 ), M.rug );
+		add( new THREE.CircleGeometry( 2.0, 96 ).rotateX( - Math.PI / 2 ).translate( 9.0, 0.004, 8.3 ), M.rug );
 		// Quiet styling on the reference table: a cool book stack and a low white flower arrangement.
 		add( box( 5.28, 5.62, 0.438, 0.47, 1.58, 1.78 ), M.book );
 		add( box( 5.31, 5.59, 0.472, 0.502, 1.59, 1.77 ), M.marble );
@@ -1002,7 +1012,7 @@ export class Azurea {
 		}
 
 		// the merged parts: a mesh each
-		const noShadow = new Set( [ M.glass, M.railGlass, M.crystal, M.tableGlass, M.led, M.deckLamp, M.cove, M.rug, M.deck, M.tile ] );
+		const noShadow = new Set( [ M.glass, M.railGlass, M.crystal, M.tableGlass, M.led, M.barLight, M.deckLamp, M.cove, M.rug, M.deck, M.tile ] );
 		for ( const [ mat, geos ] of parts ) {
 
 			const m = new THREE.Mesh( mergeGeometries( geos, false ), mat );
@@ -1102,6 +1112,7 @@ export class Azurea {
 		M.cove.emissive.set( L.coveColor ); M.cove.emissiveIntensity = L.cove;
 		// Keep the raster/PT fixture balance stable: updateLights() can run after setMode().
 		M.led.emissive.set( L.ledColor ); M.led.emissiveIntensity = L.led * ( this.mode === 'pathtrace' ? 0.35 : 1 );
+		M.barLight.emissiveIntensity = this.mode === 'pathtrace' ? 0.75 : 2.2;
 		M.bottles.emissiveIntensity = L.bottles;
 		this.keySpec.value = L.keySpec ?? 1; this.keySpecGlass.value = L.keySpecGlass ?? 0;
 		for ( const l of this.deckLights ) { l.intensity = L.deckLights ?? 0; l.visible = l.intensity > 0; }
