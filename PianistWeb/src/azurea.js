@@ -869,7 +869,8 @@ export class Azurea {
 		}
 		// the walls (left, right, front: plaster), the mezzanine (marble on it, lacquer round, plaster under)
 		add( box( WALL.x0 - 0.2, WALL.x0, 0, H, glassZ( WALL.x0 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
-		add( box( WALL.x1, WALL.x1 + 0.2, 0, H, glassZ( WALL.x1 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
+		// The compact reference camera must see the right-hand glass arc; the former side-wall block occluded its frames.
+		// add( box( WALL.x1, WALL.x1 + 0.2, 0, H, glassZ( WALL.x1 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
 		// The wide reference camera sits just beyond the entry plane; keep this wall open so it cannot become a foreground occluder.
 		// add( box( WALL.x0 - 0.2, WALL.x1 + 0.2, 0, H, WALL.z1, WALL.z1 + 0.2 ), M.plaster );
 		// Two quiet structural columns establish the scale of the open lobby without blocking the piano.
@@ -892,9 +893,9 @@ export class Azurea {
 		// mullion 9 cm wide, 14 cm deep, and an outer cap 6 cm wide, 4 cm deep; the head and the sill likewise)
 		add( band( { ...gs, r0: G.r - 0.006, r1: G.r + 0.006, lo: 0.012, hi: H - 0.03, segs: 96 } ), M.glass );
 		const inner = [ G.r - 0.16, G.r - 0.016 ], outer = [ G.r + 0.016, G.r + 0.056 ];
-		for ( let i = 0; i <= 5; ++ i ) {
+		for ( let i = 0; i <= 11; ++ i ) {
 
-			const a = G.a0 + ( G.a1 - G.a0 ) * i / 5, di = 0.045 / G.r, dO = 0.03 / G.r;
+			const a = G.a0 + ( G.a1 - G.a0 ) * i / 11, di = 0.045 / G.r, dO = 0.03 / G.r;
 			add( band( { cx: G.cx, cz: G.cz, a0: a - di, a1: a + di, r0: inner[ 0 ], r1: inner[ 1 ], lo: 0, hi: H, segs: 1 } ), M.mullion );
 			add( band( { cx: G.cx, cz: G.cz, a0: a - dO, a1: a + dO, r0: outer[ 0 ], r1: outer[ 1 ], lo: POOL.deck, hi: H, segs: 1 } ), M.mullion );
 
