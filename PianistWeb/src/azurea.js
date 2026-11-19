@@ -37,7 +37,7 @@ const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
 const H = 7.8 * 0.7;						// lowered ceiling: 70% of the current room height									// the ceiling
-const WALL = { x0: - 17, x1: 13, z1: 18.5 };		// the side walls, the front wall
+const WALL = { x0: - 22, x1: 13, z1: 18.5 };			// retreat the left solid wall; the glass arc continues into the widened left field		// the side walls, the front wall
 const GLASS = { cx: - 2, cz: 21.4, r: 26 };		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
@@ -49,7 +49,7 @@ const MEZZ = { x0: WALL.x0, x1: - 14.0, z0: - 2.0, z1: WALL.z1, y: 4.48 };
 const COVE = { cx: - 0.5, cz: 6.0, r: 6.2, soffit: 4.25 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
 // and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
-const POOL = { x0: - 20, x1: 17, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
+const POOL = { x0: - 25, x1: 17, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
 POOL.r0 = GLASS.r + POOL.coping; POOL.r1 = POOL.r0 + POOL.w;
 POOL.a0 = - Math.acos( ( POOL.x0 - GLASS.cx ) / POOL.r0 ); POOL.a1 = - Math.acos( ( POOL.x1 - GLASS.cx ) / POOL.r0 );
 // the deck's ground lights: flush in the coping strip outside the glass (its middle), DECK_LAMP.gap m apart along it, centred
@@ -657,7 +657,7 @@ export class Azurea {
 			floor: phys( { color: '#dff2fc', roughness: 0.055, clearcoat: 1, clearcoatRoughness: 0.008, specularIntensity: 1 } ),
 			marble: phys( { color: '#f8f8f6', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 } ),
 			plaster: phys( { color: '#f2f5f7', roughness: 0.92 } ),
-			ceiling: phys( { color: '#f5f8fa', roughness: 0.92 } ),
+			ceiling: phys( { color: '#eaf5fb', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.06, specularIntensity: 1 } ),
 			lacquer: phys( { color: '#f1f4f6', roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.1 } ),
 			plinth: phys( { color: '#d9e5ec', roughness: 0.3, clearcoat: 0.6 } ),
 			chrome: phys( { color: '#e8ebee', metalness: 1, roughness: 0.12 } ),
@@ -703,7 +703,9 @@ export class Azurea {
 		M.waterPTBody = M.waterPT.clone(); M.waterPTBody.ior = 1.0;
 		this.clear = [ M.glass, M.railGlass, M.crystal, M.tableGlass ];
 		this.mirror = new PlaneMirror( new THREE.Plane( V( 0, 1, 0 ), 0 ) );		// (the floor's: src/mirror.js)
+		this.ceilingMirror = new PlaneMirror( new THREE.Plane( V( 0, - 1, 0 ), H ) );
 		this.mirror.addTo( M.floor );
+		this.ceilingMirror.addTo( M.ceiling );
 		// the key light's direct specular, scaled per surface (keySpec on the polished stone: at night the moon, a
 		// punctual light, made a broad white blob as bright as the moon itself; keySpecGlass on the glass: its
 		// reflection of the key light, a lamp's blown blob where a real moon's own small reflection should be)
@@ -1019,6 +1021,7 @@ export class Azurea {
 			const m = new THREE.Mesh( mergeGeometries( geos, false ), mat );
 			m.castShadow = ! noShadow.has( mat ); m.receiveShadow = true;
 			m.name = `azurea:${ Object.keys( M ).find( k => M[ k ] === mat ) }`;
+			if ( mat === M.ceiling ) this.ceilingMesh = m;
 			this.group.add( m );
 
 		}
@@ -1419,12 +1422,14 @@ export class Azurea {
 		this.ocean.update( renderer, t );		// (the sea's surface at t: a pure function of the render clock)
 		this.sky.update( renderer );		// (its LUTs, if the light or the haze changed)
 		if ( this.mode === 'pathtrace' ) return;
-		this.mirror.update( renderer, this.scene, camera, [ this.floorMesh ], this.mirrorScale ?? ( this.highQuality ? 0.5 : 0.35 ) );
+		const mirrorScale = this.mirrorScale ?? ( this.highQuality ? 0.5 : 0.35 );
+		this.mirror.update( renderer, this.scene, camera, [ this.floorMesh ], mirrorScale );
+		if ( this.ceilingMesh ) this.ceilingMirror.update( renderer, this.scene, camera, [ this.ceilingMesh ], mirrorScale );
 
 	}
 
 	/** Around a capture by a cube camera (the probe): the floor's reflection off (it is the main view's). */
-	set capturing( on ) { this.mirror.enabled = ! on; }
+	set capturing( on ) { this.mirror.enabled = ! on; this.ceilingMirror.enabled = ! on; }
 
 	// ---- the pack ----
 	load() {
