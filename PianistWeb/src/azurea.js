@@ -36,20 +36,20 @@ const D = Math.PI / 180;
 const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
-const H = 7.8 * 0.7;						// lowered ceiling: 70% of the current room height									// the ceiling
-const WALL = { x0: - 13.25, x1: 4.25, z1: 12.0 };			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
+const H = 7.8 * 0.7 * 0.8;						// lowered ceiling: 70% of the current room height									// the ceiling
+const WALL = { x0: - 13.25, x1: 4.25, z1: 18.0 };			// complete floor and distant entry/back wall			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
 const GLASS = { cx: - 3.25, cz: 8.4, r: 13 };			// half-radius curved glass wall		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
 const BAR = { cx: - 2.5, cz: 2.1 };				// the bar's arc (its front towards +z), the bottle wall behind it
 const BAR_SCALE = 0.82;					// a hospitality island, not a foreground wall
-const STAIRS = { cx: - 8.5, cz: 2.1, r0: 0.9, r1: 2.8, rise: 4.48, steps: 24, sweep: - 300 * D, top: Math.PI };		// (its top tread at angle `top`)
-const MEZZ = { x0: WALL.x0, x1: - 10.0, z0: - 1.5, z1: WALL.z1, y: 4.48 };
+const STAIRS = { cx: - 8.5, cz: 2.1, r0: 0.9, r1: 2.8, rise: H * 0.82, steps: 24, sweep: - 300 * D, top: - 30 * D };		// rotated so the lower opening faces into the lobby, away from the glass
+const MEZZ = { x0: WALL.x0, x1: - 10.0, z0: - 1.5, z1: WALL.z1, y: H * 0.82 };
 const COVE = { cx: - 2.0, cz: 2.2, r: 3.8, soffit: 2.7 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
 // and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
-const POOL = { x0: - 16, x1: 10, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
+const POOL = { x0: - 25, x1: 18, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
 POOL.r0 = GLASS.r + POOL.coping; POOL.r1 = POOL.r0 + POOL.w;
 POOL.a0 = - Math.acos( ( POOL.x0 - GLASS.cx ) / POOL.r0 ); POOL.a1 = - Math.acos( ( POOL.x1 - GLASS.cx ) / POOL.r0 );
 // the deck's ground lights: flush in the coping strip outside the glass (its middle), DECK_LAMP.gap m apart along it, centred
@@ -815,7 +815,7 @@ export class Azurea {
 			// these are deliberately wider and higher than the old low, bar-dominant views.
 			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
 			'Lobby wide': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
-			'Reference lobby': { position: V( 3.2, 2.4, 6.4 ), target: V( - 2.2, 1.85, 0.4 ), fov: 58 },
+			'Reference lobby': { position: V( 6.7041624688, 2.0522652307, 14.0434261270 ), target: V( - 1.5839907226, 0.9041803703, 0.4920897680 ), fov: 36 },
 			'Piano hero': { position: V( 3.5, 2.2, 2.5 ), target: V( - 0.5, 1.0, - 4.2 ) },
 			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
 			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
@@ -865,27 +865,20 @@ export class Azurea {
 			// Close the annular gap around the recessed cove. Without this ceiling ring, a wide camera sees the sky
 			// through the enlarged cove and the lobby loses the reference's strong ceiling plane and scale cue.
 			add( new THREE.RingGeometry( COVE.soffit, COVE.r, 160 ).rotateX( Math.PI / 2 ).translate( COVE.cx, H - 0.045, COVE.cz ), M.ceiling );
+			// A shallow canopy continues beyond the glass wall, keeping the exterior edge architecturally framed.
+			add( band( { cx: GLASS.cx, cz: GLASS.cz, a0: GLASS.a0, a1: GLASS.a1, r0: GLASS.r - 0.04, r1: GLASS.r + 2.0, lo: H - 0.05, hi: H, segs: 96, faces: 't' } ), M.ceiling );
 
 		}
 		// the walls (left, right, front: plaster), the mezzanine (marble on it, lacquer round, plaster under)
 		add( box( WALL.x0 - 0.2, WALL.x0, 0, H, glassZ( WALL.x0 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
-		// The compact reference camera must see the right-hand glass arc; the former side-wall block occluded its frames.
-		// add( box( WALL.x1, WALL.x1 + 0.2, 0, H, glassZ( WALL.x1 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
-		// The wide reference camera sits just beyond the entry plane; keep this wall open so it cannot become a foreground occluder.
-		// add( box( WALL.x0 - 0.2, WALL.x1 + 0.2, 0, H, WALL.z1, WALL.z1 + 0.2 ), M.plaster );
-		// Two quiet structural columns establish the scale of the open lobby without blocking the piano.
-		for ( const [ x, z ] of [ [ - 11.7, 8.9 ], [ 12.0, 14.5 ] ] ) add( new THREE.CylinderGeometry( 0.42, 0.46, H, 48 ).translate( x, H / 2, z ), M.plaster );
-		add( slab( MEZZ.x0, MEZZ.x1, MEZZ.z0, MEZZ.z1, MEZZ.y ), M.marble );
-		add( box( MEZZ.x1 - 0.02, MEZZ.x1, MEZZ.y - 0.32, MEZZ.y, MEZZ.z0, MEZZ.z1 ), M.lacquer );
-		add( box( MEZZ.x0, MEZZ.x1, MEZZ.y - 0.32, MEZZ.y - 0.3, MEZZ.z0, MEZZ.z1 ), M.ceiling );
-		add( box( MEZZ.x0, MEZZ.x1, MEZZ.y - 0.32, MEZZ.y, MEZZ.z0 - 0.02, MEZZ.z0 ), M.lacquer );
-		// its balustrade (glass, a chrome rail), open where the stairs arrive
-		for ( const [ z0, z1 ] of [ [ MEZZ.z0, STAIRS.cz - 1.3 ], [ STAIRS.cz + 1.3, MEZZ.z1 ] ] ) {
-
-			add( box( MEZZ.x1 + 0.03, MEZZ.x1 + 0.045, MEZZ.y, MEZZ.y + 1.02, z0, z1 ), M.railGlass );
-			add( new THREE.CylinderGeometry( 0.022, 0.022, z1 - z0, 12 ).rotateX( Math.PI / 2 ).translate( MEZZ.x1 + 0.0375, MEZZ.y + 1.04, ( z0 + z1 ) / 2 ), M.chrome );
-
-		}
+		// Complete the compact shell: the right side wall and a distant entry/back wall frame the room without
+		// cutting across the reference camera. The former broad left mezzanine platform is intentionally removed.
+		add( box( WALL.x1, WALL.x1 + 0.2, 0, H, glassZ( WALL.x1 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
+		add( box( WALL.x0 - 0.2, WALL.x1 + 0.2, 0, H, WALL.z1, WALL.z1 + 0.2 ), M.plaster );
+		for ( const [ x, z ] of [ [ - 11.7, 8.9 ], [ 11.5, 14.5 ] ] ) add( new THREE.CylinderGeometry( 0.42, 0.46, H, 48 ).translate( x, H / 2, z ), M.plaster );
+		// The stair's upper end continues inward as a small landing, rather than terminating at the old left platform.
+		add( slab( - 11.5, - 5.2, 0.7, 3.5, MEZZ.y ), M.marble );
+		add( box( - 11.5, - 5.2, MEZZ.y - 0.28, MEZZ.y, 0.7, 0.98 ), M.lacquer );
 
 		// the glass wall: a thin arc, full height; its mullions, its head and sill
 		const G = GLASS, gs = { cx: G.cx, cz: G.cz, a0: G.a0, a1: G.a1 };
