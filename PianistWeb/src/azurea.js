@@ -42,10 +42,11 @@ const GLASS = { cx: - 2, cz: 21.4, r: 26 };		// the glass wall: an arc round ( c
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
-const BAR = { cx: - 3.0, cz: 4.2 };				// the bar's arc (its front towards +z), the bottle wall behind it
-const STAIRS = { cx: - 8.8, cz: 5.0, r0: 0.9, r1: 2.6, rise: 5.2, steps: 25, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
+const BAR = { cx: - 2.6, cz: 3.8 };				// the bar's arc (its front towards +z), the bottle wall behind it
+const BAR_SCALE = 0.72;					// a hospitality island, not a foreground wall
+const STAIRS = { cx: - 9.2, cz: 4.1, r0: 0.9, r1: 2.35, rise: 5.2, steps: 25, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
 const MEZZ = { x0: WALL.x0, x1: - 11.2, z0: - 2.0, z1: WALL.z1, y: 5.2 };
-const COVE = { cx: - 0.5, cz: 4.0, r: 5.0, soffit: 3.3 };
+const COVE = { cx: - 0.5, cz: 4.0, r: 6.2, soffit: 4.2 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
 // and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
 const POOL = { x0: - 16, x1: 13, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
@@ -76,7 +77,7 @@ SKY.h = SKY.r * ( SKY.pa1 - SKY.pa0 ) / 3; SKY.y0 = SKY.eye - SKY.h / 3;
 const LAYOUT = [
 	[ 'sofa', 5.6, 3.4, Math.PI ],
 	[ 'lounge-chair', 4.1, 0.5, Math.atan2( 1.5, 1.2 ) ], [ 'lounge-chair', 7.1, 0.5, Math.atan2( - 1.5, 1.2 ) ],
-	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 3.15 * Math.cos( a * D ), BAR.cz + 3.15 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
+	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 2.28 * Math.cos( a * D ), BAR.cz + 2.28 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
 	[ 'plant-tall', - 12.1, - 1.0, 0.4 ], [ 'plant-tall', 8.1, - 1.3, - 0.9 ], [ 'plant-tall', - 11.9, 8.6, 2.1 ],
 	[ 'plant-low', 2.6, 3.6, 0.3 ], [ 'plant-low', - 6.2, 9.2, 1.7 ], [ 'plant-low', 8.2, 5.0, - 1.1 ],
 ];
@@ -782,8 +783,9 @@ export class Azurea {
 			// The reference composition leaves breathing room above the piano and shows the reflective floor;
 			// these are deliberately wider and higher than the old low, bar-dominant views.
 			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
+			'Lobby wide': { position: V( - 1.6, 2.9, 11.8 ), target: V( - 0.8, 2.1, 2.2 ) },
 			'Piano hero': { position: V( 2.8, 1.8, 2.0 ), target: V( - 0.3, 0.75, - 3.4 ) },
-			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 3.0, 1.45, 3.5 ) },
+			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
 			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
 			'The staircase': { position: V( - 3.4, 2.2, 9.4 ), target: V( - 9.4, 2.8, 4.6 ) },
 			'The pool': { position: V( 3.0, 1.8, - 2.2 ), target: V( 0.5, 0.0, - 9.8 ) },
@@ -834,6 +836,8 @@ export class Azurea {
 		add( box( WALL.x0 - 0.2, WALL.x0, 0, H, glassZ( WALL.x0 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
 		add( box( WALL.x1, WALL.x1 + 0.2, 0, H, glassZ( WALL.x1 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
 		add( box( WALL.x0 - 0.2, WALL.x1 + 0.2, 0, H, WALL.z1, WALL.z1 + 0.2 ), M.plaster );
+		// Two quiet structural columns establish the scale of the open lobby without blocking the piano.
+		for ( const [ x, z ] of [ [ - 11.7, 8.9 ], [ 7.6, 8.7 ] ] ) add( new THREE.CylinderGeometry( 0.42, 0.46, H, 48 ).translate( x, H / 2, z ), M.plaster );
 		add( slab( MEZZ.x0, MEZZ.x1, MEZZ.z0, MEZZ.z1, MEZZ.y ), M.marble );
 		add( box( MEZZ.x1 - 0.02, MEZZ.x1, MEZZ.y - 0.32, MEZZ.y, MEZZ.z0, MEZZ.z1 ), M.lacquer );
 		add( box( MEZZ.x0, MEZZ.x1, MEZZ.y - 0.32, MEZZ.y - 0.3, MEZZ.z0, MEZZ.z1 ), M.ceiling );
@@ -873,22 +877,22 @@ export class Azurea {
 
 		// the bar: a curved marble front on a recessed plinth, a strip of light along it and at its foot, its top
 		// overhanging; the bartender's counter inside; the bottle wall behind
-		const bar = { cx: BAR.cx, cz: BAR.cz, a0: 20 * D, a1: 160 * D, segs: 64 };
-		add( band( { ...bar, r0: 2.0, r1: 2.6, lo: 0.12, hi: 1.06 } ), M.marble );
-		add( band( { ...bar, r0: 2.05, r1: 2.5, lo: 0, hi: 0.12 } ), M.plinth );
-		add( band( { ...bar, r0: 2.5, r1: 2.512, lo: 0.04, hi: 0.1, faces: 'o' } ), M.led );
-		add( band( { ...bar, r0: 2.6, r1: 2.606, lo: 0.54, hi: 0.585, faces: 'o' } ), M.led );
-		add( band( { ...bar, a0: 17 * D, a1: 163 * D, r0: 1.86, r1: 2.72, lo: 1.06, hi: 1.12 } ), M.marble );
-		add( band( { ...bar, a0: 26 * D, a1: 154 * D, r0: 1.35, r1: 1.82, lo: 0, hi: 0.92 } ), M.lacquer );
+		const bs = BAR_SCALE, bar = { cx: BAR.cx, cz: BAR.cz, a0: 30 * D, a1: 150 * D, segs: 64 };
+		add( band( { ...bar, r0: 2.0 * bs, r1: 2.6 * bs, lo: 0.12, hi: 1.06 } ), M.marble );
+		add( band( { ...bar, r0: 2.05 * bs, r1: 2.5 * bs, lo: 0, hi: 0.12 } ), M.plinth );
+		add( band( { ...bar, r0: 2.5 * bs, r1: 2.512 * bs, lo: 0.04, hi: 0.1, faces: 'o' } ), M.led );
+		add( band( { ...bar, r0: 2.6 * bs, r1: 2.606 * bs, lo: 0.54, hi: 0.585, faces: 'o' } ), M.led );
+		add( band( { ...bar, a0: 27 * D, a1: 153 * D, r0: 1.86 * bs, r1: 2.72 * bs, lo: 1.06, hi: 1.12 } ), M.marble );
+		add( band( { ...bar, a0: 35 * D, a1: 145 * D, r0: 1.35 * bs, r1: 1.82 * bs, lo: 0, hi: 0.92 } ), M.lacquer );
 		{
 
-			const bw = { cx: BAR.cx, cz: BAR.cz, a0: - 145 * D, a1: - 35 * D, segs: 48 }, y0 = 0.95, y1 = 2.95;
-			add( band( { ...bw, r0: 1.35, r1: 1.62, lo: 0, hi: y0 } ), M.lacquer );
+			const bw = { cx: BAR.cx, cz: BAR.cz, a0: - 135 * D, a1: - 45 * D, segs: 48 }, y0 = 0.95, y1 = 2.95;
+			add( band( { ...bw, r0: 1.35 * bs, r1: 1.62 * bs, lo: 0, hi: y0 } ), M.lacquer );
 			// the picture on its concave face (towards the bar): u along it (its left first, seen from the bar), v down (glTF)
 			const u = a => ( a - bw.a0 ) / ( bw.a1 - bw.a0 ), v = y => 1 - ( y - y0 ) / ( y1 - y0 );
-			add( band( { ...bw, r0: 1.5, r1: 1.51, lo: y0, hi: y1, faces: 'i', uv: ( a, b, la, lb, ha, hb ) => [ [ u( a ), v( la ) ], [ u( b ), v( lb ) ], [ u( b ), v( hb ) ], [ u( a ), v( ha ) ] ] } ), M.bottles );
-			add( band( { ...bw, a0: - 147 * D, a1: - 33 * D, r0: 1.51, r1: 1.62, lo: y0, hi: y1 + 0.1 } ), M.lacquer );
-			add( band( { ...bw, a0: - 147 * D, a1: - 33 * D, r0: 1.42, r1: 1.62, lo: y1, hi: y1 + 0.1 } ), M.lacquer );
+			add( band( { ...bw, r0: 1.5 * bs, r1: 1.51 * bs, lo: y0, hi: y1, faces: 'i', uv: ( a, b, la, lb, ha, hb ) => [ [ u( a ), v( la ) ], [ u( b ), v( lb ) ], [ u( b ), v( hb ) ], [ u( a ), v( ha ) ] ] } ), M.bottles );
+			add( band( { ...bw, a0: - 137 * D, a1: - 43 * D, r0: 1.51 * bs, r1: 1.62 * bs, lo: y0, hi: y1 + 0.1 } ), M.lacquer );
+			add( band( { ...bw, a0: - 137 * D, a1: - 43 * D, r0: 1.42 * bs, r1: 1.62 * bs, lo: y1, hi: y1 + 0.1 } ), M.lacquer );
 
 		}
 
@@ -1018,7 +1022,7 @@ export class Azurea {
 
 		const M = this.materials, top = H - 0.2, drops = [], wires = [];
 		const drop = new THREE.OctahedronGeometry( 0.032, 0 ).scale( 1, 2.2, 1 );
-		for ( const r of [ 0.35, 0.75, 1.15, 1.55, 1.95, 2.35, 2.75 ] ) {
+		for ( const r of [ 0.45, 0.9, 1.35, 1.8, 2.25, 2.7, 3.15, 3.6 ] ) {
 
 			const n = Math.max( 6, Math.round( 2 * Math.PI * r / 0.16 ) );
 			for ( let i = 0; i < n; ++ i ) {
