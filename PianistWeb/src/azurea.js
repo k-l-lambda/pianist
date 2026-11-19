@@ -36,7 +36,7 @@ const D = Math.PI / 180;
 const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
-const H = 7.8;									// the ceiling
+const H = 7.8 * 0.7;						// lowered ceiling: 70% of the current room height									// the ceiling
 const WALL = { x0: - 17, x1: 13, z1: 18.5 };		// the side walls, the front wall
 const GLASS = { cx: - 2, cz: 21.4, r: 26 };		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
@@ -44,9 +44,9 @@ GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wa
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
 const BAR = { cx: - 2.5, cz: 6.7 };				// the bar's arc (its front towards +z), the bottle wall behind it
 const BAR_SCALE = 0.82;					// a hospitality island, not a foreground wall
-const STAIRS = { cx: - 12.5, cz: 6.5, r0: 0.9, r1: 2.8, rise: 6.4, steps: 30, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
-const MEZZ = { x0: WALL.x0, x1: - 14.0, z0: - 2.0, z1: WALL.z1, y: 6.4 };
-const COVE = { cx: - 0.5, cz: 6.0, r: 7.2, soffit: 5.0 };
+const STAIRS = { cx: - 12.5, cz: 6.5, r0: 0.9, r1: 2.8, rise: 4.48, steps: 24, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
+const MEZZ = { x0: WALL.x0, x1: - 14.0, z0: - 2.0, z1: WALL.z1, y: 4.48 };
+const COVE = { cx: - 0.5, cz: 6.0, r: 6.2, soffit: 4.25 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
 // and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
 const POOL = { x0: - 20, x1: 17, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
@@ -654,7 +654,7 @@ export class Azurea {
 		this.sky = new Sky();
 		const M = this.materials = {
 			// the floor: pale marble, mirror-polished (its marble from the pack; its reflection a planar one)
-			floor: phys( { color: '#f6f6f4', roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.03 } ),
+			floor: phys( { color: '#eef7fc', roughness: 0.075, clearcoat: 1, clearcoatRoughness: 0.012, specularIntensity: 1 } ),
 			marble: phys( { color: '#f8f8f6', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 } ),
 			plaster: phys( { color: '#f2f5f7', roughness: 0.92 } ),
 			ceiling: phys( { color: '#f5f8fa', roughness: 0.92 } ),
@@ -844,7 +844,7 @@ export class Azurea {
 		// The wide reference camera sits just beyond the entry plane; keep this wall open so it cannot become a foreground occluder.
 		// add( box( WALL.x0 - 0.2, WALL.x1 + 0.2, 0, H, WALL.z1, WALL.z1 + 0.2 ), M.plaster );
 		// Two quiet structural columns establish the scale of the open lobby without blocking the piano.
-		for ( const [ x, z ] of [ [ - 11.7, 8.9 ], [ 7.6, 8.7 ] ] ) add( new THREE.CylinderGeometry( 0.42, 0.46, H, 48 ).translate( x, H / 2, z ), M.plaster );
+		for ( const [ x, z ] of [ [ - 11.7, 8.9 ], [ 12.0, 14.5 ] ] ) add( new THREE.CylinderGeometry( 0.42, 0.46, H, 48 ).translate( x, H / 2, z ), M.plaster );
 		add( slab( MEZZ.x0, MEZZ.x1, MEZZ.z0, MEZZ.z1, MEZZ.y ), M.marble );
 		add( box( MEZZ.x1 - 0.02, MEZZ.x1, MEZZ.y - 0.32, MEZZ.y, MEZZ.z0, MEZZ.z1 ), M.lacquer );
 		add( box( MEZZ.x0, MEZZ.x1, MEZZ.y - 0.32, MEZZ.y - 0.3, MEZZ.z0, MEZZ.z1 ), M.ceiling );
@@ -880,6 +880,8 @@ export class Azurea {
 		add( new THREE.CircleGeometry( COVE.r + 0.15, 128 ).rotateX( Math.PI / 2 ).translate( COVE.cx, H + 0.9, COVE.cz ), M.cove );
 		add( band( { cx: COVE.cx, cz: COVE.cz, a0: 0, a1: 2 * Math.PI, r0: 0, r1: COVE.soffit, lo: H - 0.2, hi: H - 0.05, segs: 128, faces: 'ob' } ), M.ceiling );
 		add( band( { cx: COVE.cx, cz: COVE.cz, a0: 0, a1: 2 * Math.PI, r0: 0, r1: COVE.soffit + 0.004, lo: H - 0.16, hi: H - 0.11, segs: 128, faces: 'o' } ), M.led );
+		// warm architectural ring light visible from the low reference camera
+		add( new THREE.RingGeometry( COVE.soffit, COVE.soffit + 0.07, 160 ).rotateX( Math.PI / 2 ).translate( COVE.cx, H - 0.08, COVE.cz ), M.barLight );
 		this._chandelier( add );
 
 		// the bar: a cylindrical marble island with a cylindrical, backlit bottle cabinet. The reference reads
@@ -893,13 +895,13 @@ export class Azurea {
 		// warm bar footline, continuous ring under the counter, and the narrow central pier up to the ceiling
 		add( new THREE.CylinderGeometry( br * 1.065, br * 1.065, 0.025, 96 ).translate( bx, 0.13, bz ), M.barLight );
 		add( new THREE.RingGeometry( br * 0.98, br * 1.075, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
-		add( new THREE.CylinderGeometry( 0.78, 0.86, H - 3.62, 64 ).translate( bx, ( H + 3.62 ) / 2, bz ), M.plaster );
-		// The cabinet is deliberately narrower than the counter so the marble top reads as an overhang.
-		const towerR = 1.58 * bs, towerY0 = 1.1, towerY1 = 3.75;
-		add( new THREE.CylinderGeometry( towerR, towerR, towerY1 - towerY0, 96, 1, true ).translate( bx, ( towerY0 + towerY1 ) / 2, bz ), M.bottles );
-		for ( const y of [ towerY0, 1.72, 2.34, 2.96, towerY1 ] ) add( new THREE.CylinderGeometry( towerR * 1.06, towerR * 1.06, 0.045, 96 ).translate( bx, y, bz ), M.lacquer );
-		add( new THREE.CylinderGeometry( towerR * 1.08, towerR * 1.08, 0.06, 96 ).translate( bx, towerY0 + 0.02, bz ), M.led );
-		add( new THREE.CylinderGeometry( towerR * 1.08, towerR * 1.08, 0.06, 96 ).translate( bx, towerY1 - 0.02, bz ), M.led );
+		add( new THREE.CylinderGeometry( 0.62, 0.70, H - 0.35, 64 ).translate( bx, ( H + 0.35 ) / 2, bz ), M.plaster );
+		// The bottle display is a wall cabinet attached to the central pier, not a second outer cylinder.
+		const cabX0 = bx - 1.18, cabX1 = bx + 1.18, cabY0 = 1.18, cabY1 = H - 0.35, cabZ = bz + 0.82;
+		add( box( cabX0, cabX1, cabY0, cabY1, cabZ - 0.045, cabZ + 0.015 ), M.bottles );
+		for ( const y of [ cabY0, 2.15, 3.1, 4.05, cabY1 ] ) add( box( cabX0 - 0.06, cabX1 + 0.06, y - 0.025, y + 0.025, cabZ - 0.10, cabZ + 0.04 ), M.lacquer );
+		add( box( cabX0 - 0.08, cabX1 + 0.08, cabY0 - 0.03, cabY0 + 0.03, cabZ - 0.12, cabZ + 0.05 ), M.barLight );
+		add( box( cabX0 - 0.08, cabX1 + 0.08, cabY1 - 0.03, cabY1 + 0.03, cabZ - 0.12, cabZ + 0.05 ), M.barLight );
 
 		// the spiral staircase: floating marble treads round a white column, a white stringer each side, a glass
 		// balustrade outside with a chrome handrail
