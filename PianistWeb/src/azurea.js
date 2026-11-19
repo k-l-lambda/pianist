@@ -36,20 +36,20 @@ const D = Math.PI / 180;
 const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
-const H = 7.6;									// the ceiling
-const WALL = { x0: - 13, x1: 9, z1: 12 };		// the side walls, the front wall
+const H = 9.2;									// the ceiling
+const WALL = { x0: - 17, x1: 13, z1: 18.5 };		// the side walls, the front wall
 const GLASS = { cx: - 2, cz: 21.4, r: 26 };		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
-const BAR = { cx: - 2.6, cz: 3.8 };				// the bar's arc (its front towards +z), the bottle wall behind it
-const BAR_SCALE = 0.72;					// a hospitality island, not a foreground wall
-const STAIRS = { cx: - 9.2, cz: 4.1, r0: 0.9, r1: 2.35, rise: 5.2, steps: 25, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
-const MEZZ = { x0: WALL.x0, x1: - 11.2, z0: - 2.0, z1: WALL.z1, y: 5.2 };
-const COVE = { cx: - 0.5, cz: 4.0, r: 6.2, soffit: 4.2 };
+const BAR = { cx: - 2.5, cz: 6.7 };				// the bar's arc (its front towards +z), the bottle wall behind it
+const BAR_SCALE = 1.0;					// a hospitality island, not a foreground wall
+const STAIRS = { cx: - 12.5, cz: 6.5, r0: 0.9, r1: 2.8, rise: 6.4, steps: 30, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
+const MEZZ = { x0: WALL.x0, x1: - 14.0, z0: - 2.0, z1: WALL.z1, y: 6.4 };
+const COVE = { cx: - 0.5, cz: 6.0, r: 7.2, soffit: 5.0 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
 // and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
-const POOL = { x0: - 16, x1: 13, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
+const POOL = { x0: - 20, x1: 17, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
 POOL.r0 = GLASS.r + POOL.coping; POOL.r1 = POOL.r0 + POOL.w;
 POOL.a0 = - Math.acos( ( POOL.x0 - GLASS.cx ) / POOL.r0 ); POOL.a1 = - Math.acos( ( POOL.x1 - GLASS.cx ) / POOL.r0 );
 // the deck's ground lights: flush in the coping strip outside the glass (its middle), DECK_LAMP.gap m apart along it, centred
@@ -77,9 +77,9 @@ SKY.h = SKY.r * ( SKY.pa1 - SKY.pa0 ) / 3; SKY.y0 = SKY.eye - SKY.h / 3;
 const LAYOUT = [
 	[ 'sofa', 5.6, 3.4, Math.PI ],
 	[ 'lounge-chair', 4.1, 0.5, Math.atan2( 1.5, 1.2 ) ], [ 'lounge-chair', 7.1, 0.5, Math.atan2( - 1.5, 1.2 ) ],
-	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 2.28 * Math.cos( a * D ), BAR.cz + 2.28 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
-	[ 'plant-tall', - 12.1, - 1.0, 0.4 ], [ 'plant-tall', 8.1, - 1.3, - 0.9 ], [ 'plant-tall', - 11.9, 8.6, 2.1 ],
-	[ 'plant-low', 2.6, 3.6, 0.3 ], [ 'plant-low', - 6.2, 9.2, 1.7 ], [ 'plant-low', 8.2, 5.0, - 1.1 ],
+	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 3.15 * Math.cos( a * D ), BAR.cz + 3.15 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
+	[ 'plant-tall', - 15.2, - 1.0, 0.4 ], [ 'plant-tall', 11.0, - 1.3, - 0.9 ], [ 'plant-tall', - 14.8, 14.0, 2.1 ],
+	[ 'plant-low', 4.8, 5.0, 0.3 ], [ 'plant-low', - 8.0, 13.0, 1.7 ], [ 'plant-low', 10.8, 9.0, - 1.1 ],
 ];
 
 // outside: the sea's photo ('day' | 'sunset' | 'night'); the key light (sun*) is the sun, or at night the moon;
@@ -783,7 +783,8 @@ export class Azurea {
 			// The reference composition leaves breathing room above the piano and shows the reflective floor;
 			// these are deliberately wider and higher than the old low, bar-dominant views.
 			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
-			'Lobby wide': { position: V( - 1.6, 2.9, 11.8 ), target: V( - 0.8, 2.1, 2.2 ) },
+			'Lobby wide': { position: V( - 1.0, 3.3, 16.5 ), target: V( - 1.0, 2.5, 3.8 ) },
+			'Reference wide': { position: V( 0.0, 3.2, 17.2 ), target: V( - 1.5, 2.35, 3.7 ) },
 			'Piano hero': { position: V( 2.8, 1.8, 2.0 ), target: V( - 0.3, 0.75, - 3.4 ) },
 			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
 			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
@@ -875,26 +876,20 @@ export class Azurea {
 		add( band( { cx: COVE.cx, cz: COVE.cz, a0: 0, a1: 2 * Math.PI, r0: 0, r1: COVE.soffit + 0.004, lo: H - 0.16, hi: H - 0.11, segs: 128, faces: 'o' } ), M.led );
 		this._chandelier( add );
 
-		// the bar: a curved marble front on a recessed plinth, a strip of light along it and at its foot, its top
-		// overhanging; the bartender's counter inside; the bottle wall behind
-		const bs = BAR_SCALE, bar = { cx: BAR.cx, cz: BAR.cz, a0: 30 * D, a1: 150 * D, segs: 64 };
-		add( band( { ...bar, r0: 2.0 * bs, r1: 2.6 * bs, lo: 0.12, hi: 1.06 } ), M.marble );
-		add( band( { ...bar, r0: 2.05 * bs, r1: 2.5 * bs, lo: 0, hi: 0.12 } ), M.plinth );
-		add( band( { ...bar, r0: 2.5 * bs, r1: 2.512 * bs, lo: 0.04, hi: 0.1, faces: 'o' } ), M.led );
-		add( band( { ...bar, r0: 2.6 * bs, r1: 2.606 * bs, lo: 0.54, hi: 0.585, faces: 'o' } ), M.led );
-		add( band( { ...bar, a0: 27 * D, a1: 153 * D, r0: 1.86 * bs, r1: 2.72 * bs, lo: 1.06, hi: 1.12 } ), M.marble );
-		add( band( { ...bar, a0: 35 * D, a1: 145 * D, r0: 1.35 * bs, r1: 1.82 * bs, lo: 0, hi: 0.92 } ), M.lacquer );
-		{
-
-			const bw = { cx: BAR.cx, cz: BAR.cz, a0: - 135 * D, a1: - 45 * D, segs: 48 }, y0 = 0.95, y1 = 2.95;
-			add( band( { ...bw, r0: 1.35 * bs, r1: 1.62 * bs, lo: 0, hi: y0 } ), M.lacquer );
-			// the picture on its concave face (towards the bar): u along it (its left first, seen from the bar), v down (glTF)
-			const u = a => ( a - bw.a0 ) / ( bw.a1 - bw.a0 ), v = y => 1 - ( y - y0 ) / ( y1 - y0 );
-			add( band( { ...bw, r0: 1.5 * bs, r1: 1.51 * bs, lo: y0, hi: y1, faces: 'i', uv: ( a, b, la, lb, ha, hb ) => [ [ u( a ), v( la ) ], [ u( b ), v( lb ) ], [ u( b ), v( hb ) ], [ u( a ), v( ha ) ] ] } ), M.bottles );
-			add( band( { ...bw, a0: - 137 * D, a1: - 43 * D, r0: 1.51 * bs, r1: 1.62 * bs, lo: y0, hi: y1 + 0.1 } ), M.lacquer );
-			add( band( { ...bw, a0: - 137 * D, a1: - 43 * D, r0: 1.42 * bs, r1: 1.62 * bs, lo: y1, hi: y1 + 0.1 } ), M.lacquer );
-
-		}
+		// the bar: a cylindrical marble island with a cylindrical, backlit bottle cabinet. The reference reads
+		// this as a freestanding round drinks tower, not as a curved interior wall with a picture in its recess.
+		const bs = BAR_SCALE, bx = BAR.cx, bz = BAR.cz, br = 2.65 * bs;
+		add( new THREE.CylinderGeometry( br * 0.96, br, 0.14, 96 ).translate( bx, 0.07, bz ), M.plinth );
+		add( new THREE.CylinderGeometry( br, br * 0.98, 0.94, 96 ).translate( bx, 0.58, bz ), M.marble );
+		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.07, 96 ).translate( bx, 1.07, bz ), M.marble );
+		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.028, 96 ).translate( bx, 0.16, bz ), M.led );
+		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.028, 96 ).translate( bx, 0.98, bz ), M.led );
+		// The cabinet is deliberately narrower than the counter so the marble top reads as an overhang.
+		const towerR = 1.58 * bs, towerY0 = 1.1, towerY1 = 3.75;
+		add( new THREE.CylinderGeometry( towerR, towerR, towerY1 - towerY0, 96, 1, true ).translate( bx, ( towerY0 + towerY1 ) / 2, bz ), M.bottles );
+		for ( const y of [ towerY0, 1.72, 2.34, 2.96, towerY1 ] ) add( new THREE.CylinderGeometry( towerR * 1.06, towerR * 1.06, 0.045, 96 ).translate( bx, y, bz ), M.lacquer );
+		add( new THREE.CylinderGeometry( towerR * 1.08, towerR * 1.08, 0.06, 96 ).translate( bx, towerY0 + 0.02, bz ), M.led );
+		add( new THREE.CylinderGeometry( towerR * 1.08, towerR * 1.08, 0.06, 96 ).translate( bx, towerY1 - 0.02, bz ), M.led );
 
 		// the spiral staircase: floating marble treads round a white column, a white stringer each side, a glass
 		// balustrade outside with a chrome handrail
