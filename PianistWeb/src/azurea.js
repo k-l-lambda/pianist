@@ -785,7 +785,7 @@ export class Azurea {
 			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
 			'Lobby wide': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
 			'Reference wide': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
-			'Piano hero': { position: V( 2.8, 1.8, 2.0 ), target: V( - 0.3, 0.75, - 3.4 ) },
+			'Piano hero': { position: V( 3.5, 2.2, 2.5 ), target: V( - 0.5, 1.0, - 4.2 ) },
 			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
 			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
 			'The staircase': { position: V( - 3.4, 2.2, 9.4 ), target: V( - 9.4, 2.8, 4.6 ) },
