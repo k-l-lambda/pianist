@@ -96,7 +96,7 @@ const LAYOUT = [
 // its brightness is the photo's sky's always), clouds (thin high cloud's cover, 0..1), stars (× a night sky's),
 // airglow (the night sky's share of it)
 export const AZUREA_PRESETS = {
-	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 9, sunColor: '#fff4e4', sunAz: - 112, sunEl: 56, moon: false, disc: 1, glitter: 0.6, sky: 1.0, haze: 0.72, skyHue: 0.70, clouds: 0.25, stars: 0, airglow: 0, tint: '#b9e6ff', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
+	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 7.2, sunColor: '#fff4e4', sunAz: - 112, sunEl: 68, moon: false, disc: 1, glitter: 0.6, sky: 1.0, haze: 0.72, skyHue: 0.70, clouds: 0.25, stars: 0, airglow: 0, tint: '#b9e6ff', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
 	// (the sun low over the sea, to the right of straight out: az -50)
 	'Golden hour': { wisps: 0, deckLights: 0.35, moonCore: 1, sunCore: 16, seaVis: 22, wind: 0.5, windDir: 90, gust: 0.22, gustScale: 50, paws: 0.6, pawWind: 3.5, pawCover: 1, pawScale: 22, swell: 0.12, swellDir: 90, swellPeriod: 10, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
 	// (the golden hour's light on a calm sea: no wind of its own, a low swell, glassy; cat's paws drifting over it,
@@ -898,11 +898,13 @@ export class Azurea {
 		add( new THREE.RingGeometry( br * 0.80, br * 0.89, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
 		add( new THREE.CylinderGeometry( 0.62, 0.70, H - 0.35, 64 ).translate( bx, ( H + 0.35 ) / 2, bz ), M.plaster );
 		// The bottle display is a wall cabinet attached to the central pier, not a second outer cylinder.
-		const cabX0 = bx - 1.18, cabX1 = bx + 1.18, cabY0 = 1.18, cabY1 = H - 0.35, cabZ = bz + 0.82;
-		add( box( cabX0, cabX1, cabY0, cabY1, cabZ - 0.045, cabZ + 0.015 ), M.bottles );
-		for ( const y of [ cabY0, 2.15, 3.1, 4.05, cabY1 ] ) add( box( cabX0 - 0.06, cabX1 + 0.06, y - 0.025, y + 0.025, cabZ - 0.10, cabZ + 0.04 ), M.lacquer );
-		add( box( cabX0 - 0.08, cabX1 + 0.08, cabY0 - 0.03, cabY0 + 0.03, cabZ - 0.12, cabZ + 0.05 ), M.barLight );
-		add( box( cabX0 - 0.08, cabX1 + 0.08, cabY1 - 0.03, cabY1 + 0.03, cabZ - 0.12, cabZ + 0.05 ), M.barLight );
+		const cabY0 = 1.18, cabY1 = H - 0.35, cabR = 0.72, cabA0 = 25 * D, cabA1 = 155 * D;
+		// Curved wall cabinet: the bottle display follows the central pier's cylindrical surface instead of a flat plane.
+		const cu = a => ( a - cabA0 ) / ( cabA1 - cabA0 ), cv = y => 1 - ( y - cabY0 ) / ( cabY1 - cabY0 );
+		add( band( { cx: bx, cz: bz, a0: cabA0, a1: cabA1, r0: cabR, r1: cabR + 0.025, lo: cabY0, hi: cabY1, faces: 'o', uv: ( a, b, la, lb, ha, hb ) => [ [ cu( a ), cv( la ) ], [ cu( b ), cv( lb ) ], [ cu( b ), cv( hb ) ], [ cu( a ), cv( ha ) ] ] } ), M.bottles );
+		for ( const y of [ cabY0, 2.15, 3.1, 4.05, cabY1 ] ) add( band( { cx: bx, cz: bz, a0: cabA0 - 0.02, a1: cabA1 + 0.02, r0: cabR - 0.035, r1: cabR + 0.065, lo: y - 0.025, hi: y + 0.025, faces: 'o' } ), M.lacquer );
+		add( band( { cx: bx, cz: bz, a0: cabA0 - 0.025, a1: cabA1 + 0.025, r0: cabR - 0.04, r1: cabR + 0.07, lo: cabY0 - 0.03, hi: cabY0 + 0.03, faces: 'o' } ), M.barLight );
+		add( band( { cx: bx, cz: bz, a0: cabA0 - 0.025, a1: cabA1 + 0.025, r0: cabR - 0.04, r1: cabR + 0.07, lo: cabY1 - 0.03, hi: cabY1 + 0.03, faces: 'o' } ), M.barLight );
 
 		// the spiral staircase: floating marble treads round a white column, a white stringer each side, a glass
 		// balustrade outside with a chrome handrail
