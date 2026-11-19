@@ -194,7 +194,7 @@ export const SKY_GLSL = /* glsl */`
 		int i = int( floor( e ) );
 		return mix( uSkyHueProf[ i ], uSkyHueProf[ min( i + 1, 15 ) ], e - float( i ) );
 	}
-	uniform float uStars, uClouds, uSkyEyeR;
+	uniform float uStars, uClouds, uWisps, uSkyEyeR;
 	const float SKY_PI = 3.14159265359;
 	vec2 skyTransUV( float r, float mu ) {
 		float H = sqrt( 6460.0 * 6460.0 - 6360.0 * 6360.0 ), rho = sqrt( max( r * r - 6360.0 * 6360.0, 0.0 ) );
@@ -298,12 +298,42 @@ export const SKY_GLSL = /* glsl */`
 		vec3 Tv = vec3( pow( max( air.a, 0.0 ), 0.5 ) );
 		return vec4( lit * Tv + air.rgb * ( 1.0 - Tv ), alpha );
 	}
+	// sparse thin cloud lower down (fair-weather wisps, a layer 2.5 km up): scattered patches a km or two across,
+	// soft-edged and thin (half the light through at their cores), drifting slowly; lit as the cirrus, with a darker
+	// underside where they are densest (a little self-shadow), seen through the air below them
+	vec4 skyWisp( vec3 d, float blur ) {
+		if ( uWisps <= 0.0 || d.y < 0.004 ) return vec4( 0.0 );
+		float rc = 6360.0 + 2.5, r0 = uSkyEyeR;
+		float b = r0 * d.y, t = - b + sqrt( b * b - r0 * r0 + rc * rc );
+		vec2 p = d.xz * t + vec2( 0.006, - 0.0025 ) * uTime + vec2( 37.0, 11.0 );
+		vec2 q = vec2( p.x * 0.8 + p.y * 0.15, p.y * 1.25 - p.x * 0.1 );		// (stretched a little along the wind)
+		float foot = max( t * max( blur, 1e-4 ) / max( d.y, 0.02 ), 1e-3 );
+		float n = 0.0, amp = 0.5, fq = 0.45;
+		for ( int i = 0; i < 6; ++ i ) {
+			float k = 1.0 - smoothstep( 0.5, 2.0, foot * fq );
+			n += amp * ( skyNoise( q * fq ) * k + 0.5 * ( 1.0 - k ) );
+			fq *= 2.13; amp *= 0.5; q = mat2( 0.8, - 0.6, 0.6, 0.8 ) * q + 5.7;
+		}
+		// (sparse: where a broad mask allows (a quarter of the sky at cover 1) and the detail is high)
+		float mask = smoothstep( 0.72 - 0.16 * uWisps, 0.84 - 0.16 * uWisps, skyNoise( p * 0.07 + 3.3 ) );
+		float dens = smoothstep( 0.58, 0.88, n ) * mask * min( 1.0, 0.5 + uWisps );
+		float tau = dens * 0.5;
+		float alpha = 1.0 - exp( - tau );
+		vec3 Lc = skyTrans( rc, dot( normalize( vec3( 0.0, rc, 0.0 ) + d * t ), uSkyLight ) );
+		float c = dot( d, uSkyLight ), g = 0.55, ph = 0.55 * ( 1.0 - g * g ) / ( 4.0 * SKY_PI * pow( 1.0 + g * g - 2.0 * g * c, 1.5 ) ) + 0.45 / ( 4.0 * SKY_PI );
+		vec4 air = skyAir( d );
+		vec3 lit = Lc * ph * uSkyScale * 5.0 * mix( 1.0, 0.7, smoothstep( 0.3, 0.9, dens ) ) + skyAir( normalize( vec3( d.x, max( d.y, 0.05 ) + 0.3, d.z ) ) ).rgb * 0.75;
+		vec3 Tv = vec3( pow( max( air.a, 0.0 ), 0.35 ) );
+		return vec4( lit * Tv + air.rgb * ( 1.0 - Tv ), alpha );
+	}
 	vec3 skyColor( vec3 d, float pix, float blur ) {
 		vec4 air = skyAir( d );
 		vec3 c = air.rgb;
 		vec4 cl = skyCloud( d, max( pix, blur ) );
 		c += skyStars( d, max( pix, blur ) ) * ( 1.0 - cl.a );
-		return mix( c, cl.rgb, cl.a );
+		c = mix( c, cl.rgb, cl.a );
+		vec4 w = skyWisp( d, max( pix, blur ) );
+		return mix( c, w.rgb, w.a );
 	}
 `;
 
@@ -349,7 +379,7 @@ export class Sky {
 		this.uniforms = {
 			uSkyView: { value: this.view.texture }, uSkyTrans: { value: this.trans.texture },
 			uSkyLight: { value: new THREE.Vector3( 0, 1, 0 ) }, uSkyScale: { value: new THREE.Vector3( 1, 1, 1 ) }, uAirglow: { value: new THREE.Vector3() },
-			uStars: { value: 0 }, uClouds: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 }, uMoonCore: { value: 1 },
+			uStars: { value: 0 }, uClouds: { value: 0 }, uWisps: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 }, uMoonCore: { value: 1 },
 			uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
 		};
 		this.params = null; this._built = null; this.dirty = true;
@@ -361,7 +391,7 @@ export class Sky {
 	/**
 	 * The state: light (unit direction, the sun's or the moon's), haze (Mie density × Hillaire's), target (linear
 	 * RGB: the photo's clear sky's mean over the band), hue (0: the atmosphere's own, 1: the photo's), airglow
-	 * (a share of the target: the night's), stars (0..), clouds (0..1 cover).
+	 * (a share of the target: the night's), stars (0..), clouds (0..1 cover), wisps (the lower thin cloud's, 0..1).
 	 */
 	set( p ) {
 
@@ -370,6 +400,7 @@ export class Sky {
 		this.uniforms.uStars.value = p.stars ?? 0;
 		if ( p.profile ) p.profile.forEach( ( c, i ) => this.uniforms.uSkyHueProf.value[ i ]?.set( c[ 0 ], c[ 1 ], c[ 2 ] ) );
 		this.uniforms.uClouds.value = p.clouds ?? 0;
+		this.uniforms.uWisps.value = p.wisps ?? 0;
 		this.params = p;
 		if ( key !== this._key ) { this._key = key; this.dirty = true; }
 

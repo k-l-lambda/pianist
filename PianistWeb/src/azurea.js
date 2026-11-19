@@ -51,6 +51,14 @@ const COVE = { cx: - 0.5, cz: 4.0, r: 5.0, soffit: 3.3 };
 const POOL = { x0: - 16, x1: 13, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
 POOL.r0 = GLASS.r + POOL.coping; POOL.r1 = POOL.r0 + POOL.w;
 POOL.a0 = - Math.acos( ( POOL.x0 - GLASS.cx ) / POOL.r0 ); POOL.a1 = - Math.acos( ( POOL.x1 - GLASS.cx ) / POOL.r0 );
+// the deck's ground lights: flush in the coping strip outside the glass (its middle), DECK_LAMP.gap m apart along it, centred
+const DECK_LAMP = { r: GLASS.r + 0.2, gap: 6, radius: 0.05, color: '#ffdcb0' };
+DECK_LAMP.at = ( () => {
+
+	const am = ( POOL.a0 + POOL.a1 ) / 2, n = Math.floor( DECK_LAMP.r * ( POOL.a1 - POOL.a0 ) / DECK_LAMP.gap ) + 1;
+	return Array.from( { length: n }, ( _, i ) => { const a = am + ( i - ( n - 1 ) / 2 ) * DECK_LAMP.gap / DECK_LAMP.r; return [ GLASS.cx + DECK_LAMP.r * Math.cos( a ), GLASS.cz + DECK_LAMP.r * Math.sin( a ) ]; } );
+
+} )();
 const PIANO_GAP = 1.6;		// (m: the piano's nearest point to the glass)
 const PIANO_YAW = 15 * D;		// (turned counter-clockwise seen from above: not square to the glass)
 // the backdrop's arc (the sea's photo, 3:1), its horizon at the eye; within the cameras' far planes (main.js 60, the probe's 50)
@@ -87,14 +95,14 @@ const LAYOUT = [
 // its brightness is the photo's sky's always), clouds (thin high cloud's cover, 0..1), stars (× a night sky's),
 // airglow (the night sky's share of it)
 export const AZUREA_PRESETS = {
-	'Day': { moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 9, sunColor: '#fff4e4', sunAz: - 112, sunEl: 56, moon: false, disc: 1, glitter: 0.6, sky: 1.0, haze: 1.2, skyHue: 0.35, clouds: 0.25, stars: 0, airglow: 0, tint: '#ffffff', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
+	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 9, sunColor: '#fff4e4', sunAz: - 112, sunEl: 56, moon: false, disc: 1, glitter: 0.6, sky: 1.0, haze: 1.2, skyHue: 0.35, clouds: 0.25, stars: 0, airglow: 0, tint: '#ffffff', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
 	// (the sun low over the sea, to the right of straight out: az -50)
-	'Golden hour': { moonCore: 1, sunCore: 16, seaVis: 22, wind: 0.5, windDir: 90, gust: 0.22, gustScale: 50, paws: 0.6, pawWind: 3.5, pawCover: 1, pawScale: 22, swell: 0.12, swellDir: 90, swellPeriod: 10, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
+	'Golden hour': { wisps: 0, deckLights: 0.35, moonCore: 1, sunCore: 16, seaVis: 22, wind: 0.5, windDir: 90, gust: 0.22, gustScale: 50, paws: 0.6, pawWind: 3.5, pawCover: 1, pawScale: 22, swell: 0.12, swellDir: 90, swellPeriod: 10, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
 	// (the golden hour's light on a calm sea: no wind of its own, a low swell, glassy; cat's paws drifting over it,
 	// along the coast)
-	'Calm evening': { moonCore: 1, sunCore: 16, seaVis: 22, wind: 0, windDir: 20, gust: 0, gustScale: 50, paws: 0.45, pawWind: 2.5, pawCover: 1, pawScale: 15, swell: 0.06, swellDir: 90, swellPeriod: 11, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
+	'Calm evening': { wisps: 0, deckLights: 0.35, moonCore: 1, sunCore: 16, seaVis: 22, wind: 0, windDir: 20, gust: 0, gustScale: 50, paws: 0.45, pawWind: 2.5, pawCover: 1, pawScale: 15, swell: 0.06, swellDir: 90, swellPeriod: 11, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
 	// (the moon low over the sea, a little right of straight out: az -75, 9 deg up; its light the main light, cool)
-	'Night': { moonCore: 0.3, sunCore: 1, seaVis: 30, wind: 0.3, windDir: 90, gust: 0.12, gustScale: 40, paws: 0.35, pawWind: 3, pawCover: 1, pawScale: 40, swell: 0.08, swellDir: 90, swellPeriod: 11, outside: 'night', sun: 1.5, sunColor: '#b4c8ff', sunAz: - 75, sunEl: 9, moon: true, disc: 1, glitter: 0.5, sky: 1.0, haze: 1.0, skyHue: 0.75, clouds: 0.12, stars: 1.6, airglow: 0.2, tint: '#ffffff', portal: 0.08, cove: 0.9, coveColor: '#ffd8a8', led: 2.4, ledColor: '#8fd2ff', bottles: 1.2, chand: 4, chandColor: '#ffcf96', keySpec: 0.05, env: 0.45, exposure: 0.6, bloom: 0.06, bloomThreshold: 9 },
+	'Night': { wisps: 0.35, deckLights: 0.5, moonCore: 0.3, sunCore: 1, seaVis: 30, wind: 0.3, windDir: 90, gust: 0.12, gustScale: 40, paws: 0.35, pawWind: 3, pawCover: 1, pawScale: 40, swell: 0.08, swellDir: 90, swellPeriod: 11, outside: 'night', sun: 1.5, sunColor: '#b4c8ff', sunAz: - 75, sunEl: 9, moon: true, disc: 1, glitter: 0.5, sky: 1.0, haze: 1.0, skyHue: 0.75, clouds: 0.12, stars: 1.6, airglow: 0.2, tint: '#ffffff', portal: 0.08, cove: 0.9, coveColor: '#ffd8a8', led: 2.4, ledColor: '#8fd2ff', bottles: 1.2, chand: 4, chandColor: '#ffcf96', keySpec: 0.05, env: 0.45, exposure: 0.6, bloom: 0.06, bloomThreshold: 9 },
 };
 const DEFAULT_PRESET = 'Day';
 
@@ -180,6 +188,74 @@ function slab( x0, x1, z0, z1, y ) {
 	const g = new Geo();
 	g.quad( V( x0, y, z0 ), V( x1, y, z0 ), V( x1, y, z1 ), V( x0, y, z1 ), V( 0, 1, 0 ) );
 	return g.build();
+
+}
+
+/**
+ * The polished floor's maps: a tangent-space normal map of a fine grain in the polish only (value noise at ~6 and
+ * ~3 mm, two octaves; wrapped), and the floor's own colour map, the marble's picture laid in slabs (`slabs`² per
+ * tile of the picture, `period` m: its repeat) with their joints drawn in, as the reference (Footages.local/ref/
+ * Moonlit Grand Piano by the Sea.png: large polished slabs, their joints fine lines). The normals by central
+ * differences; `strength`: the slope scale. The normal map linear (NoColorSpace); both the picture's repeat.
+ */
+function marbleNormalMap( map, { size = 2048, strength = 2.2, slabs = 2, joint = 2.5, period = 3 } = {} ) {
+
+	const img = map.image, W = size, Hh = size;
+	const cv = document.createElement( 'canvas' ); cv.width = W; cv.height = Hh;
+	const cx = cv.getContext( '2d', { willReadFrequently: true } );
+	const h = new Float32Array( W * Hh );
+	// (value noise on a periodic lattice of `cells`², smoothstepped)
+	const noise = ( cells, seed ) => {
+
+		const g = new Float32Array( cells * cells ).map( ( _, i ) => { const v = Math.sin( i * 12.9898 + seed * 78.233 ) * 43758.5453; return v - Math.floor( v ); } );
+		const out = new Float32Array( W * Hh );
+		for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
+
+			const u = i / W * cells, v = y / Hh * cells, iu = Math.floor( u ), iv = Math.floor( v ), fu = u - iu, fv = v - iv;
+			const su = fu * fu * ( 3 - 2 * fu ), sv = fv * fv * ( 3 - 2 * fv ), at = ( a, b ) => g[ ( ( b % cells ) * cells ) + ( a % cells ) ];
+			out[ y * W + i ] = ( at( iu, iv ) * ( 1 - su ) + at( iu + 1, iv ) * su ) * ( 1 - sv ) + ( at( iu, iv + 1 ) * ( 1 - su ) + at( iu + 1, iv + 1 ) * su ) * sv;
+
+		}
+		return out;
+
+	};
+	// (only a fine grain in the polish: noise at ~6 and ~3 mm. The picture's veins as relief, the polish's slow
+	// undulation, the slabs' tilt and the joints' grooves were tried and dropped: at this scale the veins read as
+	// a leaf's, not stone's; the joints are in the colour map)
+	const n3 = noise( 512, 3 ), n4 = noise( 1024, 4 );
+	for ( let i = 0; i < W * Hh; ++ i ) h[ i ] = 0.004 * ( n3[ i ] - 0.5 ) + 0.002 * ( n4[ i ] - 0.5 );
+	const px = period / W, sw = W / slabs, half = joint / 1000 / 2 / px;
+	const out = new Uint8Array( 4 * W * Hh );
+	for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
+
+		const dx = ( h[ y * W + ( i + 1 ) % W ] - h[ y * W + ( i - 1 + W ) % W ] ) * 0.5 * W / 256 * strength;
+		const dy = ( h[ ( ( y + 1 ) % Hh ) * W + i ] - h[ ( ( y - 1 + Hh ) % Hh ) * W + i ] ) * 0.5 * Hh / 256 * strength;
+		const l = Math.hypot( dx, dy, 1 ), o = 4 * ( y * W + i );
+		out[ o ] = Math.round( ( - dx / l * 0.5 + 0.5 ) * 255 ); out[ o + 1 ] = Math.round( ( dy / l * 0.5 + 0.5 ) * 255 ); out[ o + 2 ] = Math.round( ( 1 / l * 0.5 + 0.5 ) * 255 ); out[ o + 3 ] = 255;
+
+	}
+	// the floor's own colour map: the picture with the joints drawn in (a fine grey-brown grout line, `joint` mm,
+	// its edges a pixel softer)
+	cx.drawImage( img, 0, 0, W, Hh );
+	const col = cx.getImageData( 0, 0, W, Hh ), cd = col.data;
+	for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
+
+		const sx = Math.floor( i / sw ), sy = Math.floor( y / sw );
+		const e = Math.min( i - sx * sw, ( sx + 1 ) * sw - i, y - sy * sw, ( sy + 1 ) * sw - y );
+		const w = Math.max( 0, Math.min( 1, half + 1 - e ) );
+		if ( w <= 0 ) continue;
+		const o = 4 * ( y * W + i );
+		cd[ o ] += ( 150 - cd[ o ] ) * w * 0.8; cd[ o + 1 ] += ( 146 - cd[ o + 1 ] ) * w * 0.8; cd[ o + 2 ] += ( 140 - cd[ o + 2 ] ) * w * 0.8;
+
+	}
+	cx.putImageData( col, 0, 0 );
+	const color = new THREE.CanvasTexture( cv );
+	color.colorSpace = map.colorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.copy( map.repeat ); color.flipY = map.flipY; color.anisotropy = 16;
+	const t = new THREE.DataTexture( out, W, Hh, THREE.RGBAFormat );
+	t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.copy( map.repeat ); t.flipY = map.flipY;
+	t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 8;
+	t.needsUpdate = true;
+	return { normal: t, color };
 
 }
 
@@ -585,6 +661,8 @@ export class Azurea {
 			plinth: phys( { color: '#d9e5ec', roughness: 0.3, clearcoat: 0.6 } ),
 			chrome: phys( { color: '#e8ebee', metalness: 1, roughness: 0.12 } ),
 			mullion: phys( { color: '#eef1f3', metalness: 0.5, roughness: 0.32 } ),
+			// the deck's ground lights' lenses (frosted, warm; their glow per preset: deckLights)
+			deckLamp: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 0.4, emissive: new THREE.Color( DECK_LAMP.color ), emissiveIntensity: 2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			// lines of light (the bar's strips, the soffit's rim) and the cove's glow
 			led: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#bfe7ff' ), emissiveIntensity: 3.5, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			cove: phys( { color: '#f2f6f8', roughness: 0.9, emissive: new THREE.Color( '#e6f4ff' ), emissiveIntensity: 1, side: THREE.DoubleSide } ),
@@ -719,10 +797,10 @@ export class Azurea {
 			[ 'wind', 0, 10, 0.1, 'Wind (m/s)' ], [ 'windDir', - 180, 180, 1, 'Wind towards (°)' ], [ 'gust', 0, 0.6, 0.01, 'Gusts (sea)' ], [ 'gustScale', 10, 150, 1, 'Gust size (m)' ],
 			[ 'paws', 0, 1, 0.01, "Cat's paws" ], [ 'pawWind', 1, 10, 0.1, "Cat's paws wind (m/s)" ], [ 'pawCover', 0.02, 1, 0.01, "Cat's paws cover" ], [ 'pawScale', 5, 150, 1, "Cat's paws size (m)" ], [ 'swell', 0, 1.5, 0.01, 'Swell height (m)' ],
 			[ 'swellDir', - 180, 180, 1, 'Swell towards (°)' ], [ 'swellPeriod', 4, 16, 0.1, 'Swell period (s)' ],
-			[ 'sky', 0, 3, 0.01, 'Sky and sea' ], [ 'sunCore', 1, 20, 0.1, 'Sun disc brightness' ], [ 'moonCore', 0.05, 2, 0.01, 'Moon disc brightness' ], [ 'seaVis', 5, 100, 0.5, 'Sea visibility (km)' ], [ 'haze', 0.2, 6, 0.01, 'Haze' ], [ 'skyHue', 0, 1, 0.01, 'Sky hue (photo)' ], [ 'clouds', 0, 1, 0.01, 'High cloud' ],
+			[ 'sky', 0, 3, 0.01, 'Sky and sea' ], [ 'sunCore', 1, 20, 0.1, 'Sun disc brightness' ], [ 'moonCore', 0.05, 2, 0.01, 'Moon disc brightness' ], [ 'seaVis', 5, 100, 0.5, 'Sea visibility (km)' ], [ 'haze', 0.2, 6, 0.01, 'Haze' ], [ 'skyHue', 0, 1, 0.01, 'Sky hue (photo)' ], [ 'clouds', 0, 1, 0.01, 'High cloud' ], [ 'wisps', 0, 1, 0.01, 'Thin low cloud' ],
 			[ 'stars', 0, 4, 0.01, 'Stars' ], [ 'airglow', 0, 1, 0.01, 'Airglow (night)' ], [ 'tint', 'color', 'Sea tint' ], [ 'portal', 0, 6, 0.01, 'Window light' ],
 			[ 'cove', 0, 6, 0.01, 'Cove' ], [ 'coveColor', 'color', 'Cove color' ], [ 'led', 0, 12, 0.1, 'Bar strips' ], [ 'ledColor', 'color', 'Strip color' ],
-			[ 'bottles', 0, 5, 0.01, 'Bottle wall' ], [ 'chand', 0, 60, 0.1, 'Chandelier' ], [ 'chandColor', 'color', 'Chandelier color' ], [ 'env', 0, 2, 0.01, 'Ambient (probe)' ],
+			[ 'bottles', 0, 5, 0.01, 'Bottle wall' ], [ 'chand', 0, 60, 0.1, 'Chandelier' ], [ 'chandColor', 'color', 'Chandelier color' ], [ 'deckLights', 0, 3, 0.01, 'Deck ground lights' ], [ 'env', 0, 2, 0.01, 'Ambient (probe)' ],
 		];
 
 	}
@@ -766,10 +844,21 @@ export class Azurea {
 
 		// the glass wall: a thin arc, full height; its mullions, its head and sill
 		const G = GLASS, gs = { cx: G.cx, cz: G.cz, a0: G.a0, a1: G.a1 };
-		add( band( { ...gs, r0: G.r - 0.006, r1: G.r + 0.006, lo: 0.04, hi: H - 0.12, segs: 96 } ), M.glass );
-		for ( let i = 0; i <= 11; ++ i ) { const a = G.a0 + ( G.a1 - G.a0 ) * i / 11, d = 0.045 / G.r; add( band( { cx: G.cx, cz: G.cz, a0: a - d, a1: a + d, r0: G.r - 0.16, r1: G.r + 0.03, lo: 0, hi: H, segs: 1 } ), M.mullion ); }
-		add( band( { ...gs, r0: G.r - 0.14, r1: G.r + 0.03, lo: H - 0.12, hi: H, segs: 96 } ), M.mullion );
-		add( band( { ...gs, r0: G.r - 0.14, r1: G.r + 0.03, lo: 0, hi: 0.04, segs: 96 } ), M.mullion );
+		// (the frame in two parts, one each side of the glass, the pane running between them in a gap: an inner
+		// mullion 9 cm wide, 14 cm deep, and an outer cap 6 cm wide, 4 cm deep; the head and the sill likewise)
+		add( band( { ...gs, r0: G.r - 0.006, r1: G.r + 0.006, lo: 0.012, hi: H - 0.03, segs: 96 } ), M.glass );
+		const inner = [ G.r - 0.16, G.r - 0.016 ], outer = [ G.r + 0.016, G.r + 0.056 ];
+		for ( let i = 0; i <= 11; ++ i ) {
+
+			const a = G.a0 + ( G.a1 - G.a0 ) * i / 11, di = 0.045 / G.r, dO = 0.03 / G.r;
+			add( band( { cx: G.cx, cz: G.cz, a0: a - di, a1: a + di, r0: inner[ 0 ], r1: inner[ 1 ], lo: 0, hi: H, segs: 1 } ), M.mullion );
+			add( band( { cx: G.cx, cz: G.cz, a0: a - dO, a1: a + dO, r0: outer[ 0 ], r1: outer[ 1 ], lo: POOL.deck, hi: H, segs: 1 } ), M.mullion );
+
+		}
+		add( band( { ...gs, r0: G.r - 0.14, r1: inner[ 1 ], lo: H - 0.12, hi: H, segs: 96 } ), M.mullion );
+		add( band( { ...gs, r0: outer[ 0 ], r1: outer[ 1 ] - 0.01, lo: H - 0.1, hi: H, segs: 96 } ), M.mullion );
+		add( band( { ...gs, r0: G.r - 0.14, r1: inner[ 1 ], lo: 0, hi: 0.04, segs: 96 } ), M.mullion );
+		add( band( { ...gs, r0: outer[ 0 ], r1: outer[ 1 ] - 0.01, lo: POOL.deck, hi: 0.05, segs: 96 } ), M.mullion );
 
 		// the ceiling's ring cove: its wall (glowing), its top; the floating soffit, a line of light round it
 		add( band( { cx: COVE.cx, cz: COVE.cz, a0: 0, a1: 2 * Math.PI, r0: COVE.r, r1: COVE.r + 0.15, lo: H, hi: H + 0.9, segs: 128, faces: 'i' } ), M.cove );
@@ -828,6 +917,13 @@ export class Azurea {
 		add( band( { ...pa, a0: P.a0, a1: P.a1, r0: GLASS.r, r1: P.r0, ...top } ), M.deck );
 		add( band( { ...pa, a0: P.a0 - 0.25, a1: P.a0, r0: GLASS.r, r1: P.r1 + 0.25, ...top, segs: 16 } ), M.deck );
 		add( band( { ...pa, a0: P.a1, a1: P.a1 + 0.25, r0: GLASS.r, r1: P.r1 + 0.25, ...top, segs: 16 } ), M.deck );
+		// its ground lights: a brushed steel ring flush with the deck, a frosted lens in it
+		for ( const [ x, z ] of DECK_LAMP.at ) {
+
+			add( new THREE.CylinderGeometry( DECK_LAMP.radius + 0.022, DECK_LAMP.radius + 0.026, 0.006, 32 ).translate( x, P.deck + 0.003, z ), M.chrome );
+			add( new THREE.CircleGeometry( DECK_LAMP.radius, 32 ).rotateX( - Math.PI / 2 ).translate( x, P.deck + 0.0062, z ), M.deckLamp );
+
+		}
 		{
 
 			const yb = P.water - P.depth, lip = P.water - 0.005;
@@ -887,7 +983,7 @@ export class Azurea {
 		}
 
 		// the merged parts: a mesh each
-		const noShadow = new Set( [ M.glass, M.railGlass, M.crystal, M.tableGlass, M.led, M.cove, M.rug, M.deck, M.tile ] );
+		const noShadow = new Set( [ M.glass, M.railGlass, M.crystal, M.tableGlass, M.led, M.deckLamp, M.cove, M.rug, M.deck, M.tile ] );
 		for ( const [ mat, geos ] of parts ) {
 
 			const m = new THREE.Mesh( mergeGeometries( geos, false ), mat );
@@ -950,6 +1046,16 @@ export class Azurea {
 		const chand = this.chandLight = new THREE.PointLight( '#ffcf96', 0, 0, 2 );
 		chand.position.set( COVE.cx, H - 1.9, COVE.cz );
 		this.lights.add( chand );
+		// the deck's ground lights: a dim warm point each, just above its lens (no shadows; their reach a few metres:
+		// a pool of light on the deck, the frame's outer caps and the glass grazed from below)
+		this.deckLights = DECK_LAMP.at.map( ( [ x, z ] ) => {
+
+			const l = new THREE.PointLight( DECK_LAMP.color, 0, 5, 2 );
+			l.position.set( x, POOL.deck + 0.06, z ); l.castShadow = false;
+			this.lights.add( l );
+			return l;
+
+		} );
 
 	}
 
@@ -978,6 +1084,8 @@ export class Azurea {
 		M.led.emissive.set( L.ledColor ); M.led.emissiveIntensity = L.led;
 		M.bottles.emissiveIntensity = L.bottles;
 		this.keySpec.value = L.keySpec ?? 1; this.keySpecGlass.value = L.keySpecGlass ?? 0;
+		for ( const l of this.deckLights ) { l.intensity = L.deckLights ?? 0; l.visible = l.intensity > 0; }
+		M.deckLamp.emissiveIntensity = 8 * ( L.deckLights ?? 0 );
 		this.chandLight.color.set( L.chandColor ?? '#ffcf96' ); this.chandLight.intensity = L.chand ?? 0; this.chandLight.visible = ( L.chand ?? 0 ) > 0;
 		// the outside: its photo (the hour's), the disc and its path in the key light's direction
 		const sea = this.seas?.[ L.outside ] ?? this.seas?.day;
@@ -1023,7 +1131,7 @@ export class Azurea {
 			const T = ph?.band ?? [ 0.25, 0.42, 0.75 ], tl = 0.2126 * T[ 0 ] + 0.7152 * T[ 1 ] + 0.0722 * T[ 2 ];
 			// (the stars' gain: a magnitude-0 star ~40x the sky's band at 1080p, a 5th ~0.4x: src/sky.js)
 			this.sky.set( { light: dir, haze: L.haze ?? 1, hue: L.skyHue ?? 0.35, airglow: L.moon ? ( L.airglow ?? 0.25 ) : 0, stars: ( L.stars ?? 0 ) * 6e-5 * tl,
-				clouds: L.clouds ?? 0, target: T, profile: ph?.profile, az0: SKY.pa0, az1: SKY.pa1 } );
+				clouds: L.clouds ?? 0, wisps: L.wisps ?? 0, target: T, profile: ph?.profile, az0: SKY.pa0, az1: SKY.pa1 } );
 			const r = this._renderer ?? this.baker?.renderer;
 			if ( r ) this.sky.update( r );
 			// (the window's light: the sky's own colour, paler)
@@ -1247,7 +1355,7 @@ export class Azurea {
 	_outsideKey() {
 
 		const L = this.light;
-		return JSON.stringify( [ L.outside, L.sky, L.haze, L.skyHue, L.clouds, L.stars, L.airglow, L.tint, L.sunAz, L.sunEl, L.sunColor, L.moon, L.disc, L.glitter, L.sunCore, L.moonCore, L.seaVis, this._seaState(), this.materials.backdrop.map?.uuid ?? null, !! this.skyPhotos ] );
+		return JSON.stringify( [ L.outside, L.sky, L.haze, L.skyHue, L.clouds, L.wisps, L.stars, L.airglow, L.tint, L.sunAz, L.sunEl, L.sunColor, L.moon, L.disc, L.glitter, L.sunCore, L.moonCore, L.seaVis, this._seaState(), this.materials.backdrop.map?.uuid ?? null, !! this.skyPhotos ] );
 
 	}
 
@@ -1352,10 +1460,45 @@ export class Azurea {
 
 			const src = root.getObjectByName( slug );
 			if ( ! src ) continue;
-			const o = src.clone( true );
-			o.position.set( x, 0, z ); o.rotation.set( 0, yaw, 0 );
+			// (placed by a holder of its own: the pack's node carries its own transform — quantize's dequantisation,
+			// the mesh's centre and half size — so setting the node's position put its centre on the floor: every
+			// piece sunk by half its height)
+			const o = new THREE.Group(), c = src.clone( true );
+			o.name = slug; o.position.set( x, 0.003, z ); o.rotation.set( 0, yaw, 0 );		// (3 mm up: their flat bottoms not z-fighting the floor)
+			o.add( c );
 			o.traverse( m => { if ( m.isMesh ) { m.material = look( m.material ); m.castShadow = m.receiveShadow = true; } } );
 			pack.add( o );
+
+		}
+		// TRELLIS's ground plates out: the photos' contact shadows came out as flat skirts on the floor round each
+		// piece (0.1 m² under a stool, 2.7 under the sofa, 3.9 under a tall plant), jagged and white; hidden while the
+		// pieces were sunk, in plain view once they stood on the floor. Every triangle wholly within 15 mm of the
+		// piece's base is dropped (a pot's or a stand's own bottom with them: unseen, on the floor)
+		{
+
+			const done = new Set(), inv = new THREE.Matrix4(), rel = new THREE.Matrix4(), v = new THREE.Vector3();
+			pack.updateMatrixWorld( true );
+			for ( const o of pack.children ) {
+
+				inv.copy( o.matrixWorld ).invert();
+				o.traverse( m => {
+
+					if ( ! m.isMesh || done.has( m.geometry ) ) return;
+					done.add( m.geometry );
+					const g = m.geometry, pos = g.attributes.position, ix = g.index, n = ix ? ix.count : pos.count, keep = [];
+					rel.multiplyMatrices( inv, m.matrixWorld );
+					const y = i => v.fromBufferAttribute( pos, i ).applyMatrix4( rel ).y;
+					for ( let t = 0; t < n; t += 3 ) {
+
+						const a = ix ? ix.getX( t ) : t, b = ix ? ix.getX( t + 1 ) : t + 1, c = ix ? ix.getX( t + 2 ) : t + 2;
+						if ( Math.max( y( a ), y( b ), y( c ) ) >= 0.015 ) keep.push( a, b, c );
+
+					}
+					if ( keep.length < n ) g.setIndex( keep );
+
+				} );
+
+			}
 
 		}
 		// the pictures: the sea, the marble (the floor, the bar, the stairs, the deck), the bottle wall
@@ -1376,6 +1519,17 @@ export class Azurea {
 
 			marble.wrapS = marble.wrapT = THREE.RepeatWrapping; marble.repeat.set( 1 / 3, 1 / 3 ); marble.anisotropy = 8; marble.colorSpace = THREE.SRGBColorSpace;
 			for ( const m of [ M.floor, M.marble, M.deck ] ) { m.map = marble; m.needsUpdate = true; }
+			// the floor: laid in slabs (its own colour map, the joints drawn in), a fine grain in its polish (a normal
+			// map; the planar mirror's reflection shifted by it a little: src/mirror.js), under the clearcoat too
+			try {
+
+				const { normal: nm, color } = marbleNormalMap( marble );
+				M.floor.map = color;
+				M.floor.normalMap = nm; M.floor.normalScale.set( 0.45, 0.45 );
+				M.floor.clearcoatNormalMap = nm; M.floor.clearcoatNormalScale.set( 0.2, 0.2 );
+				M.floor.needsUpdate = true;
+
+			} catch ( e ) { console.warn( 'azurea: the floor\'s normal map', e ); }
 
 		}
 		if ( bottles ) { bottles.colorSpace = THREE.SRGBColorSpace; bottles.anisotropy = 8; M.bottles.map = bottles; M.bottles.emissiveMap = bottles; M.bottles.needsUpdate = true; }

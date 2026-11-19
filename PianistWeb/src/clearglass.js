@@ -15,16 +15,19 @@
 import * as THREE from 'three';
 import { chainCompile } from './mirror.js';
 
-/** A clear material (its mode set by setClearMode). `haze`: the body's share face on, without transmission. */
-export function clearMaterial( { ior = 1.5, roughness = 0.02, thickness = 0.02, dispersion = 1, color = '#ffffff', tint = '#f6fbfb', attenuationDistance = 0.6, haze = 0.1, absorb = false, flatShading = false, ...extra } = {} ) {
+/**
+ * A clear material (its mode set by setClearMode). `haze`: the body's share face on, without transmission.
+ * `mirror`: its face-on reflectance × this (a faint reflective coating; 1 the bare surface's Fresnel), in both modes.
+ */
+export function clearMaterial( { ior = 1.5, roughness = 0.02, thickness = 0.02, dispersion = 1, color = '#ffffff', tint = '#f6fbfb', attenuationDistance = 0.6, haze = 0.1, absorb = false, flatShading = false, mirror = 1, ...extra } = {} ) {
 
 	const m = new THREE.MeshPhysicalMaterial( { color, metalness: 0, roughness, ior, thickness, dispersion,
-		attenuationColor: new THREE.Color( tint ), attenuationDistance, specularIntensity: 1, flatShading, side: THREE.DoubleSide, ...extra } );
+		attenuationColor: new THREE.Color( tint ), attenuationDistance, specularIntensity: 1, specularColor: new THREE.Color( mirror, mirror, mirror ), flatShading, side: THREE.DoubleSide, ...extra } );
 	m.userData.clear = true;
 	// the fallback's absorption: what transmission lets through face on (its tint over its thickness, the channels' mean)
 	const t = m.attenuationColor, k = thickness / attenuationDistance;
 	const T = absorb ? ( t.r ** k + t.g ** k + t.b ** k ) / 3 : 1;
-	const U = { uClearF0: { value: ( ( ior - 1 ) / ( ior + 1 ) ) ** 2 }, uClearHaze: { value: haze }, uClearT: { value: T } };
+	const U = { uClearF0: { value: Math.min( 1, mirror * ( ( ior - 1 ) / ( ior + 1 ) ) ** 2 ) }, uClearHaze: { value: haze }, uClearT: { value: T } };
 	chainCompile( m, shader => {
 
 		Object.assign( shader.uniforms, U );

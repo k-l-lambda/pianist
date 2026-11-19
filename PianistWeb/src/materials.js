@@ -129,7 +129,9 @@ export function makeMaterials( baker, style ) {
 			// glass's see-through dimmed as much: clearglass.js `absorb`)
 			const acrylic = o => clearMaterial( { ior: 1.49, roughness: 0.015, dispersion: 0.4, tint: '#c4ccd2', attenuationDistance: 0.023, haze: 0.035, absorb: true, ...o } );
 			m.rim = acrylic( { thickness: 0.045 } );
-			m.lid = acrylic( { thickness: 0.02 } );
+			// (the lid: a faint mirror coating on its faces, 4x bare acrylic's 3.9 % face on (~16 %): the room and the sea
+			// read in it a little more, its see-through hardly dimmed)
+			m.lid = acrylic( { thickness: 0.02, mirror: 4 } );
 			// the lid prop and the legs: dark glass, opaque (a deep grey-black under a glassy coat; their edges
 			// catch the light, nothing shows through); the pedal stretcher and the lyre's upright panel satin silver
 			m.prop = phys( { color: '#16181b', roughness: 0.06, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, ior: 1.52 } );
