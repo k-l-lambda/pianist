@@ -784,7 +784,7 @@ export class Azurea {
 			// these are deliberately wider and higher than the old low, bar-dominant views.
 			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
 			'Lobby wide': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
-			'Reference lobby': { position: V( 3.0, 1.165, 19.0 ), target: V( - 2.3, 1.85, - 1.0 ), fov: 72 },
+			'Reference lobby': { position: V( 3.0, 1.165, 19.0 ), target: V( - 2.3, 1.85, - 1.0 ), fov: 65 },
 			'Piano hero': { position: V( 3.5, 2.2, 2.5 ), target: V( - 0.5, 1.0, - 4.2 ) },
 			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
 			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
