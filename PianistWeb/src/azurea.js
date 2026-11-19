@@ -37,19 +37,19 @@ const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
 const H = 7.8 * 0.7;						// lowered ceiling: 70% of the current room height									// the ceiling
-const WALL = { x0: - 22, x1: 13, z1: 18.5 };			// retreat the left solid wall; the glass arc continues into the widened left field		// the side walls, the front wall
-const GLASS = { cx: - 2, cz: 21.4, r: 26 };		// the glass wall: an arc round ( cx, cz )
+const WALL = { x0: - 13.25, x1: 4.25, z1: 7.0 };			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
+const GLASS = { cx: - 3.25, cz: 8.4, r: 13 };			// half-radius curved glass wall		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
-const BAR = { cx: - 2.5, cz: 6.7 };				// the bar's arc (its front towards +z), the bottle wall behind it
+const BAR = { cx: - 2.5, cz: 2.1 };				// the bar's arc (its front towards +z), the bottle wall behind it
 const BAR_SCALE = 0.82;					// a hospitality island, not a foreground wall
-const STAIRS = { cx: - 12.5, cz: 6.5, r0: 0.9, r1: 2.8, rise: 4.48, steps: 24, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
-const MEZZ = { x0: WALL.x0, x1: - 14.0, z0: - 2.0, z1: WALL.z1, y: 4.48 };
-const COVE = { cx: - 0.5, cz: 6.0, r: 6.2, soffit: 4.25 };
+const STAIRS = { cx: - 8.5, cz: 2.1, r0: 0.9, r1: 2.8, rise: 4.48, steps: 24, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
+const MEZZ = { x0: WALL.x0, x1: - 10.0, z0: - 1.5, z1: WALL.z1, y: 4.48 };
+const COVE = { cx: - 2.0, cz: 2.2, r: 3.8, soffit: 2.7 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
 // and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
-const POOL = { x0: - 25, x1: 17, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
+const POOL = { x0: - 16, x1: 10, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
 POOL.r0 = GLASS.r + POOL.coping; POOL.r1 = POOL.r0 + POOL.w;
 POOL.a0 = - Math.acos( ( POOL.x0 - GLASS.cx ) / POOL.r0 ); POOL.a1 = - Math.acos( ( POOL.x1 - GLASS.cx ) / POOL.r0 );
 // the deck's ground lights: flush in the coping strip outside the glass (its middle), DECK_LAMP.gap m apart along it, centred
@@ -75,12 +75,12 @@ SKY.h = SKY.r * ( SKY.pa1 - SKY.pa0 ) / 3; SKY.y0 = SKY.eye - SKY.h / 3;
 
 // the pack's pieces: [ slug, x, z, yaw (rad: its front +z turned to face (sin, cos)) ]
 const LAYOUT = [
-	[ 'sofa', 5.6, 3.4, Math.PI ], [ 'sofa', 8.7, 8.0, - 0.45 ],
-	[ 'lounge-chair', 4.1, 0.5, Math.atan2( 1.5, 1.2 ) ], [ 'lounge-chair', 7.1, 0.5, Math.atan2( - 1.5, 1.2 ) ],
-	[ 'lounge-chair', 7.3, 8.7, 0.3 ], [ 'lounge-chair', 10.5, 7.4, - 1.2 ],
+	[ 'sofa', 1.2, 2.4, Math.PI ], [ 'sofa', 0.8, 5.0, - 0.45 ],
+	[ 'lounge-chair', 0.0, 1.0, Math.atan2( 1.5, 1.2 ) ], [ 'lounge-chair', 3.0, 1.0, Math.atan2( - 1.5, 1.2 ) ],
+	[ 'lounge-chair', 0.0, 5.6, 0.3 ], [ 'lounge-chair', 3.0, 4.8, - 1.2 ],
 	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 3.15 * Math.cos( a * D ), BAR.cz + 3.15 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
-	[ 'plant-tall', - 15.2, - 1.0, 0.4 ], [ 'plant-tall', 11.0, - 1.3, - 0.9 ], [ 'plant-tall', - 14.8, 14.0, 2.1 ],
-	[ 'plant-low', 4.8, 5.0, 0.3 ], [ 'plant-low', - 8.0, 13.0, 1.7 ], [ 'plant-low', 10.8, 9.0, - 1.1 ],
+	[ 'plant-tall', - 11.2, - 0.8, 0.4 ], [ 'plant-tall', 3.3, - 0.8, - 0.9 ], [ 'plant-tall', - 10.5, 5.8, 2.1 ],
+	[ 'plant-low', 2.2, 1.8, 0.3 ], [ 'plant-low', - 6.0, 5.8, 1.7 ], [ 'plant-low', 3.2, 4.5, - 1.1 ],
 ];
 
 // outside: the sea's photo ('day' | 'sunset' | 'night'); the key light (sun*) is the sun, or at night the moon;
@@ -815,7 +815,7 @@ export class Azurea {
 			// these are deliberately wider and higher than the old low, bar-dominant views.
 			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
 			'Lobby wide': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
-			'Reference lobby': { position: V( 5.6454752635, 2.3852140579, 16.0012910837 ), target: V( - 3.2625305096, 1.8477202152, - 0.8479554300 ), fov: 58 },
+			'Reference lobby': { position: V( 3.2, 2.4, 6.4 ), target: V( - 2.2, 1.85, 0.4 ), fov: 58 },
 			'Piano hero': { position: V( 3.5, 2.2, 2.5 ), target: V( - 0.5, 1.0, - 4.2 ) },
 			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
 			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
@@ -892,9 +892,9 @@ export class Azurea {
 		// mullion 9 cm wide, 14 cm deep, and an outer cap 6 cm wide, 4 cm deep; the head and the sill likewise)
 		add( band( { ...gs, r0: G.r - 0.006, r1: G.r + 0.006, lo: 0.012, hi: H - 0.03, segs: 96 } ), M.glass );
 		const inner = [ G.r - 0.16, G.r - 0.016 ], outer = [ G.r + 0.016, G.r + 0.056 ];
-		for ( let i = 0; i <= 11; ++ i ) {
+		for ( let i = 0; i <= 5; ++ i ) {
 
-			const a = G.a0 + ( G.a1 - G.a0 ) * i / 11, di = 0.045 / G.r, dO = 0.03 / G.r;
+			const a = G.a0 + ( G.a1 - G.a0 ) * i / 5, di = 0.045 / G.r, dO = 0.03 / G.r;
 			add( band( { cx: G.cx, cz: G.cz, a0: a - di, a1: a + di, r0: inner[ 0 ], r1: inner[ 1 ], lo: 0, hi: H, segs: 1 } ), M.mullion );
 			add( band( { cx: G.cx, cz: G.cz, a0: a - dO, a1: a + dO, r0: outer[ 0 ], r1: outer[ 1 ], lo: POOL.deck, hi: H, segs: 1 } ), M.mullion );
 
