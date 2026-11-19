@@ -49,7 +49,7 @@ const MEZZ = { x0: WALL.x0, x1: - 10.0, z0: - 1.5, z1: WALL.z1, y: H * 0.82 };
 const COVE = { cx: - 2.0, cz: 2.2, r: 3.8, soffit: 2.7 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
 // and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
-const POOL = { x0: - 25, x1: 18, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
+const POOL = { x0: - 16, x1: 10, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
 POOL.r0 = GLASS.r + POOL.coping; POOL.r1 = POOL.r0 + POOL.w;
 POOL.a0 = - Math.acos( ( POOL.x0 - GLASS.cx ) / POOL.r0 ); POOL.a1 = - Math.acos( ( POOL.x1 - GLASS.cx ) / POOL.r0 );
 // the deck's ground lights: flush in the coping strip outside the glass (its middle), DECK_LAMP.gap m apart along it, centred
