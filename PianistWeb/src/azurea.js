@@ -591,8 +591,8 @@ function domeMaterial( sky, shared ) {
 }
 
 /**
- * `material`'s direct specular from the venue's spot lights (its key light: the only ones) scaled by `u` (a uniform):
- * a light's polished-surface highlight made what it should be (a moon's, not a lamp's) while its light stays.
+ * `material`'s direct specular from the venue's directional key light, scaled by `u` (a uniform):
+ * the sun's or moon's polished-surface highlight is kept separate from indoor point fixtures.
  */
 function keySpecular( material, u ) {
 
@@ -602,9 +602,8 @@ function keySpecular( material, u ) {
 		// chain — would declare the uniform twice and not compile)
 		if ( sh.fragmentShader.includes( 'uniform float uKeySpec;' ) ) return;
 		sh.uniforms.uKeySpec = u;
-		// (three's chunk: a snapshot of the specular before the point lights' loop, before the spots', and before the
-		// suns' / directionals'; then the key light (a spot) scaled by u, the point lights' (the chandelier's: a lamp
-		// indoor) dropped, the rest kept. Nothing indoor may show as a reflected spot on the glass or the black screen)
+		// (three's light chunks: snapshot the point lights, then the directional/sun lights; indoor point fixtures are
+		// excluded from polished-surface highlights while the directional sun/moon is retained)
 		const point = '#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )', spot = '#if ( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )',
 			end = '#if ( NUM_SUN_LIGHTS > 0 ) && defined( RE_Direct )';
 		let fs = THREE.ShaderChunk.lights_fragment_begin;
