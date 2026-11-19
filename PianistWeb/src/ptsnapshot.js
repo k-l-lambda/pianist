@@ -99,8 +99,11 @@ export class PTSnapshot {
 		const w = Math.max( 16, Math.round( buf.x / dpr ) ), h = Math.max( 16, Math.round( buf.y / dpr ) );
 		this.saved = { renderToCanvas: pt.renderToCanvas, dynamicLowRes: pt.dynamicLowRes, tiles: pt.tiles.clone(), sync: pt.synchronizeRenderSize, minSamples: pt.minSamples, fade: pt.fadeDuration, delay: pt.renderDelay, bounces: pt.bounces, pause: pt.pausePathTracing };
 		Object.assign( pt, { renderToCanvas: false, dynamicLowRes: false, synchronizeRenderSize: false, minSamples: 1, fadeDuration: 0, renderDelay: 0, pausePathTracing: false, bounces: this.hooks.bounces() } );
-		// tiles of about 64k pixels: one a frame keeps the page moving
-		const n = Math.max( 1, Math.round( Math.sqrt( w * h / 65536 ) ) );
+		// tiles of about 16k pixels: one a frame keeps the page moving, and each draw short. The GPU is shared with
+		// the display (Xorg, the shell): a draw the driver cannot switch away from in time is killed (kernel: NVRM
+		// Xid 109 CTX SWITCH TIMEOUT), the page's context lost, every sample after it black. At 64k-pixel tiles a
+		// heavy scene's (Azurea at night, 1920x1080: ~80 ms a tile) did so within 64-200 spp, every time
+		const n = Math.max( 1, Math.round( Math.sqrt( w * h / 16384 ) ) );
 		pt.tiles.set( n, n );
 		// the denoiser's buffers (ptpatch.js: a recompile when switched; left as they are after)
 		this.denoise = !! this.hooks.denoise?.() && !! pt.setAOV;

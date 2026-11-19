@@ -65,9 +65,8 @@ const PIANO_YAW = 15 * D;		// (turned counter-clockwise seen from above: not squ
 // (the arc wraps all the way round behind the room: at the glass's ends the wall hid a 10-170 degree strip, but a
 // camera at the window looking sideways saw past it into the clear colour — the backdrop now closes round)
 const SKY = { cx: - 2, cz: 2, r: 40, a0: - 180 * D, a1: 180 * D, eye: 1.6, dome: 42, seaY: - 1.2, horV: 0.60, seaRow: 0.78, nearD: 12 };
-// (the photo's own azimuth: 160° facing the room. The arc wraps all the way round — a camera at the glass looking
-// sideways saw past its old ends into the clear colour — and the photo is laid on its 160° of it, fading into the
-// sky's own colour over the rest, so no coastline repeats round the back)
+// The photo's own azimuth: 160° facing the room. The arc wraps all the way round behind the room and
+// fades into the atmosphere beyond the generated panorama's reliable coastline span.
 SKY.pa0 = - 170 * D; SKY.pa1 = - 10 * D;
 SKY.h = SKY.r * ( SKY.pa1 - SKY.pa0 ) / 3; SKY.y0 = SKY.eye - SKY.h / 3;
 // (the sea 1.2 m below the lobby floor: the eye eyeSea over it; the photo's horizon row horV — the sea's horizon, at
@@ -660,11 +659,13 @@ export class Azurea {
 			lacquer: phys( { color: '#f1f4f6', roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.1 } ),
 			plinth: phys( { color: '#d9e5ec', roughness: 0.3, clearcoat: 0.6 } ),
 			chrome: phys( { color: '#e8ebee', metalness: 1, roughness: 0.12 } ),
-			mullion: phys( { color: '#eef1f3', metalness: 0.5, roughness: 0.32 } ),
+			mullion: phys( { color: '#dce7eb', metalness: 0.25, roughness: 0.26 } ),
 			// the deck's ground lights' lenses (frosted, warm; their glow per preset: deckLights)
 			deckLamp: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 0.4, emissive: new THREE.Color( DECK_LAMP.color ), emissiveIntensity: 2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			// lines of light (the bar's strips, the soffit's rim) and the cove's glow
 			led: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#bfe7ff' ), emissiveIntensity: 3.5, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
+			flower: phys( { color: '#fffdf8', roughness: 0.48, sheen: 0.45, sheenColor: new THREE.Color( '#ffffff' ), sheenRoughness: 0.6 } ),
+			book: phys( { color: '#b9c8d1', roughness: 0.52, clearcoat: 0.25, clearcoatRoughness: 0.2 } ),
 			cove: phys( { color: '#f2f6f8', roughness: 0.9, emissive: new THREE.Color( '#e6f4ff' ), emissiveIntensity: 1, side: THREE.DoubleSide } ),
 			// the bar's bottle wall: a backlit picture (the pack's)
 			bottles: new THREE.MeshStandardMaterial( { color: '#222222', roughness: 0.4, emissive: new THREE.Color( '#ffffff' ), emissiveIntensity: 1.3 } ),
@@ -778,13 +779,16 @@ export class Azurea {
 	views() {
 
 		return {
-			'Overview': { position: V( - 1.5, 2.3, 11.6 ), target: V( - 1.5, 1.6, - 2 ) },
-			'The bar': { position: V( - 3.0, 1.5, 9.3 ), target: V( - 3.0, 1.2, 3.5 ) },
-			'The lounge': { position: V( 2.4, 1.4, 6.6 ), target: V( 6.0, 0.7, 1.2 ) },
-			'The staircase': { position: V( - 3.4, 1.7, 8.6 ), target: V( - 9.4, 2.6, 4.6 ) },
-			'The pool': { position: V( 3.0, 1.6, - 2.2 ), target: V( 0.5, 0.0, - 9.8 ) },
-			'Through the glass': { position: V( 5.5, 1.9, 7.5 ), target: V( - 1.5, 0.4, - 9 ) },
-			'The chandelier': { position: V( 2.2, 1.4, 9.4 ), target: V( COVE.cx, 5.2, COVE.cz ) },
+			// The reference composition leaves breathing room above the piano and shows the reflective floor;
+			// these are deliberately wider and higher than the old low, bar-dominant views.
+			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
+			'Piano hero': { position: V( 2.8, 1.8, 2.0 ), target: V( - 0.3, 0.75, - 3.4 ) },
+			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 3.0, 1.45, 3.5 ) },
+			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
+			'The staircase': { position: V( - 3.4, 2.2, 9.4 ), target: V( - 9.4, 2.8, 4.6 ) },
+			'The pool': { position: V( 3.0, 1.8, - 2.2 ), target: V( 0.5, 0.0, - 9.8 ) },
+			'Through the glass': { position: V( 5.5, 2.1, 7.5 ), target: V( - 1.5, 0.8, - 9 ) },
+			'The chandelier': { position: V( 2.2, 2.4, 9.4 ), target: V( COVE.cx, 5.7, COVE.cz ) },
 		};
 
 	}
@@ -910,6 +914,18 @@ export class Azurea {
 		add( new THREE.CylinderGeometry( 0.32, 0.32, 0.33, 64 ).translate( 5.6, 0.215, 1.7 ), M.tableGlass );
 		add( new THREE.CylinderGeometry( 0.34, 0.34, 0.05, 64 ).translate( 5.6, 0.025, 1.7 ), M.chrome );
 		add( new THREE.CircleGeometry( 1.75, 96 ).rotateX( - Math.PI / 2 ).translate( 5.6, 0.004, 1.6 ), M.rug );
+		// Quiet styling on the reference table: a cool book stack and a low white flower arrangement.
+		add( box( 5.28, 5.62, 0.438, 0.47, 1.58, 1.78 ), M.book );
+		add( box( 5.31, 5.59, 0.472, 0.502, 1.59, 1.77 ), M.marble );
+		add( new THREE.CylinderGeometry( 0.105, 0.075, 0.18, 24 ).translate( 5.86, 0.56, 1.7 ), M.ceramic );
+		const stem = new THREE.CylinderGeometry( 0.006, 0.006, 0.32, 6 );
+		for ( let i = 0; i < 9; ++ i ) {
+
+			const a = i * 2.399, x = 5.86 + 0.055 * Math.cos( a ), z = 1.7 + 0.055 * Math.sin( a );
+			add( stem.clone().translate( x, 0.81, z ), M.flower );
+			add( new THREE.IcosahedronGeometry( 0.045, 1 ).scale( 1, 0.62, 1 ).translate( x + 0.01 * Math.cos( a ), 0.98 + 0.02 * Math.sin( a ), z + 0.01 * Math.sin( a ) ), M.flower );
+
+		}
 
 		// outside: the deck (arcs, as the glass: a coping strip between the glass and the pool, beyond its ends and
 		// past its far edge's lip), the pool's basin (tiles), its water
@@ -1081,7 +1097,8 @@ export class Azurea {
 		this.portal.intensity = L.portal * L.sky;
 		this.portal.visible = L.portal > 0 && this.mode !== 'pathtrace';
 		M.cove.emissive.set( L.coveColor ); M.cove.emissiveIntensity = L.cove;
-		M.led.emissive.set( L.ledColor ); M.led.emissiveIntensity = L.led;
+		// Keep the raster/PT fixture balance stable: updateLights() can run after setMode().
+		M.led.emissive.set( L.ledColor ); M.led.emissiveIntensity = L.led * ( this.mode === 'pathtrace' ? 0.35 : 1 );
 		M.bottles.emissiveIntensity = L.bottles;
 		this.keySpec.value = L.keySpec ?? 1; this.keySpecGlass.value = L.keySpecGlass ?? 0;
 		for ( const l of this.deckLights ) { l.intensity = L.deckLights ?? 0; l.visible = l.intensity > 0; }
