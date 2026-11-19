@@ -37,14 +37,14 @@ const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
 const H = 7.8 * 0.7;						// lowered ceiling: 70% of the current room height									// the ceiling
-const WALL = { x0: - 13.25, x1: 4.25, z1: 7.0 };			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
+const WALL = { x0: - 13.25, x1: 4.25, z1: 12.0 };			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
 const GLASS = { cx: - 3.25, cz: 8.4, r: 13 };			// half-radius curved glass wall		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
 const BAR = { cx: - 2.5, cz: 2.1 };				// the bar's arc (its front towards +z), the bottle wall behind it
 const BAR_SCALE = 0.82;					// a hospitality island, not a foreground wall
-const STAIRS = { cx: - 8.5, cz: 2.1, r0: 0.9, r1: 2.8, rise: 4.48, steps: 24, sweep: 300 * D, top: Math.PI };		// (its top tread at angle `top`)
+const STAIRS = { cx: - 8.5, cz: 2.1, r0: 0.9, r1: 2.8, rise: 4.48, steps: 24, sweep: - 300 * D, top: Math.PI };		// (its top tread at angle `top`)
 const MEZZ = { x0: WALL.x0, x1: - 10.0, z0: - 1.5, z1: WALL.z1, y: 4.48 };
 const COVE = { cx: - 2.0, cz: 2.2, r: 3.8, soffit: 2.7 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
@@ -954,20 +954,20 @@ export class Azurea {
 		}
 
 		// the lounge's round table (marble on a glass drum, a chrome ring) and its rug
-		add( new THREE.CylinderGeometry( 0.48, 0.48, 0.05, 64 ).translate( 5.6, 0.405, 1.7 ), M.marble );
-		add( new THREE.CylinderGeometry( 0.32, 0.32, 0.33, 64 ).translate( 5.6, 0.215, 1.7 ), M.tableGlass );
-		add( new THREE.CylinderGeometry( 0.34, 0.34, 0.05, 64 ).translate( 5.6, 0.025, 1.7 ), M.chrome );
+		add( new THREE.CylinderGeometry( 0.48, 0.48, 0.05, 64 ).translate( 2.0, 0.405, 3.1 ), M.marble );
+		add( new THREE.CylinderGeometry( 0.32, 0.32, 0.33, 64 ).translate( 2.0, 0.215, 3.1 ), M.tableGlass );
+		add( new THREE.CylinderGeometry( 0.34, 0.34, 0.05, 64 ).translate( 2.0, 0.025, 3.1 ), M.chrome );
 		// Two round rugs anchor the two sofa groups in the wide reference composition.
-		add( new THREE.CircleGeometry( 2.15, 96 ).rotateX( - Math.PI / 2 ).translate( 6.0, 0.004, 2.4 ), M.rug );
-		add( new THREE.CircleGeometry( 2.0, 96 ).rotateX( - Math.PI / 2 ).translate( 9.0, 0.004, 8.3 ), M.rug );
+		add( new THREE.CircleGeometry( 2.15, 96 ).rotateX( - Math.PI / 2 ).translate( 1.2, 0.004, 2.4 ), M.rug );
+		add( new THREE.CircleGeometry( 2.0, 96 ).rotateX( - Math.PI / 2 ).translate( 0.8, 0.004, 5.0 ), M.rug );
 		// Quiet styling on the reference table: a cool book stack and a low white flower arrangement.
-		add( box( 5.28, 5.62, 0.438, 0.47, 1.58, 1.78 ), M.book );
-		add( box( 5.31, 5.59, 0.472, 0.502, 1.59, 1.77 ), M.marble );
-		add( new THREE.CylinderGeometry( 0.105, 0.075, 0.18, 24 ).translate( 5.86, 0.56, 1.7 ), M.ceramic );
+		add( box( 1.68, 2.02, 0.438, 0.47, 2.98, 3.18 ), M.book );
+		add( box( 1.71, 1.99, 0.472, 0.502, 2.99, 3.17 ), M.marble );
+		add( new THREE.CylinderGeometry( 0.105, 0.075, 0.18, 24 ).translate( 2.26, 0.56, 3.1 ), M.ceramic );
 		const stem = new THREE.CylinderGeometry( 0.006, 0.006, 0.32, 6 );
 		for ( let i = 0; i < 9; ++ i ) {
 
-			const a = i * 2.399, x = 5.86 + 0.055 * Math.cos( a ), z = 1.7 + 0.055 * Math.sin( a );
+			const a = i * 2.399, x = 2.26 + 0.055 * Math.cos( a ), z = 3.1 + 0.055 * Math.sin( a );
 			add( stem.clone().translate( x, 0.81, z ), M.flower );
 			add( new THREE.IcosahedronGeometry( 0.045, 1 ).scale( 1, 0.62, 1 ).translate( x + 0.01 * Math.cos( a ), 0.98 + 0.02 * Math.sin( a ), z + 0.01 * Math.sin( a ) ), M.flower );
 
