@@ -187,7 +187,7 @@ export const SKY_GLSL = /* glsl */`
 	uniform sampler2D uSkyView, uSkyTrans;
 	uniform vec3 uSkyLight;		// (the light's direction: the sun's, or the moon's at night)
 	uniform vec3 uSkyScale, uAirglow, uSkyHueProf[ 16 ];
-	uniform float uSkyHue;
+	uniform float uSkyHue, uClearDay;
 	// (the photo's own hue by elevation (tools/azurea-sky-matte.py: 0, 2.5 .. 37.5 deg), a chroma: rgb / luminance)
 	vec3 skyHueAt( float el ) {
 		float e = clamp( el / 0.0436332, 0.0, 15.0 );
@@ -225,6 +225,12 @@ export const SKY_GLSL = /* glsl */`
 		// brightness and the glow round the light the air's own)
 		float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
 		c = mix( c, l * skyHueAt( el ), uSkyHue );
+		// Clear coastal day: a luminous, pale horizon; deeper blue above, except towards the sun.
+		// Apply to clear air before clouds and the solar disc, including the sky sampled by reflections.
+		if ( uClearDay > 0.5 ) {
+			float blue = smoothstep( 0.0, 0.25, d.y ) * ( 1.0 - 0.55 * smoothstep( 0.65, 1.0, dot( d, uSkyLight ) ) );
+			c *= mix( vec3( 1.9, 1.65, 2.25 ), vec3( 0.84, 1.4, 2.6 ), blue );
+		}
 		return vec4( c + uAirglow * vr * mix( 1.0, a.a, 0.5 ), a.a );
 	}
 	uint skyPcg( uvec3 v ) {
@@ -380,7 +386,7 @@ export class Sky {
 			uSkyView: { value: this.view.texture }, uSkyTrans: { value: this.trans.texture },
 			uSkyLight: { value: new THREE.Vector3( 0, 1, 0 ) }, uSkyScale: { value: new THREE.Vector3( 1, 1, 1 ) }, uAirglow: { value: new THREE.Vector3() },
 			uStars: { value: 0 }, uClouds: { value: 0 }, uWisps: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 }, uMoonCore: { value: 1 },
-			uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
+			uClearDay: { value: 0 }, uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
 		};
 		this.params = null; this._built = null; this.dirty = true;
 		this._buf = new Uint16Array( 192 * 108 * 4 );
@@ -397,6 +403,7 @@ export class Sky {
 
 		const key = JSON.stringify( [ p.light.x.toFixed( 4 ), p.light.y.toFixed( 4 ), p.light.z.toFixed( 4 ), p.haze, p.target.map( v => v.toFixed( 5 ) ), p.hue, p.airglow, p.profile?.[ 0 ] ] );
 		this.uniforms.uSkyLight.value.copy( p.light );
+		this.uniforms.uClearDay.value = p.clearDay ? 1 : 0;
 		this.uniforms.uStars.value = p.stars ?? 0;
 		if ( p.profile ) p.profile.forEach( ( c, i ) => this.uniforms.uSkyHueProf.value[ i ]?.set( c[ 0 ], c[ 1 ], c[ 2 ] ) );
 		this.uniforms.uClouds.value = p.clouds ?? 0;

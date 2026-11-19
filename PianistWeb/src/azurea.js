@@ -889,14 +889,14 @@ export class Azurea {
 		// the bar: a cylindrical marble island with a cylindrical, backlit bottle cabinet. The reference reads
 		// this as a freestanding round drinks tower, not as a curved interior wall with a picture in its recess.
 		const bs = BAR_SCALE, bx = BAR.cx, bz = BAR.cz, br = 2.65 * bs;
-		add( new THREE.CylinderGeometry( br * 0.96, br, 0.14, 96 ).translate( bx, 0.07, bz ), M.plinth );
-		// Recessed bar base: the body is pulled inward, leaving a shadowed annulus under the overhanging counter.
-		add( new THREE.CylinderGeometry( br * 0.86, br * 0.86, 0.78, 96 ).translate( bx, 0.55, bz ), M.marble );
-		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.07, 96 ).translate( bx, 1.07, bz ), M.marble );
-		// The light sits inside the recess rather than on the outer skirt.
-		add( new THREE.CylinderGeometry( br * 0.86, br * 0.86, 0.028, 96 ).translate( bx, 0.19, bz ), M.barLight );
+		// Keep the opening clear down to the lobby floor, including the support and the recessed light.
+		const counter = { cx: bx, cz: bz, a0: 0, a1: 2 * Math.PI, segs: 96, faces: 'oitb' }, bore = 1.48;
+		add( band( { ...counter, r0: bore + 0.06, r1: br, lo: 0, hi: 0.14 } ), M.plinth );
+		add( band( { ...counter, r0: bore + 0.05, r1: br * 0.86, lo: 0.14, hi: 1.035 } ), M.marble );
+		add( band( { ...counter, r0: bore, r1: br * 1.06, lo: 1.035, hi: 1.105 } ), M.marble );
+		add( band( { ...counter, r0: br * 0.86, r1: br * 0.86 + 0.003, lo: 0.18, hi: 0.208, faces: 'o' } ), M.barLight );
 		add( new THREE.RingGeometry( br * 0.80, br * 0.89, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
-		add( new THREE.CylinderGeometry( 0.62, 0.70, H - 0.35, 64 ).translate( bx, ( H + 0.35 ) / 2, bz ), M.plaster );
+		add( new THREE.CylinderGeometry( 0.62, 0.70, H, 64 ).translate( bx, H / 2, bz ), M.plaster );
 		// The bottle display is a wall cabinet attached to the central pier, not a second outer cylinder.
 		const cabY0 = 1.18, cabY1 = H - 0.35, cabR = 0.72, cabA0 = 25 * D, cabA1 = 155 * D;
 		// Curved wall cabinet: the bottle display follows the central pier's cylindrical surface instead of a flat plane.
@@ -1059,7 +1059,7 @@ export class Azurea {
 	_buildLights() {
 
 		// the sun: a distant spot through the glass (its shadow map covers the lobby and the pool)
-		const sun = this.sun = new THREE.SpotLight( '#ffffff', 1, 0, 0.27, 0.12, 0 );
+		const sun = this.sun = new THREE.SpotLight( '#ffffff', 1, 0, 0.09, 0.20, 0 );
 		sun.castShadow = true;
 		sun.shadow.mapSize.set( 4096, 4096 );
 		sun.shadow.bias = - 0.0001; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
@@ -1167,7 +1167,7 @@ export class Azurea {
 			if ( ph ) U.uMatte.value = ph.matte;
 			const T = ph?.band ?? [ 0.25, 0.42, 0.75 ], tl = 0.2126 * T[ 0 ] + 0.7152 * T[ 1 ] + 0.0722 * T[ 2 ];
 			// (the stars' gain: a magnitude-0 star ~40x the sky's band at 1080p, a 5th ~0.4x: src/sky.js)
-			this.sky.set( { light: dir, haze: L.haze ?? 1, hue: L.skyHue ?? 0.35, airglow: L.moon ? ( L.airglow ?? 0.25 ) : 0, stars: ( L.stars ?? 0 ) * 6e-5 * tl,
+			this.sky.set( { clearDay: L.outside === 'day' && ! L.moon, light: dir, haze: L.haze ?? 1, hue: L.skyHue ?? 0.35, airglow: L.moon ? ( L.airglow ?? 0.25 ) : 0, stars: ( L.stars ?? 0 ) * 6e-5 * tl,
 				clouds: L.clouds ?? 0, wisps: L.wisps ?? 0, target: T, profile: ph?.profile, az0: SKY.pa0, az1: SKY.pa1 } );
 			const r = this._renderer ?? this.baker?.renderer;
 			if ( r ) this.sky.update( r );
