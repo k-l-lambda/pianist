@@ -96,7 +96,7 @@ const LAYOUT = [
 // its brightness is the photo's sky's always), clouds (thin high cloud's cover, 0..1), stars (× a night sky's),
 // airglow (the night sky's share of it)
 export const AZUREA_PRESETS = {
-	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 9, sunColor: '#fff4e4', sunAz: - 112, sunEl: 56, moon: false, disc: 1, glitter: 0.6, sky: 0.9, haze: 1.0, skyHue: 0.58, clouds: 0.25, stars: 0, airglow: 0, tint: '#d7ecfb', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
+	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 9, sunColor: '#fff4e4', sunAz: - 112, sunEl: 56, moon: false, disc: 1, glitter: 0.6, sky: 1.0, haze: 0.72, skyHue: 0.70, clouds: 0.25, stars: 0, airglow: 0, tint: '#b9e6ff', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
 	// (the sun low over the sea, to the right of straight out: az -50)
 	'Golden hour': { wisps: 0, deckLights: 0.35, moonCore: 1, sunCore: 16, seaVis: 22, wind: 0.5, windDir: 90, gust: 0.22, gustScale: 50, paws: 0.6, pawWind: 3.5, pawCover: 1, pawScale: 22, swell: 0.12, swellDir: 90, swellPeriod: 10, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
 	// (the golden hour's light on a calm sea: no wind of its own, a low swell, glassy; cat's paws drifting over it,
@@ -654,7 +654,7 @@ export class Azurea {
 		this.sky = new Sky();
 		const M = this.materials = {
 			// the floor: pale marble, mirror-polished (its marble from the pack; its reflection a planar one)
-			floor: phys( { color: '#eef7fc', roughness: 0.075, clearcoat: 1, clearcoatRoughness: 0.012, specularIntensity: 1 } ),
+			floor: phys( { color: '#dff2fc', roughness: 0.055, clearcoat: 1, clearcoatRoughness: 0.008, specularIntensity: 1 } ),
 			marble: phys( { color: '#f8f8f6', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 } ),
 			plaster: phys( { color: '#f2f5f7', roughness: 0.92 } ),
 			ceiling: phys( { color: '#f5f8fa', roughness: 0.92 } ),
@@ -888,13 +888,12 @@ export class Azurea {
 		// this as a freestanding round drinks tower, not as a curved interior wall with a picture in its recess.
 		const bs = BAR_SCALE, bx = BAR.cx, bz = BAR.cz, br = 2.65 * bs;
 		add( new THREE.CylinderGeometry( br * 0.96, br, 0.14, 96 ).translate( bx, 0.07, bz ), M.plinth );
-		add( new THREE.CylinderGeometry( br, br * 0.98, 0.94, 96 ).translate( bx, 0.58, bz ), M.marble );
+		// Recessed bar base: the body is pulled inward, leaving a shadowed annulus under the overhanging counter.
+		add( new THREE.CylinderGeometry( br * 0.86, br * 0.86, 0.78, 96 ).translate( bx, 0.55, bz ), M.marble );
 		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.07, 96 ).translate( bx, 1.07, bz ), M.marble );
-		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.028, 96 ).translate( bx, 0.16, bz ), M.barLight );
-		add( new THREE.CylinderGeometry( br * 1.06, br * 1.06, 0.028, 96 ).translate( bx, 0.98, bz ), M.barLight );
-		// warm bar footline, continuous ring under the counter, and the narrow central pier up to the ceiling
-		add( new THREE.CylinderGeometry( br * 1.065, br * 1.065, 0.025, 96 ).translate( bx, 0.13, bz ), M.barLight );
-		add( new THREE.RingGeometry( br * 0.98, br * 1.075, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
+		// The light sits inside the recess rather than on the outer skirt.
+		add( new THREE.CylinderGeometry( br * 0.86, br * 0.86, 0.028, 96 ).translate( bx, 0.19, bz ), M.barLight );
+		add( new THREE.RingGeometry( br * 0.80, br * 0.89, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
 		add( new THREE.CylinderGeometry( 0.62, 0.70, H - 0.35, 64 ).translate( bx, ( H + 0.35 ) / 2, bz ), M.plaster );
 		// The bottle display is a wall cabinet attached to the central pier, not a second outer cylinder.
 		const cabX0 = bx - 1.18, cabX1 = bx + 1.18, cabY0 = 1.18, cabY1 = H - 0.35, cabZ = bz + 0.82;
