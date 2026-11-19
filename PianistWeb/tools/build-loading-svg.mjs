@@ -175,8 +175,10 @@ const svg = inner => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ W 
 const stroke = ( d, color, width, opacity = 1, cap = 'round' ) =>
 	`<path d="${ d }" fill="none" stroke="${ color }" stroke-width="${ width }" stroke-opacity="${ opacity }" stroke-linecap="${ cap }" stroke-linejoin="round"/>`;
 
+// (the static drawing without the streamlines: their three dim curves off to the right edge taken out
+// of base.svg and the preview's static layer, 2026-11-19; mask-flow.svg still carries them: the amber
+// light still sweeps along them)
 const baseInner = [
-	flowFill( IVORY, 0.2 ),
 	stroke( strings, IVORY, 0.8, 0.22 ),
 	`<defs>${ bodyGradient }</defs>`,
 	bodyFill( 'url(#lit)' ),
