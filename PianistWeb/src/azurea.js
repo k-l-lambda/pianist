@@ -706,9 +706,8 @@ export class Azurea {
 		this.ceilingMirror = new PlaneMirror( new THREE.Plane( V( 0, - 1, 0 ), H ) );
 		this.mirror.addTo( M.floor );
 		this.ceilingMirror.addTo( M.ceiling );
-		// the key light's direct specular, scaled per surface (keySpec on the polished stone: at night the moon, a
-		// punctual light, made a broad white blob as bright as the moon itself; keySpecGlass on the glass: its
-		// reflection of the key light, a lamp's blown blob where a real moon's own small reflection should be)
+		// The direct-light shader treatment separates the directional sun from indoor point/area fixtures.
+		// The same uniform is retained for the sun's specular contribution in both raster and PT.
 		this.keySpec = { value: 1 }; this.keySpecGlass = { value: 1 };
 		for ( const [ m, u ] of [ [ M.floor, this.keySpec ], [ M.marble, this.keySpec ], [ M.glass, this.keySpecGlass ] ] ) if ( ! m.userData.azureaSpec ) { m.userData.azureaSpec = true; keySpecular( m, u ); }		// (once: rebuild() runs again, its chain would declare uKeySpec twice)
 		this._buildLights();
@@ -1058,17 +1057,17 @@ export class Azurea {
 	// ---- lights ----
 	_buildLights() {
 
-		// the sun: a distant spot through the glass (its shadow map covers the lobby and the pool)
-		const sun = this.sun = new THREE.SpotLight( '#ffffff', 1, 0, 0.09, 0.20, 0 );
+		// The sun is a distant parallel source. A DirectionalLight keeps the incident direction uniform across
+		// the lobby; its orthographic shadow camera covers the room rather than projecting a spotlight cone.
+		const sun = this.sun = new THREE.DirectionalLight( '#ffffff', 1 );
 		sun.castShadow = true;
 		sun.shadow.mapSize.set( 4096, 4096 );
 		sun.shadow.bias = - 0.0001; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
-		sun.shadow.camera.near = 40; sun.shadow.camera.far = 120;
-		sun.radius = 0.4;
+		sun.shadow.camera.near = 0.1; sun.shadow.camera.far = 120;
+		sun.shadow.camera.left = - 28; sun.shadow.camera.right = 28; sun.shadow.camera.top = 28; sun.shadow.camera.bottom = - 28;
+		sun.shadow.camera.updateProjectionMatrix();
 		this.lights.add( sun, sun.target );
-		// the path tracer's sun (or moon): a directional light, its disc the drawn one's (the backdrop's R: 0.0135
-		// rad the sun, 0.0115 the moon), sampled in its cone (src/ptpatch.js patchSea): the sea outside the spot's
-		// cone lit too, the lobby's shadows as soft as the disc is wide. The raster's spot is hidden there
+		// the path tracer's sun (or moon): the same directional source, its disc the drawn one's
 		const sunPT = this.sunPT = new THREE.DirectionalLight( '#ffffff', 1 );
 		sunPT.visible = false; sunPT.castShadow = false;
 		this.lights.add( sunPT, sunPT.target );
