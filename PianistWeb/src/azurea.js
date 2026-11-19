@@ -630,6 +630,34 @@ function keySpecular( material, u ) {
 
 }
 
+// Azurea's only RectAreaLight is the window portal, a diffuse proxy for skylight, not a luminous panel.
+// Keep three's own diffuse integral; the planar mirrors already supply the actual window radiance.
+function diffuseWindowFill( material ) {
+
+	chainCompile( material, shader => {
+
+		const chunk = '#include <lights_physical_pars_fragment>';
+		shader.fragmentShader = shader.fragmentShader.replace( chunk, `${ chunk }
+			#if NUM_RECT_AREA_LIGHTS > 0
+			void azureaWindowFill( RectAreaLight light, vec3 p, vec3 n, vec3 v, vec3 ccN, PhysicalMaterial mat, inout ReflectedLight sum ) {
+				vec3 spec = sum.directSpecular;
+				#ifdef USE_CLEARCOAT
+					vec3 coat = clearcoatSpecularDirect;
+				#endif
+				RE_Direct_RectArea( light, p, n, v, ccN, mat, sum );
+				sum.directSpecular = spec;
+				#ifdef USE_CLEARCOAT
+					clearcoatSpecularDirect = coat;
+				#endif
+			}
+			#undef RE_Direct_RectArea
+			#define RE_Direct_RectArea azureaWindowFill
+			#endif` );
+
+	}, 'azurea-diffuse-window' );
+
+}
+
 export class Azurea {
 
 	constructor( scene, baker ) {
@@ -705,6 +733,7 @@ export class Azurea {
 		this.ceilingMirror = new PlaneMirror( new THREE.Plane( V( 0, - 1, 0 ), H ) );
 		this.mirror.addTo( M.floor );
 		this.ceilingMirror.addTo( M.ceiling );
+		for ( const m of [ M.floor, M.ceiling ] ) diffuseWindowFill( m );
 		// The direct-light shader treatment separates the directional sun from indoor point/area fixtures.
 		// The same uniform is retained for the sun's specular contribution in both raster and PT.
 		this.keySpec = { value: 1 }; this.keySpecGlass = { value: 1 };
