@@ -644,7 +644,7 @@ export class Azurea {
 		this.lights = new THREE.Group(); this.lights.name = 'azureaLights';
 		this.active = false;
 		this.mode = 'raster';
-		this.view = { maxDistance: 16, maxPolarAngle: Math.PI * 0.56 };
+		this.view = { maxDistance: 28, maxPolarAngle: Math.PI * 0.56 };
 		this.background = new THREE.Color( '#cfe6f5' );
 		this.precompile = null;		// async ( object ): its shaders compiled as the frame will draw them (main.js)
 		// the open sea's surface (src/ocean.js: its sea state from the preset: wind, swell)
@@ -784,7 +784,7 @@ export class Azurea {
 			// these are deliberately wider and higher than the old low, bar-dominant views.
 			'Overview': { position: V( - 1.0, 2.8, 10.8 ), target: V( - 0.7, 2.35, - 1.2 ) },
 			'Lobby wide': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
-			'Reference lobby': { position: V( 2.5, 3.4, 14.5 ), target: V( - 3.5, 2.8, 3.0 ) },
+			'Reference lobby': { position: V( 3.0, 1.165, 19.0 ), target: V( - 2.3, 1.85, - 1.0 ), fov: 72 },
 			'Piano hero': { position: V( 3.5, 2.2, 2.5 ), target: V( - 0.5, 1.0, - 4.2 ) },
 			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
 			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
@@ -839,7 +839,8 @@ export class Azurea {
 		// the walls (left, right, front: plaster), the mezzanine (marble on it, lacquer round, plaster under)
 		add( box( WALL.x0 - 0.2, WALL.x0, 0, H, glassZ( WALL.x0 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
 		add( box( WALL.x1, WALL.x1 + 0.2, 0, H, glassZ( WALL.x1 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
-		add( box( WALL.x0 - 0.2, WALL.x1 + 0.2, 0, H, WALL.z1, WALL.z1 + 0.2 ), M.plaster );
+		// The wide reference camera sits just beyond the entry plane; keep this wall open so it cannot become a foreground occluder.
+		// add( box( WALL.x0 - 0.2, WALL.x1 + 0.2, 0, H, WALL.z1, WALL.z1 + 0.2 ), M.plaster );
 		// Two quiet structural columns establish the scale of the open lobby without blocking the piano.
 		for ( const [ x, z ] of [ [ - 11.7, 8.9 ], [ 7.6, 8.7 ] ] ) add( new THREE.CylinderGeometry( 0.42, 0.46, H, 48 ).translate( x, H / 2, z ), M.plaster );
 		add( slab( MEZZ.x0, MEZZ.x1, MEZZ.z0, MEZZ.z1, MEZZ.y ), M.marble );

@@ -1371,6 +1371,7 @@ fAzurea.add( azureaView, 'view', [ 'At the piano', ...Object.keys( azurea.views(
 	const v = name === 'At the piano' ? { position: piano.group.localToWorld( piano.camera.position.clone() ), target: piano.group.localToWorld( piano.camera.target.clone() ) } : azurea.views()[ name ];
 	camera.position.copy( v.position );
 	controls.target.copy( v.target );
+	if ( v.fov ) { camera.fov = v.fov; camera.updateProjectionMatrix(); }
 	controls.update();
 
 } );
