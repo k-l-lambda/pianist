@@ -1539,6 +1539,7 @@ fMidi.add( roll, 'enabled' ).name( 'Piano roll' );
 fMidi.addColor( { color: '#' + roll.musicColor.getHexString() }, 'color' ).name( 'Roll colour' ).onChange( v => roll.setColor( v ) );
 fMidi.add( roll, 'lookahead', 0.8, 6, 0.1 ).name( 'Look-ahead (s)' );
 fMidi.add( roll, 'particles' ).name( 'Particles' );
+fMidi.add( roll, 'byTimbre' ).name( 'Colour by instrument' ).onChange( v => roll.setByTimbre( v ) );		// (a multi-timbre file: each GM family its colour and particles)
 
 // ---------------------------------------------------------------------------
 // scene scripts (script.js): a YAML timeline of camera moves, screen power, MIDI and scene
