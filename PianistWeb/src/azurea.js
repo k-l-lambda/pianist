@@ -37,7 +37,7 @@ const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
 const H = 7.8 * 0.7 * 0.8;						// lowered ceiling: 70% of the current room height									// the ceiling
-const WALL = { x0: - 13.25, x1: 4.25, z1: 18.0 };			// complete floor and distant entry/back wall			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
+const WALL = { x0: - 13.25, x1: 8.5, z1: 18.0 };			// complete floor and distant entry/back wall			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
 const GLASS = { cx: - 3.25, cz: 8.4, r: 13 };			// half-radius curved glass wall		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
