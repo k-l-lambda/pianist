@@ -44,7 +44,7 @@ GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wa
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
 const BAR = { cx: - 2.5, cz: 2.1 };				// the bar's arc (its front towards +z), the bottle wall behind it
 const BAR_SCALE = 0.82;					// a hospitality island, not a foreground wall
-const STAIRS = { cx: - 8.5, cz: 2.1, r0: 0.9, r1: 2.8, rise: H * 0.82, steps: 24, sweep: - 300 * D, top: - 30 * D };		// rotated so the lower opening faces into the lobby, away from the glass
+const STAIRS = { cx: - 8.5, cz: 2.1, r0: 0.9, r1: 2.8, rise: H * 0.82, steps: 24, sweep: 300 * D, top: Math.PI + Math.PI }; 		// rotated so the lower opening faces into the lobby, away from the glass
 const MEZZ = { x0: WALL.x0, x1: - 10.0, z0: - 1.5, z1: WALL.z1, y: H * 0.82 };
 const COVE = { cx: - 2.0, cz: 2.2, r: 3.8, soffit: 2.7 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
@@ -75,9 +75,9 @@ SKY.h = SKY.r * ( SKY.pa1 - SKY.pa0 ) / 3; SKY.y0 = SKY.eye - SKY.h / 3;
 
 // the pack's pieces: [ slug, x, z, yaw (rad: its front +z turned to face (sin, cos)) ]
 const LAYOUT = [
-	[ 'sofa', 1.2, 2.4, Math.PI ], [ 'sofa', 0.8, 5.0, - 0.45 ],
-	[ 'lounge-chair', 0.0, 1.0, Math.atan2( 1.5, 1.2 ) ], [ 'lounge-chair', 3.0, 1.0, Math.atan2( - 1.5, 1.2 ) ],
-	[ 'lounge-chair', 0.0, 5.6, 0.3 ], [ 'lounge-chair', 3.0, 4.8, - 1.2 ],
+	[ 'sofa', 5.0, 2.4, Math.PI ], [ 'sofa', 4.6, 5.0, - 0.45 ],
+	[ 'lounge-chair', 3.8, 1.0, Math.atan2( 1.5, 1.2 ) ], [ 'lounge-chair', 6.8, 1.0, Math.atan2( - 1.5, 1.2 ) ],
+	[ 'lounge-chair', 3.8, 5.6, 0.3 ], [ 'lounge-chair', 6.8, 4.8, - 1.2 ],
 	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 3.15 * Math.cos( a * D ), BAR.cz + 3.15 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
 	[ 'plant-tall', - 11.2, - 0.8, 0.4 ], [ 'plant-tall', 3.3, - 0.8, - 0.9 ], [ 'plant-tall', - 10.5, 5.8, 2.1 ],
 	[ 'plant-low', 2.2, 1.8, 0.3 ], [ 'plant-low', - 6.0, 5.8, 1.7 ], [ 'plant-low', 3.2, 4.5, - 1.1 ],
@@ -1102,6 +1102,10 @@ export class Azurea {
 		const chand = this.chandLight = new THREE.PointLight( '#ffcf96', 0, 0, 2 );
 		chand.position.set( COVE.cx, H - 1.9, COVE.cz );
 		this.lights.add( chand );
+		// Warm fill from the chandelier's actual center, kept subtle in daylight.
+		const chandFill = this.chandFill = new THREE.PointLight( '#ffd2a1', 0, 9, 2 );
+		chandFill.position.set( COVE.cx, Math.max( 1.2, H - 1.0 ), COVE.cz );
+		this.lights.add( chandFill );
 		// the deck's ground lights: a dim warm point each, just above its lens (no shadows; their reach a few metres:
 		// a pool of light on the deck, the frame's outer caps and the glass grazed from below)
 		this.deckLights = DECK_LAMP.at.map( ( [ x, z ] ) => {
@@ -1145,6 +1149,7 @@ export class Azurea {
 		for ( const l of this.deckLights ) { l.intensity = L.deckLights ?? 0; l.visible = l.intensity > 0; }
 		M.deckLamp.emissiveIntensity = 8 * ( L.deckLights ?? 0 );
 		this.chandLight.color.set( L.chandColor ?? '#ffcf96' ); this.chandLight.intensity = L.chand ?? 0; this.chandLight.visible = ( L.chand ?? 0 ) > 0;
+		this.chandFill.intensity = this.mode === 'pathtrace' ? 0.35 : ( L.outside === 'day' ? 0.75 : 1.2 ); this.chandFill.visible = this.chandFill.intensity > 0;
 		// the outside: its photo (the hour's), the disc and its path in the key light's direction
 		const sea = this.seas?.[ L.outside ] ?? this.seas?.day;
 		if ( sea && M.backdrop.map !== sea ) { M.backdrop.map = sea; M.backdrop.needsUpdate = true; }
