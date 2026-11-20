@@ -50,9 +50,17 @@ try {
 			}
 			r.info.autoReset = old;
 			const median = k => frames.map( f => f[ k ] ).sort( ( a, b ) => a - b )[ Math.floor( frames.length / 2 ) ];
-			const A = window.__pianist.azurea;
+			const A = window.__pianist.azurea, T = await import( '/node_modules/three/build/three.module.js' );
+			const stoolChecks = A.pack.children.filter( o => o.name === 'bar-stool' ).map( o => {
+
+				const b = new T.Box3().setFromObject( o ), cx = - 2.5, cz = 3.6;
+				const dx = Math.max( b.min.x - cx, 0, cx - b.max.x ), dz = Math.max( b.min.z - cz, 0, cz - b.max.z );
+				return { position: o.position.toArray(), bodyClearanceLowerBound: Math.hypot( dx, dz ) - ( A.barDimensions?.bodyRadius ?? 1.86878 ), bounds: { min: b.min.toArray(), max: b.max.toArray() } };
+
+			} );
+			if ( stoolChecks.some( c => c.bodyClearanceLowerBound < 0 ) ) throw new Error( 'Conservative stool/body bound intersects; inspect before accepting' );
 			return { calls: median( 'calls' ), triangles: median( 'triangles' ), frames,
-				memory: { ...r.info.memory }, programs: r.info.programs.length, mode: A.mode, pillowChecks: A.pillowChecks ?? [], mirror: { enabled: A.mirror.enabled, hiddenNames: [ A.floorMesh.name ], cameraLayerMask: A.mirror.camera.layers.mask, glowMeshes: A.group.children.filter( o => o.isMesh && [ A.materials.leafGlow, A.materials.barLight ].includes( o.material ) ).map( o => ( { name: o.name, visible: o.visible, layerMask: o.layers.mask, emissive: o.material.emissiveIntensity } ) ) } };
+				memory: { ...r.info.memory }, programs: r.info.programs.length, mode: A.mode, barDimensions: A.barDimensions, stoolChecks, pillowChecks: A.pillowChecks ?? [], mirror: { enabled: A.mirror.enabled, hiddenNames: [ A.floorMesh.name ], cameraLayerMask: A.mirror.camera.layers.mask, glowMeshes: A.group.children.filter( o => o.isMesh && [ A.materials.leafGlow, A.materials.barLight ].includes( o.material ) ).map( o => ( { name: o.name, visible: o.visible, layerMask: o.layers.mask, emissive: o.material.emissiveIntensity } ) ) } };
 		} );
 		results.push( { shot: s, info } ); console.log( s.name, JSON.stringify( info ) );
 	}

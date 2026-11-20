@@ -1009,12 +1009,21 @@ export class Azurea {
 		const bs = BAR_SCALE, bx = BAR.cx, bz = BAR.cz, br = 2.65 * bs;
 		// Keep the opening clear down to the lobby floor, including the support and the recessed light.
 		const counter = { cx: bx, cz: bz, a0: 0, a1: 2 * Math.PI, segs: 96, faces: 'oitb' }, bore = 1.48;
-		const toeRadius = br * 0.86 - 0.12; // recess the kick 12 cm behind the marble face; no projecting plinth
+		const topRadius = br * 1.06, bodyRadius = topRadius - 0.15, toeRadius = bodyRadius - 0.12; // recess the kick 12 cm behind the marble face; no projecting plinth
 		add( band( { ...counter, r0: bore + 0.06, r1: toeRadius, lo: 0, hi: 0.14 } ), M.plinth );
-		add( band( { ...counter, r0: bore + 0.05, r1: br * 0.86, lo: 0.14, hi: 1.035 } ), M.marble );
-		add( band( { ...counter, r0: bore, r1: br * 1.06, lo: 1.035, hi: 1.105 } ), M.marble );
+		add( band( { ...counter, r0: bore + 0.05, r1: bodyRadius, lo: 0.14, hi: 1.035 } ), M.marble );
+		// Revolved slim top: flat upper surface, 30 mm outer lip and a smooth coved underside.
+		const topProfile = [ new THREE.Vector2( bore, 1.035 ), new THREE.Vector2( bodyRadius, 1.035 ) ];
+		for ( let i = 1; i <= 16; ++ i ) {
+
+			const u = i / 16; topProfile.push( new THREE.Vector2( bodyRadius + .15 * u, 1.035 + .040 * u * u * ( 3 - 2 * u ) ) );
+
+		}
+		topProfile.push( new THREE.Vector2( topRadius, 1.105 ), new THREE.Vector2( bore, 1.105 ), new THREE.Vector2( bore, 1.035 ) );
+		add( replanar( new THREE.LatheGeometry( topProfile, 128 ).translate( bx, 0, bz ) ), M.marble );
+		this.barDimensions = { topRadius, bodyRadius, toeRadius, bore, overhang: topRadius - bodyRadius, toeRecess: bodyRadius - toeRadius, lipThickness: .030 };
 		add( band( { ...counter, r0: toeRadius, r1: toeRadius + 0.003, lo: 0.10, hi: 0.128, faces: 'o' } ), M.barLight );
-		add( band( { ...counter, r0: br * 0.86, r1: br * 0.86 + 0.004, lo: 1.006, hi: 1.028, faces: 'o' } ), M.barLight );
+		add( band( { ...counter, r0: bodyRadius, r1: bodyRadius + 0.004, lo: 1.006, hi: 1.028, faces: 'o' } ), M.barLight );
 		add( new THREE.RingGeometry( br * 0.80, br * 0.89, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
 		add( new THREE.CylinderGeometry( 0.62, 0.70, H, 64 ).translate( bx, H / 2, bz ), M.plaster );
 		// The bottle display is a wall cabinet attached to the central pier, not a second outer cylinder.
