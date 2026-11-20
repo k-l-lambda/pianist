@@ -10,12 +10,13 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('topic', type=Path)
 p.add_argument('prefix')
 p.add_argument('components', nargs='+')
+p.add_argument('--round', default='round2')
 a = p.parse_args()
-refs = {'tower': 'bar-tower', 'reference-lobby': 'lighting', 'neutral': 'lighting', 'grazing': 'floor'}
+refs = {'pillows': 'lounge', 'rug': 'lounge', 'reflection': 'floor', 'tower': 'bar-tower', 'reference-lobby': 'lighting', 'neutral': 'lighting', 'grazing': 'floor'}
 font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 18)
 for component in a.components:
     ref = a.topic / 'specs' / f'{refs.get(component, component)}-reference.png'
-    rendered = a.topic / 'round2' / f'{a.prefix}-{component}.png'
+    rendered = a.topic / a.round / f'{a.prefix}-{component}.png'
     sheet = Image.new('RGB', (1600, 510), '#fafaf7')
     draw = ImageDraw.Draw(sheet)
     for x, path, title in [(0, ref, 'REFERENCE CROP'), (800, rendered, a.prefix.upper() + ' / ' + component)]:
@@ -23,4 +24,4 @@ for component in a.components:
         im.thumbnail((800, 450), getattr(Image, 'Resampling', Image).LANCZOS)
         sheet.paste(im, (x + (800 - im.width) // 2, 52 + (450 - im.height) // 2))
         draw.text((x + 12, 14), title, font=font, fill='#242b31')
-    sheet.save(a.topic / 'round2' / f'{a.prefix}-{component}-comparison.png')
+    sheet.save(a.topic / a.round / f'{a.prefix}-{component}-comparison.png')

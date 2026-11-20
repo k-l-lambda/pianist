@@ -311,6 +311,24 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 
 }
 
+function rugTextures() {
+
+	const W = 1024, Hh = 1024, cv = document.createElement( 'canvas' ); cv.width = cv.height = W; const ctx = cv.getContext( '2d' ), img = ctx.createImageData( W, Hh ), n = new Uint8Array( W * Hh * 4 ), r = new Uint8Array( W * Hh * 4 );
+	for ( let y = 0; y < Hh; ++ y ) for ( let x = 0; x < W; ++ x ) {
+
+		const u = x / W, v = y / Hh, i = y * W + x, o = i * 4, weave = .5 + .5 * Math.sin( x * Math.PI * .9 + 1.6 * Math.sin( y * .035 ) ) * Math.sin( y * Math.PI * 1.1 ), pattern = .5 + .25 * Math.sin( u * Math.PI * 6 + v * Math.PI * 4 ) + .25 * Math.cos( u * Math.PI * 4 - v * Math.PI * 6 );
+		img.data[ o ] = 112 + 22 * weave + 22 * pattern; img.data[ o + 1 ] = 139 + 24 * weave + 22 * pattern; img.data[ o + 2 ] = 155 + 25 * weave + 24 * pattern; img.data[ o + 3 ] = 255;
+		const dx = .18 * Math.cos( x * Math.PI * 1.4 ), dy = .18 * Math.sin( y * Math.PI * 1.7 ); n[ o ] = 128 + dx * 127; n[ o + 1 ] = 128 + dy * 127; n[ o + 2 ] = 252; n[ o + 3 ] = 255;
+		const rr = 220 + 23 * ( .5 + .5 * Math.sin( u * Math.PI * 6 + v * Math.PI * 4 ) ); r[ o ] = r[ o + 1 ] = r[ o + 2 ] = rr; r[ o + 3 ] = 255;
+
+	}
+	ctx.putImageData( img, 0, 0 ); const color = new THREE.CanvasTexture( cv ); color.colorSpace = THREE.SRGBColorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.set( 2, 2 ); color.anisotropy = 8;
+	const normal = new THREE.DataTexture( n, W, Hh, THREE.RGBAFormat ), roughness = new THREE.DataTexture( r, W, Hh, THREE.RGBAFormat );
+	for ( const t of [ normal, roughness ] ) { t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set( 2, 2 ); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 8; t.needsUpdate = true; }
+	return { color, normal, roughness };
+
+}
+
 /** The floor's (or ceiling's) outline: the front, the side walls, the glass's arc; in (x, z). */
 function footprint( segs = 64 ) {
 
@@ -733,6 +751,7 @@ export class Azurea {
 			mullion: phys( { color: '#dce7eb', metalness: 0.25, roughness: 0.26 } ),
 			// the deck's ground lights' lenses (frosted, warm; their glow per preset: deckLights)
 			deckLamp: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 0.4, emissive: new THREE.Color( DECK_LAMP.color ), emissiveIntensity: 2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
+			leafGlow: new THREE.MeshStandardMaterial( { color: '#fff4df', roughness: .25, emissive: '#ffe8c6', emissiveIntensity: 5, side: THREE.DoubleSide } ),
 			// lines of light (the bar's strips, the soffit's rim) and the cove's glow
 			led: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#bfe7ff' ), emissiveIntensity: 3.5, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			barLight: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#ffe6bb' ), emissiveIntensity: 2.2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
@@ -793,6 +812,9 @@ export class Azurea {
 
 		}
 		M.boucle.normalScale.set( .18, .18 );
+		const rug = rugTextures();
+		for ( const m of [ M.rug, M.rugBorder ] ) { m.map = rug.color; m.normalMap = rug.normal; m.normalScale.set( .25, .25 ); m.roughnessMap = rug.roughness; }
+		M.rug.color.set( '#e0e9ef' ); M.rugBorder.color.set( '#7894a9' );
 		// the PT water's bottom and sides: no normal map, and ior 1 (the water touching the tiles: no interface there.
 		// With an air gap's 1.33 the rays a ripple sent steeply sideways met the bottom past the critical angle, were
 		// trapped between it and the surface until the traversals ran out: the pool's far part in black patches)
@@ -1046,6 +1068,7 @@ export class Azurea {
 			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r1 + 0.06, lo: a => Math.max( 0, yAt( a ) - 0.30 ), hi: a => Math.max( 0.025, yAt( a ) - 0.025 ), faces: 'oitbse' } ), M.lacquer );
 			add( band( { ...helix, r0: S.r1, r1: S.r1 + 0.06, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
 			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r0, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
+			add( band( { ...helix, r0: S.r1 + .0605, r1: S.r1 + .064, lo: a => Math.max( .006, yAt( a ) - .29 ), hi: a => Math.max( .031, yAt( a ) - .265 ), faces: 'o' } ), M.barLight );
 			// thin warm decorative light under the stair's inner edge
 			add( band( { ...helix, r0: S.r0 - 0.065, r1: S.r0 - 0.055, lo: a => yAt( a ) - 0.30, hi: a => yAt( a ) - 0.27, faces: 'o' } ), M.barLight );
 			add( band( { ...helix, r0: S.r1 + 0.02, r1: S.r1 + 0.032, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
@@ -1195,7 +1218,7 @@ export class Azurea {
 		this.group.add( this.backdrop );
 
 		// the merged parts: a mesh each
-		const noShadow = new Set( [ M.glass, M.railGlass, M.crystal, M.tableGlass, M.led, M.barLight, M.deckLamp, M.cove, M.rug, M.deck, M.tile ] );
+		const noShadow = new Set( [ M.glass, M.railGlass, M.crystal, M.leafGlow, M.tableGlass, M.led, M.barLight, M.deckLamp, M.cove, M.rug, M.rugBorder, M.deck, M.tile ] );
 		for ( const [ mat, geos ] of parts ) {
 
 			const m = new THREE.Mesh( mergeGeometries( geos, false ), mat );
@@ -1212,18 +1235,56 @@ export class Azurea {
 
 	_loungeStyling( add ) {
 
-		const M = this.materials;
+		const M = this.materials; this.pillowChecks = [];
 		for ( const [ slug, x, z, yaw ] of LAYOUT ) {
 
 			if ( slug !== 'sofa' && slug !== 'lounge-chair' ) continue;
 			const at = ( geo, mat ) => add( geo.rotateY( yaw ).translate( x, 0.003, z ), mat );
 			if ( slug === 'sofa' ) {
 
-				at( roundedBox( 2.5, 0.28, 0.82, 0.12 ).translate( 0, 0.27, 0 ), M.boucle );
+				const seat = roundedBox( 2.5, 0.28, 0.82, 0.12 ).translate( 0, 0.27, 0 );
+				seat.computeBoundingBox(); const seatTop = seat.boundingBox.max.y;
+				at( seat, M.boucle );
 				const p = []; for ( let i = 0; i <= 24; ++ i ) { const u = ( i / 24 - 0.5 ) * 2; p.push( V( 1.12 * u, 0.59, - 0.29 + 0.20 * u * u ) ); }
 				at( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( p ), 36, 0.19, 12 ).scale( 1, 1.05, 1 ), M.boucle );
 				for ( const sign of [ - 1, 1 ] ) at( new THREE.SphereGeometry( 0.21, 16, 12 ).scale( 0.7, 1.0, 1.9 ).translate( sign * 1.13, 0.50, 0.05 ), M.boucle );
-				for ( const [ px, col ] of [ [ - 0.79, M.velvetBlue ], [ 0.05, M.boucle ], [ 0.78, M.velvetBlue ] ] ) at( roundedBox( 0.40, 0.31, 0.14, 0.055 ).rotateX( - 0.2 ).rotateZ( px * 0.12 ).translate( px, 0.58, - 0.07 ), col );
+				for ( const [ px, col ] of [ [ - 0.70, M.velvetBlue ], [ 0.05, M.boucle ], [ 0.70, M.velvetBlue ] ] ) {
+
+					const pillow = roundedBox( 0.36, 0.30, 0.12, 0.045 ).rotateX( - 0.22 ).rotateZ( px * 0.08 );
+					pillow.computeBoundingBox(); pillow.translate( px, seatTop - pillow.boundingBox.min.y + .001, 0 );
+					const pos = pillow.attributes.position, samples = [];
+					for ( let v = 0; v < pos.count; v += 3 ) {
+
+						const tri = [ 0, 1, 2 ].map( k => V( pos.getX( v + k ), pos.getY( v + k ), pos.getZ( v + k ) ) );
+						for ( let a = 0; a <= 3; ++ a ) for ( let b = 0; b <= 3 - a; ++ b ) samples.push( tri[ 0 ].clone().multiplyScalar( a / 3 ).addScaledVector( tri[ 1 ], b / 3 ).addScaledVector( tri[ 2 ], 1 - ( a + b ) / 3 ) );
+
+					}
+					const backClearance = z => {
+
+						let min = Infinity;
+						for ( const v of samples ) {
+
+							const vx = v.x, vy = v.y, vz = v.z + z;
+							for ( let j = 0; j + 1 < p.length; ++ j ) {
+
+								const q = p[ j ], b = p[ j + 1 ], dx = b.x - q.x, dy = b.y - q.y, dz = b.z - q.z;
+								const ex = vx - q.x, ey = vy / 1.05 - q.y, ez = vz - q.z, t = THREE.MathUtils.clamp( ( ex * dx + ey * dy + ez * dz ) / ( dx * dx + dy * dy + dz * dz ), 0, 1 );
+								min = Math.min( min, Math.hypot( ex - t * dx, ey - t * dy, ez - t * dz ) - .19 );
+
+							}
+
+						}
+						return min;
+
+					};
+					let lo = -.1, hi = .30; for ( let j = 0; j < 17; ++ j ) { const m = ( lo + hi ) / 2; if ( backClearance( m ) < .0015 ) lo = m; else hi = m; } const z = hi;
+					const backGap = backClearance( z ); pillow.translate( 0, 0, z ); pillow.computeBoundingBox();
+					let armGap = Infinity;
+					for ( const v of samples ) for ( const sign of [ - 1, 1 ] ) armGap = Math.min( armGap, ( Math.hypot( ( v.x - sign * 1.13 ) / .147, ( v.y - .50 ) / .21, ( v.z + z - .05 ) / .399 ) - 1 ) * .147 );
+					this.pillowChecks.push( { sofaX: x, localZ: z, localX: px, seatGap: pillow.boundingBox.min.y - seatTop, backGap, armGap, maxPenetration: Math.max( 0, - backGap, - armGap, seatTop - pillow.boundingBox.min.y ), method: 'Barycentric pillow face samples against piecewise back-tube segments, arm ellipsoids and actual seat bounds; 1.5mm back clearance, 1mm seat contact tolerance; not an exact triangle/triangle proof.' } );
+					at( pillow, col );
+
+				}
 				for ( const px of [ - 0.94, 0.94 ] ) for ( const pz of [ - 0.25, 0.25 ] ) at( new THREE.CylinderGeometry( 0.035, 0.035, 0.15, 8 ).translate( px, 0.075, pz ), M.chrome );
 
 			} else {
@@ -1375,7 +1436,7 @@ export class Azurea {
 
 		}
 		add( mergeGeometries( leaves.map( g => g.toNonIndexed() ), false ), M.crystal );
-		add( mergeGeometries( ribs.map( g => g.toNonIndexed() ), false ), M.chrome );
+		add( mergeGeometries( ribs.map( g => g.toNonIndexed() ), false ), M.leafGlow );
 		add( mergeGeometries( wires.map( g => g.toNonIndexed() ), false ), M.chrome );
 
 	}

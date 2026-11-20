@@ -25,6 +25,9 @@ try {
 			window.__detailLights = [];
 			Object.assign( A.light, A.presets[ s.preset || 'Day' ], s.light || {} );
 			A.updateLights();
+			if ( A.materials.leafGlow ) A.materials.leafGlow.emissiveIntensity = s.glows === false ? 0 : 5;
+			if ( s.glows === false ) A.materials.barLight.emissiveIntensity = 0;
+			if ( A.pillowChecks?.some( c => c.maxPenetration > .001 ) ) throw new Error( 'Pillow penetration exceeds 1 mm' );
 			if ( s.neutral ) {
 				const T = await import( '/node_modules/three/build/three.module.js' );
 				const fill = new T.HemisphereLight( '#ffffff', '#bcc0c4', 1.2 );
@@ -47,8 +50,9 @@ try {
 			}
 			r.info.autoReset = old;
 			const median = k => frames.map( f => f[ k ] ).sort( ( a, b ) => a - b )[ Math.floor( frames.length / 2 ) ];
+			const A = window.__pianist.azurea;
 			return { calls: median( 'calls' ), triangles: median( 'triangles' ), frames,
-				memory: { ...r.info.memory }, programs: r.info.programs.length, mode: window.__pianist.azurea.mode };
+				memory: { ...r.info.memory }, programs: r.info.programs.length, mode: A.mode, pillowChecks: A.pillowChecks ?? [], mirror: { enabled: A.mirror.enabled, hiddenNames: [ A.floorMesh.name ], cameraLayerMask: A.mirror.camera.layers.mask, glowMeshes: A.group.children.filter( o => o.isMesh && [ A.materials.leafGlow, A.materials.barLight ].includes( o.material ) ).map( o => ( { name: o.name, visible: o.visible, layerMask: o.layers.mask, emissive: o.material.emissiveIntensity } ) ) } };
 		} );
 		results.push( { shot: s, info } ); console.log( s.name, JSON.stringify( info ) );
 	}
