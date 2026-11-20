@@ -1347,7 +1347,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		pivot.rotation.z = THREE.MathUtils.degToRad( lidAngle );
 		pivot.add( mesh( lidGeo, LID ), mesh( flapGeo, LID ), mesh( merge( hinges ), M.brass ), mesh( merge( foldParts ), FH ) );
 		if ( rivetParts.length ) pivot.add( mesh( merge( rivetParts ), RIV ) );
-		if ( sockParts.length ) pivot.add( mesh( merge( sockParts.map( g => g.index ? g.toNonIndexed() : g ) ), M.brass ) );
+		if ( sockParts.length ) pivot.add( mesh( merge( sockParts.map( g => g.index ? g.toNonIndexed() : g ) ), M.propSocket ?? M.brass ) );		// (a style's own, else the hinges')
 		group.add( pivot, mesh( merge( rimHinges ), M.brass ) );
 
 		if ( open ) {
