@@ -372,7 +372,7 @@ function backdropMaterial( ocean, sky ) {
 	// (a map from the start: the shader reads it; the pack's photo replaces this grey until it loads)
 	const grey = Object.assign( new THREE.DataTexture( new Uint8Array( [ 150, 180, 205, 255 ] ), 1, 1 ), { needsUpdate: true } );
 	const m = new THREE.MeshBasicMaterial( { color: '#ffffff', fog: false, map: grey, toneMapped: false, side: THREE.BackSide, depthWrite: false } );
-	const U = m.userData.u = { uAtmosphere: { value: true }, uCloudsOnly: { value: false }, uLightDir: { value: V( 0, 1, 0 ) }, uDiscColor: { value: new THREE.Color() }, uDisc: { value: 0 }, uGlitter: { value: 0 }, uMoon: { value: 0 }, uTime: { value: 0 },
+	const U = m.userData.u = { uAtmosphere: { value: true }, uCloudsOnly: { value: false }, uLightDir: { value: V( 0, 1, 0 ) }, uDiscColor: { value: new THREE.Color() }, uDisc: { value: 0 }, uGlitter: { value: 0 }, uSunE: { value: new THREE.Vector3() }, uSeaWind: { value: new THREE.Vector4( 0, 1, 3, 0 ) }, uMoon: { value: 0 }, uTime: { value: 0 },
 		uSkyHor: { value: new THREE.Color( '#dfeaf2' ) }, uSkyZen: { value: new THREE.Color( '#3f7fb8' ) }, uSeaColor: { value: new THREE.Color( '#1d6480' ) },
 		uSeaExt: { value: new THREE.Vector3( 0.30, 0.055, 0.020 ) }, uSeaExtScale: { value: 1.0 }, uSeaVis: { value: 25 },
 		// (the photo's grade: the sea tint and the hour's gain, on the photo's sea and land only. The procedural sky
@@ -396,7 +396,8 @@ function backdropMaterial( ocean, sky ) {
 				#endif` );
 		sh.fragmentShader = sh.fragmentShader.replace( '#include <common>', `#include <common>
 			varying vec3 vSkyDirection;
-			uniform vec3 uLightDir, uDiscColor, uSkyHor, uSkyZen, uSeaColor, uSeaExt, uPhotoTint;
+			uniform vec3 uLightDir, uDiscColor, uSkyHor, uSkyZen, uSeaColor, uSeaExt, uPhotoTint, uSunE;
+			uniform vec4 uSeaWind;		// (the wind's direction (x, z: towards), its speed (m/s): the slopes' skew and peakedness)
 			uniform float uPhotoGain;
 			uniform float uDisc, uGlitter, uMoon, uTime, uSeaExtScale, uSeaVis;
 			float seaAirT = 1.0;		// (the air's transmittance from the eye to the sea here: the glints' too)
@@ -596,11 +597,27 @@ function backdropMaterial( ocean, sky ) {
 					vec2 d = mS - seaMean;
 					float q = ( C.y * d.x * d.x - 2.0 * C.z * d.x * d.y + C.x * d.y * d.y ) / det;
 					float pdf = exp( - 0.5 * q ) / ( 6.28318 * sqrt( det ) );
+					// (Cox & Munk 1954's Gram-Charlier form: the slopes skewed along the wind and peaked. In the wind's
+					// frame, η the upwind slope (a facet facing downwind: the wave's steep front), ξ the crosswind; each
+					// over its own σ. The series × the Gaussian, floored where it would go negative in the far tail)
+					{
+						vec2 wd = uSeaWind.xy, cw = vec2( - wd.y, wd.x );
+						float su = sqrt( max( dot( wd, vec2( C.x * wd.x + C.z * wd.y, C.z * wd.x + C.y * wd.y ) ), 1e-8 ) );
+						float sc = sqrt( max( dot( cw, vec2( C.x * cw.x + C.z * cw.y, C.z * cw.x + C.y * cw.y ) ), 1e-8 ) );
+						float eta = - dot( d, wd ) / su, xi = dot( d, cw ) / sc, W = uSeaWind.z;
+						float c21 = 0.01 - 0.0086 * W, c03 = 0.04 - 0.033 * W;
+						float x2 = xi * xi, e2 = eta * eta;
+						float gc = 1.0 - 0.5 * c21 * ( x2 - 1.0 ) * eta - c03 / 6.0 * ( e2 * eta - 3.0 * eta )
+							+ 0.40 / 24.0 * ( x2 * x2 - 6.0 * x2 + 3.0 ) + 0.12 / 4.0 * ( x2 - 1.0 ) * ( e2 - 1.0 ) + 0.23 / 24.0 * ( e2 * e2 - 6.0 * e2 + 3.0 );
+						pdf *= max( gc, 0.05 );
+					}
 					float fr = azFresnel( clamp( dot( V, Hh ), 1e-3, 1.0 ) );
 					float Gm = 1.0 / ( 1.0 + azLambda( V, seaCov ) + azLambda( L, seaCov ) );
-					// (the disc's irradiance: its drawn radiance over its solid angle, × uGlitter (the real disc is
-					// brighter than the drawn one: the preset's))
-					float Ed = 3.14159 * R * R * ( uMoon > 0.5 ? 9.0 : 14.0 );
+					// (the light's irradiance comes in below as uSunE: the key light's own (intensity × colour), the one the
+					// pool and the room are lit by — not the drawn disc's, which is only a few times the sky's (the real sun
+					// is ~10⁴–10⁵ times it): a facet steep enough to mirror a high sun is rare, and only that ratio makes it
+					// shine. uGlitter: 1 the physical)
+					float Ed = 1.0;
 					float mean = fr * pdf * Gm / ( 4.0 * max( V.y, 2e-3 ) * cH * cH * cH * cH ) * Ed;
 					// the count: facets in the pixel × the chance one mirrors the disc (pdf over its slope area, πR²/(4 cH³))
 					float nF = seaArea / uSeaFacet;
@@ -629,7 +646,8 @@ function backdropMaterial( ocean, sky ) {
 
 					}
 					float shown = mix( 1.0, k / max( lam, 1e-6 ), stoch );
-					outgoingLight += uGlitter * mean * shown * smoothstep( - 0.02, 0.03, L.y ) * uDiscColor * seaAirT;
+					// (one mirroring facet is at most the sun's radiance over the pixel: clamped against a bad sample)
+					outgoingLight += min( uGlitter * mean * shown, 4e3 ) * smoothstep( - 0.02, 0.03, L.y ) * uSunE * seaAirT;
 
 				}
 
@@ -1552,6 +1570,8 @@ export class Azurea {
 			U.uPhotoTint.value.set( L.tint ?? '#ffffff' ); U.uPhotoGain.value = ( L.sky ?? 1 ) * 1.25;
 			if ( this._ptSeaU ) this._ptSeaU.ptSeaTint.value.copy( U.uPhotoTint.value ).multiplyScalar( U.uPhotoGain.value );
 			U.uLightDir.value.copy( dir ); U.uMoon.value = L.moon ? 1 : 0; U.uDisc.value = U.uAtmosphere.value ? ( L.disc ?? 0 ) : 0; U.uGlitter.value = L.glitter ?? 0;
+			U.uSunE.value.set( this.sun.color.r, this.sun.color.g, this.sun.color.b ).multiplyScalar( L.sun ?? 0 );
+			{ const wd = ( L.windDir ?? 90 ) * D; U.uSeaWind.value.set( Math.cos( wd ), Math.sin( wd ), L.wind ?? 3, 0 ); }
 			U.uSeaVis.value = L.seaVis ?? 25; this.sky.uniforms.uSunCore.value = L.moon ? 1 : ( L.sunCore ?? 1 ); this.sky.uniforms.uMoonCore.value = L.moon ? ( L.moonCore ?? 1 ) : 1;
 			this.ocean.set( this._seaState() );
 			this.ocean.setGust( L.gust ?? 0, L.gustScale ?? 50 );		// (the gusts: no new spectrum, a uniform)
@@ -1716,11 +1736,10 @@ export class Azurea {
 		if ( ! sun || ! this._ptSeaU ) return;
 		const R = L.moon ? 0.0115 : 0.0135;		// (the backdrop's drawn disc: its R)
 		sun.omc = 1 - Math.cos( R );
-		// after a sea bounce the disc's light × this: the raster's glitter (src/azurea.js backdrop: uGlitter × the
-		// drawn disc's irradiance π R² × 14 (9 the moon) × its colour) over the light's own (intensity × colour)
-		const U = this.materials.backdrop.userData.u, d = U.uDiscColor.value, c = this.sunPT.color, I = Math.max( this.sunPT.intensity, 1e-6 );
-		const k = ( L.glitter ?? 0 ) * Math.PI * R * R * ( L.moon ? 9 : 14 ) / I;
-		this._ptSeaU.ptSunSeaGain.value.set( k * d.r / Math.max( c.r, 1e-4 ), k * d.g / Math.max( c.g, 1e-4 ), k * d.b / Math.max( c.b, 1e-4 ) );
+		// after a sea bounce the light × this: the raster's glitter is the key light's own irradiance × uGlitter
+		// (src/azurea.js backdrop), so the path tracer's sea bounce is the light × the same gain
+		const k = L.glitter ?? 0;
+		this._ptSeaU.ptSunSeaGain.value.set( k, k, k );
 
 	}
 
