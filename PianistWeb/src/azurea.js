@@ -744,6 +744,11 @@ export class Azurea {
 			cove: phys( { color: '#f2f6f8', roughness: 0.9, emissive: new THREE.Color( '#e6f4ff' ), emissiveIntensity: 1, side: THREE.DoubleSide } ),
 			// the bar's bottle wall: a backlit picture (the pack's)
 			bottles: new THREE.MeshStandardMaterial( { color: '#222222', roughness: 0.4, emissive: new THREE.Color( '#ffffff' ), emissiveIntensity: 1.3 } ),
+			bottleGlass: clearMaterial( { ior: 1.5, roughness: 0.01, thickness: 0.015, tint: '#effcff', attenuationDistance: 0.8, haze: 0.03 } ),
+			bottleAmber: phys( { color: '#b86f24', roughness: 0.22, metalness: 0.05, clearcoat: 0.45, clearcoatRoughness: 0.055 } ),
+			bottleAqua: phys( { color: '#4eb7c7', roughness: 0.2, metalness: 0.03, clearcoat: 0.5, clearcoatRoughness: 0.055 } ),
+			bottleRose: phys( { color: '#b95f69', roughness: 0.23, metalness: 0.04, clearcoat: 0.45, clearcoatRoughness: 0.055 } ),
+			bottleGreen: phys( { color: '#537c62', roughness: 0.24, metalness: 0.04, clearcoat: 0.4, clearcoatRoughness: 0.055 } ),
 			// clear things (src/clearglass.js: transmission under GI and the path tracer, Fresnel alpha glass else)
 			glass: clearMaterial( { ior: 1.5, roughness: 0.005, thickness: 0.012, tint: '#eef8f9', attenuationDistance: 2, haze: 0.03 } ),
 			railGlass: clearMaterial( { ior: 1.5, roughness: 0.01, thickness: 0.012, tint: '#dff2f4', attenuationDistance: 0.8, haze: 0.06 } ),
@@ -773,7 +778,7 @@ export class Azurea {
 		// With an air gap's 1.33 the rays a ripple sent steeply sideways met the bottom past the critical angle, were
 		// trapped between it and the surface until the traversals ran out: the pool's far part in black patches)
 		M.waterPTBody = M.waterPT.clone(); M.waterPTBody.ior = 1.0;
-		this.clear = [ M.glass, M.railGlass, M.crystal, M.tableGlass ];
+		this.clear = [ M.glass, M.railGlass, M.crystal, M.tableGlass, M.bottleGlass ];
 		this.mirror = new PlaneMirror( new THREE.Plane( V( 0, 1, 0 ), 0 ), { blur: 0.35 } );		// (the floor's: src/mirror.js)
 		this.ceilingMirror = new PlaneMirror( new THREE.Plane( V( 0, - 1, 0 ), H ) );
 		this.mirror.addTo( M.floor );
@@ -974,14 +979,30 @@ export class Azurea {
 		// The bottle display is a wall cabinet attached to the central pier, not a second outer cylinder.
 		const cabY0 = 1.18, cabY1 = H - 0.35, cabR = 0.72, cabA0 = 25 * D, cabA1 = 155 * D;
 		// Curved wall cabinet: the bottle display follows the central pier's cylindrical surface instead of a flat plane.
-		const cu = a => ( a - cabA0 ) / ( cabA1 - cabA0 ), cv = y => 1 - ( y - cabY0 ) / ( cabY1 - cabY0 );
-		add( band( { cx: bx, cz: bz, a0: cabA0, a1: cabA1, r0: cabR, r1: cabR + 0.025, lo: cabY0, hi: cabY1, faces: 'o', uv: ( a, b, la, lb, ha, hb ) => [ [ cu( a ), cv( la ) ], [ cu( b ), cv( lb ) ], [ cu( b ), cv( hb ) ], [ cu( a ), cv( ha ) ] ] } ), M.bottles );
-		// Six shelf lips follow the cabinet's usable height; no shelves floating above the lowered ceiling.
+		// Real curved cabinet backing and depth, not the photographic bottle-wall plane.
+		add( band( { cx: bx, cz: bz, a0: cabA0, a1: cabA1, r0: cabR - 0.025, r1: cabR, lo: cabY0, hi: cabY1, faces: 'o' } ), M.enamel );
+		for ( const a of [ cabA0, cabA1 ] ) add( band( { cx: bx, cz: bz, a0: a - 0.025, a1: a + 0.025, r0: cabR - 0.02, r1: cabR + 0.23, lo: cabY0, hi: cabY1, segs: 1 } ), M.lacquer );
+		const bottleMats = [ M.bottleAqua, M.bottleAmber, M.bottleRose, M.bottleGreen ];
+		const bottleProfile = [ [ 0.035, 0 ], [ 0.052, 0.025 ], [ 0.055, 0.16 ], [ 0.045, 0.22 ], [ 0.023, 0.27 ], [ 0.018, 0.36 ], [ 0.012, 0.38 ], [ 0.012, 0.41 ] ].map( p => new THREE.Vector2( ...p ) );
+		for ( let shelf = 0; shelf < 6; ++ shelf ) {
+
+			const sy = cabY0 + 0.08 + shelf * ( cabY1 - cabY0 ) / 6;
+			for ( let i = 0; i < 8; ++ i ) {
+
+				const a = cabA0 + 0.09 + ( i + 0.5 * ( shelf % 2 ) ) / 8 * ( cabA1 - cabA0 - 0.18 ), h = 0.66 + 0.08 * Math.sin( i * 2.7 + shelf );
+				const shape = new THREE.LatheGeometry( bottleProfile.map( p => new THREE.Vector2( p.x * ( 0.82 + 0.16 * Math.sin( i + shelf ) ), p.y * h ) ), 10 );
+				const rr = cabR + 0.11, px = bx + rr * Math.cos( a ), pz = bz + rr * Math.sin( a );
+				shape.translate( px, sy, pz ); add( shape, bottleMats[ ( i + shelf ) % bottleMats.length ] );
+				add( new THREE.CylinderGeometry( 0.014, 0.014, 0.018, 8 ).translate( px, sy + h * 0.41, pz ), M.chrome );
+
+			}
+
+		}
 		for ( let i = 0; i <= 6; ++ i ) {
 
 			const y = cabY0 + i * ( cabY1 - cabY0 ) / 6;
-			add( band( { cx: bx, cz: bz, a0: cabA0 - 0.02, a1: cabA1 + 0.02, r0: cabR - 0.035, r1: cabR + 0.065, lo: y - 0.012, hi: y + 0.018, faces: 'otb' } ), M.lacquer );
-			add( band( { cx: bx, cz: bz, a0: cabA0 - 0.02, a1: cabA1 + 0.02, r0: cabR + 0.062, r1: cabR + 0.066, lo: y - 0.020, hi: y - 0.012, faces: 'o' } ), M.barLight );
+			add( band( { cx: bx, cz: bz, a0: cabA0 - 0.02, a1: cabA1 + 0.02, r0: cabR - 0.035, r1: cabR + 0.23, lo: y - 0.012, hi: y + 0.018, faces: 'otb' } ), M.lacquer );
+			add( band( { cx: bx, cz: bz, a0: cabA0 - 0.02, a1: cabA1 + 0.02, r0: cabR + 0.205, r1: cabR + 0.225, lo: y - 0.021, hi: y - 0.012, faces: 'ob' } ), M.barLight );
 
 		}
 		add( band( { cx: bx, cz: bz, a0: cabA0 - 0.025, a1: cabA1 + 0.025, r0: cabR - 0.04, r1: cabR + 0.07, lo: cabY0 - 0.03, hi: cabY0 + 0.03, faces: 'o' } ), M.barLight );
@@ -998,8 +1019,9 @@ export class Azurea {
 			// band() expects increasing angles for its end-cap normals; height still follows signed ascent.
 			const arc = ( a, b ) => ( { cx: S.cx, cz: S.cz, a0: Math.min( a, b ), a1: Math.max( a, b ) } );
 			for ( let k = 0; k < S.steps; ++ k ) { const y = ( k + 1 ) * S.rise / S.steps; add( band( { ...arc( a0 + k * da, a0 + ( k + 1 ) * da ), r0: S.r0, r1: S.r1, lo: y - 0.06, hi: y, segs: 3 } ), M.marble ); }
-			add( new THREE.CylinderGeometry( 0.28, 0.28, S.rise, 32 ).translate( S.cx, S.rise / 2, S.cz ), M.lacquer );
 			const helix = { ...arc( a0, a1 ), segs: 120 };
+			// A continuous load-bearing ribbon spans the tread width; no central pedestal column.
+			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r1 + 0.06, lo: a => Math.max( 0, yAt( a ) - 0.30 ), hi: a => Math.max( 0.025, yAt( a ) - 0.025 ), faces: 'oitbse' } ), M.lacquer );
 			add( band( { ...helix, r0: S.r1, r1: S.r1 + 0.06, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
 			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r0, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
 			// thin warm decorative light under the stair's inner edge
@@ -1051,6 +1073,7 @@ export class Azurea {
 
 		// the lounges (LOUNGES): each rug (a pale field in a blue-grey border, as the reference's), its round coffee
 		// table (marble on a glass drum, a chrome ring) at the centre, a side table with a lit lamp at the sofa's end
+		this._loungeStyling( add );
 		for ( const g of LOUNGES ) {
 
 			add( new THREE.CircleGeometry( g.r - 0.22, 96 ).rotateX( - Math.PI / 2 ).translate( g.x, 0.004, g.z ), M.rug );
@@ -1162,6 +1185,35 @@ export class Azurea {
 		}
 		if ( this.pack ) this.group.add( this.pack );
 		this.updateLights();
+
+	}
+
+	_loungeStyling( add ) {
+
+		const M = this.materials;
+		for ( const [ slug, x, z, yaw ] of LAYOUT ) {
+
+			if ( slug !== 'sofa' && slug !== 'lounge-chair' ) continue;
+			const at = ( geo, mat ) => add( geo.rotateY( yaw ).translate( x, 0.003, z ), mat );
+			if ( slug === 'sofa' ) {
+
+				at( roundedBox( 2.5, 0.28, 0.82, 0.12 ).translate( 0, 0.27, 0 ), M.boucle );
+				const p = []; for ( let i = 0; i <= 24; ++ i ) { const u = ( i / 24 - 0.5 ) * 2; p.push( V( 1.12 * u, 0.59, - 0.29 + 0.20 * u * u ) ); }
+				at( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( p ), 36, 0.19, 12 ).scale( 1, 1.05, 1 ), M.boucle );
+				for ( const sign of [ - 1, 1 ] ) at( new THREE.SphereGeometry( 0.21, 16, 12 ).scale( 0.7, 1.0, 1.9 ).translate( sign * 1.13, 0.50, 0.05 ), M.boucle );
+				for ( const [ px, col ] of [ [ - 0.79, M.velvetBlue ], [ 0.05, M.boucle ], [ 0.78, M.velvetBlue ] ] ) at( roundedBox( 0.40, 0.31, 0.14, 0.055 ).rotateX( - 0.2 ).rotateZ( px * 0.12 ).translate( px, 0.58, - 0.07 ), col );
+				for ( const px of [ - 0.94, 0.94 ] ) for ( const pz of [ - 0.25, 0.25 ] ) at( new THREE.CylinderGeometry( 0.035, 0.035, 0.15, 8 ).translate( px, 0.075, pz ), M.chrome );
+
+			} else {
+
+				at( new THREE.SphereGeometry( 0.43, 20, 12 ).scale( 1, 0.25, 0.91 ).translate( 0, 0.31, 0.03 ), M.boucle );
+				const p = []; for ( let i = 0; i <= 24; ++ i ) { const a = Math.PI + Math.PI * i / 24; p.push( V( 0.34 * Math.cos( a ), 0.51 + 0.13 * Math.sin( - a ), 0.29 * Math.sin( a ) ) ); }
+				at( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( p ), 32, 0.13, 12 ).scale( 1, 1.5, 1 ).translate( 0, - 0.25, 0 ), M.boucle );
+				for ( const px of [ - 0.27, 0.27 ] ) for ( const pz of [ - 0.22, 0.24 ] ) at( new THREE.CylinderGeometry( 0.021, 0.021, 0.23, 8 ).translate( px, 0.115, pz ), M.chrome );
+
+			}
+
+		}
 
 	}
 
@@ -1767,6 +1819,7 @@ export class Azurea {
 		const look = m => ( { chrome: M.packChrome, boucle: M.boucle, velvetBlue: M.velvetBlue, leather: M.leather, ceramic: M.ceramic, leaf: M.leaf } )[ m.userData?.look ] ?? m;
 		for ( const [ slug, x, z, yaw ] of LAYOUT ) {
 
+			if ( slug === 'sofa' || slug === 'lounge-chair' ) continue; // replaced procedurally at identical anchors
 			const src = root.getObjectByName( slug );
 			if ( ! src ) continue;
 			// (placed by a holder of its own: the pack's node carries its own transform — quantize's dequantisation,
