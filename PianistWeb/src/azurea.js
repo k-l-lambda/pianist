@@ -1248,7 +1248,7 @@ export class Azurea {
 				const p = []; for ( let i = 0; i <= 24; ++ i ) { const u = ( i / 24 - 0.5 ) * 2; p.push( V( 1.12 * u, 0.59, - 0.29 + 0.20 * u * u ) ); }
 				at( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( p ), 36, 0.19, 12 ).scale( 1, 1.05, 1 ), M.boucle );
 				for ( const sign of [ - 1, 1 ] ) at( new THREE.SphereGeometry( 0.21, 16, 12 ).scale( 0.7, 1.0, 1.9 ).translate( sign * 1.13, 0.50, 0.05 ), M.boucle );
-				for ( const [ px, col ] of [ [ - 0.79, M.velvetBlue ], [ 0.05, M.boucle ], [ 0.78, M.velvetBlue ] ] ) {
+				for ( const [ px, col ] of [ [ - 0.70, M.velvetBlue ], [ 0.05, M.boucle ], [ 0.70, M.velvetBlue ] ] ) {
 
 					const pillow = roundedBox( 0.36, 0.30, 0.12, 0.045 ).rotateX( - 0.22 ).rotateZ( px * 0.08 );
 					pillow.computeBoundingBox(); pillow.translate( px, seatTop - pillow.boundingBox.min.y + .001, 0 );
