@@ -690,6 +690,10 @@ export class Azurea {
 			led: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#bfe7ff' ), emissiveIntensity: 3.5, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			barLight: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#ffe6bb' ), emissiveIntensity: 2.2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			flower: phys( { color: '#fffdf8', roughness: 0.48, sheen: 0.45, sheenColor: new THREE.Color( '#ffffff' ), sheenRoughness: 0.6 } ),
+			stem: phys( { color: '#5d846d', roughness: 0.6, sheen: 0.15, sheenColor: new THREE.Color( '#b6d3bb' ), sheenRoughness: 0.7 } ),
+			enamel: phys( { color: '#e8edf0', roughness: 0.24, clearcoat: 0.6, clearcoatRoughness: 0.055 } ),
+			blackMetal: phys( { color: '#11181c', metalness: 0.72, roughness: 0.24, clearcoat: 0.25, clearcoatRoughness: 0.12 } ),
+			brass: phys( { color: '#b88d55', metalness: 0.82, roughness: 0.2 } ),
 			book: phys( { color: '#b9c8d1', roughness: 0.52, clearcoat: 0.25, clearcoatRoughness: 0.2 } ),
 			cove: phys( { color: '#f2f6f8', roughness: 0.9, emissive: new THREE.Color( '#e6f4ff' ), emissiveIntensity: 1, side: THREE.DoubleSide } ),
 			// the bar's bottle wall: a backlit picture (the pack's)
@@ -859,7 +863,9 @@ export class Azurea {
 			add( new THREE.ShapeGeometry( c, 1 ).rotateX( Math.PI / 2 ).translate( 0, H, 0 ), M.ceiling );		// ((x, z) -> (x, 0, z), facing down)
 			// Close the annular gap around the recessed cove. Without this ceiling ring, a wide camera sees the sky
 			// through the enlarged cove and the lobby loses the reference's strong ceiling plane and scale cue.
-			add( new THREE.RingGeometry( COVE.soffit, COVE.r, 160 ).rotateX( Math.PI / 2 ).translate( COVE.cx, H - 0.045, COVE.cz ), M.ceiling );
+			// Two actual recessed concentric slots, not luminous lines pasted onto one ceiling plane.
+			for ( const [ r0, r1, y ] of [ [ COVE.soffit + 0.16, COVE.r - 0.32, H - 0.075 ], [ COVE.r - 0.14, COVE.r, H - 0.045 ] ] )
+				add( new THREE.RingGeometry( r0, r1, 160 ).rotateX( Math.PI / 2 ).translate( COVE.cx, y, COVE.cz ), M.ceiling );
 			// A shallow canopy continues beyond the glass wall, keeping the exterior edge architecturally framed.
 			add( band( { cx: GLASS.cx, cz: GLASS.cz, a0: GLASS.a0, a1: GLASS.a1, r0: GLASS.r - 0.04, r1: GLASS.r + 2.0, lo: H - 0.05, hi: H, segs: 96, faces: 't' } ), M.ceiling );
 
@@ -897,8 +903,13 @@ export class Azurea {
 		add( new THREE.CircleGeometry( COVE.r + 0.15, 128 ).rotateX( Math.PI / 2 ).translate( COVE.cx, H + 0.9, COVE.cz ), M.cove );
 		add( band( { cx: COVE.cx, cz: COVE.cz, a0: 0, a1: 2 * Math.PI, r0: 0, r1: COVE.soffit, lo: H - 0.2, hi: H - 0.05, segs: 128, faces: 'ob' } ), M.ceiling );
 		add( band( { cx: COVE.cx, cz: COVE.cz, a0: 0, a1: 2 * Math.PI, r0: 0, r1: COVE.soffit + 0.004, lo: H - 0.16, hi: H - 0.11, segs: 128, faces: 'o' } ), M.led );
-		// warm architectural ring light visible from the low reference camera
-		add( new THREE.RingGeometry( COVE.soffit, COVE.soffit + 0.07, 160 ).rotateX( Math.PI / 2 ).translate( COVE.cx, H - 0.08, COVE.cz ), M.barLight );
+		// Broad warm troughs, with depth and opaque lips; same COVE footprint and centre as before.
+		for ( const [ r0, r1 ] of [ [ COVE.soffit, COVE.soffit + 0.16 ], [ COVE.r - 0.32, COVE.r - 0.14 ] ] ) {
+
+			add( new THREE.RingGeometry( r0, r1, 160 ).rotateX( Math.PI / 2 ).translate( COVE.cx, H + 0.015, COVE.cz ), M.barLight );
+			add( band( { cx: COVE.cx, cz: COVE.cz, a0: 0, a1: 2 * Math.PI, r0, r1: r0 + 0.025, lo: H - 0.08, hi: H + 0.02, segs: 160, faces: 'o' } ), M.lacquer );
+
+		}
 		this._chandelier( add );
 
 		// the bar: a cylindrical marble island with a cylindrical, backlit bottle cabinet. The reference reads
@@ -1097,30 +1108,37 @@ export class Azurea {
 
 	}
 
-	/** The chandelier: strands of crystal drops on fine wires from the soffit, in rings, lowest in the middle (a wave). */
+	/** Leaf-crystal chandelier: a light, faceted botanical cloud inside the original radial footprint. */
 	_chandelier( add ) {
 
-		const M = this.materials, top = H - 0.2, drops = [], wires = [];
-		const drop = new THREE.OctahedronGeometry( 0.032, 0 ).scale( 1, 2.2, 1 );
-		for ( const r of [ 0.45, 0.9, 1.35, 1.8, 2.25, 2.7, 3.15, 3.6 ] ) {
+		const M = this.materials, top = H - 0.2, leaves = [], wires = [], ribs = [];
+		const leafShape = new THREE.Shape();
+		leafShape.moveTo( - 0.34, 0 ); leafShape.bezierCurveTo( - 0.16, 0.24, 0.16, 0.24, 0.34, 0 );
+		leafShape.bezierCurveTo( 0.16, - 0.17, - 0.16, - 0.17, - 0.34, 0 );
+		const leaf = new THREE.ExtrudeGeometry( leafShape, { depth: 0.045, bevelEnabled: true, bevelSegments: 1, bevelSize: 0.025, bevelThickness: 0.012, curveSegments: 3 } ).translate( 0, 0, - 0.0225 ).rotateX( Math.PI / 2 );
+		const rib = new THREE.CylinderGeometry( 0.0025, 0.0025, 0.55, 5 ).rotateZ( Math.PI / 2 );
+		const rim = new THREE.TubeGeometry( new THREE.CatmullRomCurve3( leafShape.getPoints( 8 ).slice( 0, - 1 ).map( p => V( p.x, 0, p.y ) ), true ), 24, 0.003, 4, true );
+		for ( const r of [ 0.42, 0.9, 1.38, 1.86, 2.34, 2.82, 3.28 ] ) {
 
-			const n = Math.max( 6, Math.round( 2 * Math.PI * r / 0.16 ) );
+			const n = Math.max( 5, Math.round( 2 * Math.PI * r / 0.42 ) );
 			for ( let i = 0; i < n; ++ i ) {
 
 				const a = 2 * Math.PI * ( i + 0.5 * ( r * 3 % 1 ) ) / n, x = COVE.cx + r * Math.cos( a ), z = COVE.cz + r * Math.sin( a );
-				// (the bar sits off the cove's centre: no strand through its pier and bottle cabinet; over its counter and
-				// its stools they stop above head height)
 				const dBar = Math.hypot( x - BAR.cx, z - BAR.cz );
 				if ( dBar < 0.85 ) continue;
-				let bottom = top - ( 1.1 + 1.9 * ( 1 - r / 3.0 ) ** 2 + 0.12 * Math.sin( 3 * a + r * 2 ) );
+				let bottom = top - ( 1.0 + 1.75 * ( 1 - r / 3.0 ) ** 2 + 0.18 * Math.sin( 3 * a + r * 2 ) );
 				if ( dBar < 2.65 * BAR_SCALE * 1.06 + 1.2 ) bottom = Math.max( bottom, 2.35 + 0.1 * Math.sin( 3 * a + r * 2 ) );
-				wires.push( new THREE.CylinderGeometry( 0.0012, 0.0012, top - bottom, 3, 1, true ).translate( x, ( top + bottom ) / 2, z ) );
-				for ( let k = 0; k < 3; ++ k ) drops.push( drop.clone().translate( x, bottom + 0.075 + k * 0.17, z ) );
+				const yaw = a + Math.PI * 0.18 * Math.sin( r * 2.7 ), tilt = 0.38 + 0.25 * Math.sin( a * 2.0 + r );
+				wires.push( new THREE.CylinderGeometry( 0.0013, 0.0013, top - bottom, 3, 1, true ).translate( x, ( top + bottom ) / 2, z ) );
+				const at = g => g.scale( 0.85, 0.6, 0.85 ).rotateZ( tilt ).rotateY( yaw ).translate( x, bottom + 0.03, z );
+				leaves.push( at( leaf.clone() ) ); ribs.push( at( rib.clone() ), at( rim.clone() ) );
+				if ( i % 3 === 0 ) add( new THREE.SphereGeometry( 0.012, 6, 4 ).translate( x, bottom + 0.03, z ), M.barLight );
 
 			}
 
 		}
-		add( mergeGeometries( drops.map( g => g.toNonIndexed() ), false ), M.crystal );
+		add( mergeGeometries( leaves.map( g => g.toNonIndexed() ), false ), M.crystal );
+		add( mergeGeometries( ribs.map( g => g.toNonIndexed() ), false ), M.chrome );
 		add( mergeGeometries( wires.map( g => g.toNonIndexed() ), false ), M.chrome );
 
 	}
