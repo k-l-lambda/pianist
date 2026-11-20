@@ -1279,7 +1279,9 @@ export class Azurea {
 					};
 					let lo = -.1, hi = .30; for ( let j = 0; j < 17; ++ j ) { const m = ( lo + hi ) / 2; if ( backClearance( m ) < .0015 ) lo = m; else hi = m; } const z = hi;
 					const backGap = backClearance( z ); pillow.translate( 0, 0, z ); pillow.computeBoundingBox();
-					this.pillowChecks.push( { x, z: z + 0, localX: px, seatGap: pillow.boundingBox.min.y - seatTop, backGap, maxPenetration: Math.max( 0, - backGap, seatTop - pillow.boundingBox.min.y ), method: 'Barycentric pillow face samples against piecewise back-tube segments and actual seat bounds; 1.5mm back clearance, 1mm seat contact tolerance; not an exact triangle/triangle proof.' } );
+					let armGap = Infinity;
+					for ( const v of samples ) for ( const sign of [ - 1, 1 ] ) armGap = Math.min( armGap, ( Math.hypot( ( v.x - sign * 1.13 ) / .147, ( v.y - .50 ) / .21, ( v.z + z - .05 ) / .399 ) - 1 ) * .147 );
+					this.pillowChecks.push( { sofaX: x, localZ: z, localX: px, seatGap: pillow.boundingBox.min.y - seatTop, backGap, armGap, maxPenetration: Math.max( 0, - backGap, - armGap, seatTop - pillow.boundingBox.min.y ), method: 'Barycentric pillow face samples against piecewise back-tube segments, arm ellipsoids and actual seat bounds; 1.5mm back clearance, 1mm seat contact tolerance; not an exact triangle/triangle proof.' } );
 					at( pillow, col );
 
 				}
