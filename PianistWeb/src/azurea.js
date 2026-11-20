@@ -1357,7 +1357,8 @@ export class Azurea {
 	}
 	_chandelier( add ) {
 
-		const M = this.materials, top = H - 0.2, leaves = [], wires = [], ribs = [];
+		const M = this.materials, top = H - 0.2, leaves = [], wires = [], ribs = [], placements = [];
+		this.chandelierChecks = { requestedRaise: .6, minimumSoffitClearance: Infinity, maximumLeafY: - Infinity, minimumTowerRadialGap: Infinity, compression: 1 };
 		const leafShape = new THREE.Shape();
 		leafShape.moveTo( - 0.34, 0 ); leafShape.bezierCurveTo( - 0.16, 0.186, 0.16, 0.186, 0.34, 0 );
 		leafShape.bezierCurveTo( 0.16, - 0.147, - 0.16, - 0.147, - 0.34, 0 );
@@ -1393,14 +1394,39 @@ export class Azurea {
 				let bottom = top - ( 1.0 + 1.75 * ( 1 - r / 3.0 ) ** 2 + 0.18 * Math.sin( 3 * a + r * 2 ) );
 				if ( dBar < 2.65 * BAR_SCALE * 1.06 + 1.2 ) bottom = Math.max( bottom, 2.25 + 0.42 * Math.sin( 2 * a + r * 1.6 ) );
 				const yaw = Math.PI / 2 - a + 0.35 * Math.sin( r * 2.7 ), tilt = 0.2 * Math.sin( a * 2.0 + r ), pitch = 0.65 + 0.35 * Math.sin( a + r * 2 );
-				wires.push( new THREE.CylinderGeometry( 0.0013, 0.0013, top - bottom, 3, 1, true ).translate( x, ( top + bottom ) / 2, z ) );
-				const at = g => g.scale( 0.45 + 0.08 * Math.sin( a * 7 ), 0.9, 0.55 ).rotateX( pitch ).rotateZ( tilt ).rotateY( yaw ).translate( x, bottom + 0.03, z );
-				leaves.push( at( leaf.clone() ) ); ribs.push( at( rib.clone() ), at( rim.clone() ) );
-				if ( i % 2 === 0 ) add( new THREE.SphereGeometry( 0.010, 6, 4 ).translate( x, bottom + 0.03, z ), M.barLight );
+				const at = g => g.scale( 0.45 + 0.08 * Math.sin( a * 7 ), 0.9, 0.55 ).rotateX( pitch ).rotateZ( tilt ).rotateY( yaw );
+				const L = at( leaf.clone() ), R = at( rib.clone() ), rimPart = at( rim.clone() );
+				for ( const g of [ L, R, rimPart ] ) g.computeBoundingBox();
+				placements.push( { x, z, bottom, geometries: [ L, R, rimPart ], halfHeight: Math.max( .01, L.boundingBox.max.y, R.boundingBox.max.y, rimPart.boundingBox.max.y ), bead: i % 2 === 0 } );
 
 			}
 
 		}
+		// Raise sockets uniformly; if the leaf envelope reaches the soffit, compress the
+		// centre heights around the lowest raised socket instead of clipping individual leaves.
+		const minSocket = Math.min( ...placements.map( p => p.bottom + .6 ) );
+		let compression = 1;
+		for ( const p of placements ) {
+
+			const desired = p.bottom + .6, limit = top - .04 - .03 - p.halfHeight;
+			if ( desired > limit ) compression = Math.min( compression, ( limit - minSocket ) / Math.max( desired - minSocket, .001 ) );
+
+		}
+		this.chandelierChecks.compression = compression;
+		for ( const p of placements ) {
+
+			const bottom = minSocket + ( p.bottom + .6 - minSocket ) * compression;
+			wires.push( new THREE.CylinderGeometry( .0013, .0013, top - bottom, 3, 1, true ).translate( p.x, ( top + bottom ) / 2, p.z ) );
+			const [ L, R, E ] = p.geometries;
+			for ( const g of p.geometries ) g.translate( p.x, bottom + .03, p.z );
+			leaves.push( L ); ribs.push( R, E );
+			if ( p.bead ) add( new THREE.SphereGeometry( .010, 6, 4 ).translate( p.x, bottom + .03, p.z ), M.barLight );
+			this.chandelierChecks.minimumSoffitClearance = Math.min( this.chandelierChecks.minimumSoffitClearance, top - bottom - .03 - p.halfHeight );
+			this.chandelierChecks.maximumLeafY = Math.max( this.chandelierChecks.maximumLeafY, bottom + .03 + p.halfHeight );
+			this.chandelierChecks.minimumTowerRadialGap = Math.min( this.chandelierChecks.minimumTowerRadialGap, Math.hypot( p.x - BAR.cx, p.z - BAR.cz ) - .95 - .20 );
+
+		}
+		if ( this.chandelierChecks.minimumSoffitClearance < .039 ) throw new Error( 'Chandelier leaf intersects soffit clearance' );
 		add( mergeGeometries( leaves.map( g => g.toNonIndexed() ), false ), M.crystal );
 		add( mergeGeometries( ribs.map( g => g.toNonIndexed() ), false ), M.leafGlow );
 		add( mergeGeometries( wires.map( g => g.toNonIndexed() ), false ), M.chrome );
@@ -1431,11 +1457,11 @@ export class Azurea {
 		this.lights.add( portal );
 		// the chandelier's warm light (night): a point in its crystals
 		const chand = this.chandLight = new THREE.PointLight( '#ffcf96', 0, 0, 2 );
-		chand.position.set( COVE.cx, H - 1.9, COVE.cz );
+		chand.position.set( COVE.cx, H - 1.3, COVE.cz );
 		this.lights.add( chand );
 		// Warm fill from the chandelier's actual center, kept subtle in daylight.
 		const chandFill = this.chandFill = new THREE.PointLight( '#ffd2a1', 0, 9, 2 );
-		chandFill.position.set( COVE.cx, Math.max( 1.2, H - 1.0 ), COVE.cz );
+		chandFill.position.set( COVE.cx, Math.max( 1.2, H - .4 ), COVE.cz );
 		this.lights.add( chandFill );
 		// Broad warm architectural bounce is local to the interior; sky/exposure are untouched.
 		this.coveFill = new THREE.RectAreaLight( '#ffdfb6', 1.3, 6.0, 6.0 );
