@@ -106,7 +106,7 @@ export function applyPoolTiles( azurea, {
 
 	// 3. the key light's own specular on the water, scaled per preset (Night: the moon, a point light, laid a broad
 	// white lamp-like highlight on the pool; the sky's reflection in it stays, the moon's own small one too)
-	if ( W && ! W.userData.poolKeySpec ) { W.userData.poolKeySpec = true; keySpecular( W, azurea.keySpec ); }		// (once: applyPoolTiles runs again on every switch to the path tracer; chained twice, uKeySpec declared twice)
+	if ( W && ! W.userData.poolKeySpec ) { W.userData.poolKeySpec = true; keySpecular( W, azurea.keySpecWater ?? azurea.keySpec ); }		// (once: applyPoolTiles runs again on every switch to the path tracer; chained twice, uKeySpec declared twice)
 
 	// 4. the path tracer: the surface is the volume; the nested closed body made the water a flat blue sheet
 	if ( azurea.waterPTBody ) azurea.waterPTBody.visible = false;
@@ -135,7 +135,7 @@ function keySpecular( material, u ) {
 
 		sh.uniforms.uKeySpec = u;
 		const point = '#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )', spot = '#if ( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )',
-			end = '#if ( NUM_SUN_LIGHTS > 0 ) && defined( RE_Direct )';
+			end = '#if ( NUM_RECT_AREA_LIGHTS > 0 ) && defined( RE_Direct_RectArea )';		// (after the spot, sun and directional lights: the key light is a DirectionalLight now)
 		let fs = THREE.ShaderChunk.lights_fragment_begin;
 		if ( ! ( fs.includes( point ) && fs.includes( spot ) && fs.includes( end ) ) || fs.indexOf( point ) > fs.indexOf( spot ) ) {
 
