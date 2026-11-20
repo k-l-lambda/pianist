@@ -37,7 +37,7 @@ const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
 const H = 7.8 * 0.7 * 0.8;						// lowered ceiling: 70% of the current room height									// the ceiling
-const WALL = { x0: - 13.25, x1: 8.5, z1: 18.0 };			// complete floor and distant entry/back wall			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
+const WALL = { x0: - 13.25, x1: 8.5, z1: 24.0 };			// complete floor and distant entry/back wall			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
 const GLASS = { cx: - 3.25, cz: 8.4, r: 13 };			// half-radius curved glass wall		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
@@ -724,7 +724,7 @@ export class Azurea {
 		this.lights = new THREE.Group(); this.lights.name = 'azureaLights';
 		this.active = false;
 		this.mode = 'raster';
-		this.view = { maxDistance: 28, maxPolarAngle: Math.PI * 0.56 };
+		this.view = { maxDistance: 34, maxPolarAngle: Math.PI * 0.56 };
 		this.background = new THREE.Color( '#cfe6f5' );
 		this.precompile = null;		// async ( object ): its shaders compiled as the frame will draw them (main.js)
 		// the open sea's surface (src/ocean.js: its sea state from the preset: wind, swell)
@@ -1452,7 +1452,7 @@ export class Azurea {
 		sun.shadow.mapSize.set( 4096, 4096 );
 		sun.shadow.bias = - 0.0001; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
 		sun.shadow.camera.near = 0.1; sun.shadow.camera.far = 120;
-		sun.shadow.camera.left = - 28; sun.shadow.camera.right = 28; sun.shadow.camera.top = 28; sun.shadow.camera.bottom = - 28;
+		sun.shadow.camera.left = - 32; sun.shadow.camera.right = 32; sun.shadow.camera.top = 32; sun.shadow.camera.bottom = - 32;
 		sun.shadow.camera.updateProjectionMatrix();
 		this.lights.add( sun, sun.target );
 		// the path tracer's sun (or moon): the same directional source, its disc the drawn one's

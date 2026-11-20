@@ -21,6 +21,9 @@ try {
 	for ( const s of JSON.parse( shotsJson ) ) {
 		await page.evaluate( async s => {
 			const P = window.__pianist, A = P.azurea;
+			for ( const o of window.__detailHidden || [] ) o.visible = true;
+			window.__detailHidden = [];
+			if ( s.hide ) A.group.traverse( o => { if ( o.isMesh && s.hide.some( key => A.materials[ key ] === o.material ) && o.visible ) { o.visible = false; window.__detailHidden.push( o ); } } );
 			for ( const o of window.__detailLights || [] ) A.scene.remove( o );
 			window.__detailLights = [];
 			Object.assign( A.light, A.presets[ s.preset || 'Day' ], s.light || {} );
@@ -28,6 +31,26 @@ try {
 			if ( A.materials.leafGlow ) A.materials.leafGlow.emissiveIntensity = s.glows === false ? 0 : 5;
 			if ( s.glows === false ) A.materials.barLight.emissiveIntensity = 0;
 			if ( A.pillowChecks?.some( c => c.maxPenetration > .001 ) ) throw new Error( 'Pillow penetration exceeds 1 mm' );
+			if ( A.bounds().maxZ > 20 ) {
+
+				const T = await import( '/node_modules/three/build/three.module.js' ), targets = A.group.children.filter( o => o.material === A.materials.plaster ), checks = [];
+				A.scene.updateMatrixWorld( true );
+				for ( const x of [ - 13.20, 8.45 ] ) for ( const y of [ .1, 2, 4.2 ] ) {
+
+					const hit = new T.Raycaster( new T.Vector3( x, y, 18 ), new T.Vector3( 0, 0, 1 ), 0, 6.3 ).intersectObjects( targets )[ 0 ];
+					checks.push( { kind: 'back', x, y, hit: hit?.point.toArray() ?? null } );
+
+				}
+				for ( const dx of [ - 1, 1 ] ) {
+
+					const hit = new T.Raycaster( new T.Vector3( - 2, 2, 23.9 ), new T.Vector3( dx, 0, 0 ), 0, 13 ).intersectObjects( targets )[ 0 ];
+					checks.push( { kind: 'side-return', dx, hit: hit?.point.toArray() ?? null } );
+
+				}
+				if ( checks.some( c => ! c.hit ) ) throw new Error( 'Room closure ray missed the extended shell' );
+				A.closureChecks = checks;
+
+			}
 			if ( s.neutral ) {
 				const T = await import( '/node_modules/three/build/three.module.js' );
 				const fill = new T.HemisphereLight( '#ffffff', '#bcc0c4', 1.2 );
@@ -35,7 +58,14 @@ try {
 				key.position.set( 1, 3.5, 10 ); key.lookAt( - 2, 1.5, 4 );
 				window.__detailLights = [ fill, key ]; A.scene.add( fill, key );
 			}
-			P.camera.position.set( ...s.pos ); P.controls.target.set( ...s.target ); P.controls.update();
+			if ( window.__detailControlsUpdate ) { P.controls.update = window.__detailControlsUpdate; window.__detailControlsUpdate = null; }
+			if ( s.plan ) {
+
+				window.__detailControlsUpdate = P.controls.update;
+				P.controls.update = () => { P.camera.position.set( ...s.pos ); P.camera.up.set( 0, 0, - 1 ); P.camera.lookAt( ...s.target ); P.camera.updateMatrixWorld(); };
+				P.controls.update(); P.controls.enabled = false;
+
+			} else { P.camera.up.set( 0, 1, 0 ); P.camera.position.set( ...s.pos ); P.controls.target.set( ...s.target ); P.controls.update(); }
 			P.camera.fov = s.fov || 36; P.camera.updateProjectionMatrix();
 		}, s );
 		await page.waitForTimeout( 4000 );
@@ -60,7 +90,7 @@ try {
 			} );
 			if ( stoolChecks.some( c => c.bodyClearanceLowerBound < 0 ) ) throw new Error( 'Conservative stool/body bound intersects; inspect before accepting' );
 			return { calls: median( 'calls' ), triangles: median( 'triangles' ), frames,
-				memory: { ...r.info.memory }, programs: r.info.programs.length, mode: A.mode, barDimensions: A.barDimensions, stoolChecks, pillowChecks: A.pillowChecks ?? [], mirror: { enabled: A.mirror.enabled, hiddenNames: [ A.floorMesh.name ], cameraLayerMask: A.mirror.camera.layers.mask, glowMeshes: A.group.children.filter( o => o.isMesh && [ A.materials.leafGlow, A.materials.barLight ].includes( o.material ) ).map( o => ( { name: o.name, visible: o.visible, layerMask: o.layers.mask, emissive: o.material.emissiveIntensity } ) ) } };
+				memory: { ...r.info.memory }, programs: r.info.programs.length, mode: A.mode, closureChecks: A.closureChecks, bounds: A.bounds(), acousticBox: A.acousticBox(), barDimensions: A.barDimensions, stoolChecks, pillowChecks: A.pillowChecks ?? [], mirror: { enabled: A.mirror.enabled, hiddenNames: [ A.floorMesh.name ], cameraLayerMask: A.mirror.camera.layers.mask, glowMeshes: A.group.children.filter( o => o.isMesh && [ A.materials.leafGlow, A.materials.barLight ].includes( o.material ) ).map( o => ( { name: o.name, visible: o.visible, layerMask: o.layers.mask, emissive: o.material.emissiveIntensity } ) ) } };
 		} );
 		results.push( { shot: s, info } ); console.log( s.name, JSON.stringify( info ) );
 	}
