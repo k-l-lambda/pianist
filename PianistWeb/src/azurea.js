@@ -775,6 +775,24 @@ export class Azurea {
 			packChrome: phys( { color: '#e8ebee', metalness: 1, roughness: 0.14, side: THREE.DoubleSide } ),
 		};
 		for ( const m of [ M.bottleAmber, M.bottleAqua, M.bottleRose, M.bottleGreen ] ) { m.transmission = 0; m.thickness = .05; m.ior = 1.33; m.attenuationColor.copy( m.color ); m.attenuationDistance = .18; m.roughness = .14; }
+		// Independent woven relief/polish fields: not albedo-derived, linear data, metre UV intent.
+		const clothN = new Uint8Array( 1024 * 1024 * 4 ), clothR = new Uint8Array( clothN.length );
+		for ( let y = 0; y < 1024; ++ y ) for ( let x = 0; x < 1024; ++ x ) {
+
+			const i = ( y * 1024 + x ) * 4, nx = Math.sin( x * Math.PI / 2 ) * .12, ny = Math.sin( y * Math.PI / 2 + ( x % 4 ) ) * .12;
+			clothN[ i ] = 128 + nx * 127; clothN[ i + 1 ] = 128 + ny * 127; clothN[ i + 2 ] = 253; clothN[ i + 3 ] = 255;
+			const r = 220 + 20 * ( .5 + .5 * Math.sin( x * .71 + y * 1.27 ) );
+			clothR[ i ] = clothR[ i + 1 ] = clothR[ i + 2 ] = r; clothR[ i + 3 ] = 255;
+
+		}
+		for ( const [ key, data ] of [ [ 'normalMap', clothN ], [ 'roughnessMap', clothR ] ] ) {
+
+			const tex = new THREE.DataTexture( data, 1024, 1024, THREE.RGBAFormat ); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set( 2, 2 ); tex.colorSpace = THREE.NoColorSpace;
+			tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.anisotropy = 8; tex.needsUpdate = true;
+			M.boucle[ key ] = tex;
+
+		}
+		M.boucle.normalScale.set( .18, .18 );
 		// the PT water's bottom and sides: no normal map, and ior 1 (the water touching the tiles: no interface there.
 		// With an air gap's 1.33 the rays a ripple sent steeply sideways met the bottom past the critical angle, were
 		// trapped between it and the surface until the traversals ran out: the pool's far part in black patches)
@@ -997,6 +1015,7 @@ export class Azurea {
 				add( liquid, bottleMats[ ( i + shelf ) % bottleMats.length ] );
 				shape.translate( px, sy, pz ); add( shape, M.bottleGlass );
 				add( new THREE.CylinderGeometry( 0.014, 0.014, 0.018, 8 ).translate( px, sy + h * 0.41, pz ), M.chrome );
+				add( band( { cx: px, cz: pz, a0: a - .6, a1: a + .6, r0: .051, r1: .052, lo: sy + .06, hi: sy + .10, segs: 3, faces: 'o' } ), M.enamel );
 
 			}
 
@@ -1088,7 +1107,8 @@ export class Azurea {
 
 				const [ lx, lz ] = loungeAt( g, ...at );
 				add( new THREE.CylinderGeometry( 0.26, 0.26, 0.04, 48 ).translate( lx, 0.56, lz ), M.marble );
-				add( new THREE.CylinderGeometry( 0.035, 0.035, 0.54, 16 ).translate( lx, 0.27, lz ), M.chrome );
+				add( new THREE.CylinderGeometry( 0.245, 0.245, 0.52, 32 ).translate( lx, 0.27, lz ), M.marble );
+				add( new THREE.CylinderGeometry( 0.248, 0.248, 0.018, 32 ).translate( lx, 0.022, lz ), M.chrome );
 				add( new THREE.CylinderGeometry( 0.2, 0.2, 0.02, 48 ).translate( lx, 0.01, lz ), M.chrome );
 				// the lamp: a ceramic gourd, a brass stem, a linen drum shade (lit from within: its point light, below)
 				add( new THREE.SphereGeometry( 0.1, 24, 16 ).scale( 1, 1.25, 1 ).translate( lx, 0.70, lz ), M.ceramic );
@@ -1106,7 +1126,7 @@ export class Azurea {
 
 				const a = i * 2.399, x = tx + .26 + .09 * Math.cos( a ), z = tz + .09 * Math.sin( a );
 				add( new THREE.CylinderGeometry( .003, .003, .12, 5 ).translate( x, .68, z ), M.stem );
-				for ( let k = 0; k < 5; ++ k ) add( new THREE.SphereGeometry( .03, 7, 5 ).scale( 1,.55,1 ).translate( x + .02 * Math.cos( k * 1.256 ), .75 + .025 * Math.sin( a ), z + .02 * Math.sin( k * 1.256 ) ), M.flower );
+				for ( let k = 0; k < 5; ++ k ) add( new THREE.SphereGeometry( .03, 7, 5 ).scale( 1,.55,1 ).translate( x + .02 * Math.cos( k * 1.256 ), .79 + .025 * Math.sin( a ), z + .02 * Math.sin( k * 1.256 ) ), M.flower );
 
 			}
 
