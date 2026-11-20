@@ -114,6 +114,7 @@ export function makeMaterials( baker, style ) {
 			m.plate = lacquer( '#ecebe6', { roughness: 0.22 } );		// (the GF white's plate in the case's white lacquer: GF-TYPE-1.jpg)
 			m.panel = screen();
 			m.rimInner = m.case;		// (the rim's inner side in the case's white lacquer too)
+			m.propSocket = m.lid ?? m.case;		// (the lid prop's socket in the lid's own white lacquer, not the hinges' brass)
 			break;
 
 		// FIND GF-TYPE-3 in crystal (Footages.local/find/GF-TYPE-3.jpg): the case's rim, the lid and its

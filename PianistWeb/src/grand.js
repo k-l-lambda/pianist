@@ -1320,15 +1320,18 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// the lid's own geometry in the pivot's frame: the pivot at the barrels' axis (x -HALF_W + KN, y RIM_TOP + KN)
 		for ( const g of [ lidGeo, flapGeo ] ) g.translate( HALF_W - KN, - KN, 0 );
 		for ( const g of [ ...hinges, ...foldParts, ...rivetParts ] ) g.translate( HALF_W - KN, - KN, 0 );
-		// the prop's socket on the main lid's underside, near its front edge where the treble side's straight
-		// turns into the bentside (PROP_Z): a square block (PS across, PT thick) with a round cup in its middle
-		// (PR: the stick's tip + 1 mm, PD deep) the stick's rounded tip sits in. In the pivot's frame (the lid's
-		// underside at y = -KN, x along the lid from its pivot); 15 mm in from the rim's inner face, so it clears
-		// the rim closed too
-		const PROP_Z = - 0.70, PROP_TIP = 0.009, PS = 0.044, PT = 0.016, PR = PROP_TIP + 0.001, PD = 0.010;
-		const sockU = bentsideX( inner, PROP_Z ) - 0.015 - PS / 2 + HALF_W - KN;
-		// (where the tip's ball centre sits: touching the cup's floor, 1 mm inside its mouth)
-		const sockTip = v3( sockU, - KN - PT + PD - PROP_TIP, PROP_Z );
+		// the prop's socket on the main lid's underside, near its front edge (PROP_Z: 8 mm of lid in front of the
+		// block, before the fold at FOLD_Z): a square block (PS across, PT thick) with a round cup in its middle
+		// (PR: the stick's tip + 1 mm, PD deep: the tip's ball half in it, its centre at the mouth, so the stick's
+		// neck clears the cup's rim at any tilt) the rounded tip sits in. In the pivot's frame (the lid's underside
+		// at y = -KN, x along the lid from its pivot). Across the lid, where the old prop met it: the tip as high
+		// as the old stick's top at the usual 34 deg (the old top r_old out from the spine's corner, r_old as it
+		// was: 0.86 of the way to 6 cm inside the bentside at z -0.88)
+		const PROP_Z = FOLD_Z - 0.044 / 2 - 0.008, PROP_TIP = 0.009, PS = 0.044, PT = 0.016, PR = PROP_TIP + 0.001, PD = PROP_TIP;
+		const tipY = - KN - PT + PD - PROP_TIP;		// (the ball's centre: at the cup's mouth)
+		const a0 = THREE.MathUtils.degToRad( 34 ), rOld = ( bentsideX( outer, - 0.88 ) - 0.06 + HALF_W ) * 0.86;
+		const sockU = ( rOld * Math.sin( a0 ) - KN - tipY * Math.cos( a0 ) ) / Math.sin( a0 );
+		const sockTip = v3( sockU, tipY, PROP_Z );
 		const sockParts = [];
 		if ( open ) {
 
@@ -1344,7 +1347,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		pivot.rotation.z = THREE.MathUtils.degToRad( lidAngle );
 		pivot.add( mesh( lidGeo, LID ), mesh( flapGeo, LID ), mesh( merge( hinges ), M.brass ), mesh( merge( foldParts ), FH ) );
 		if ( rivetParts.length ) pivot.add( mesh( merge( rivetParts ), RIV ) );
-		if ( sockParts.length ) pivot.add( mesh( merge( sockParts.map( g => g.index ? g.toNonIndexed() : g ) ), M.brass ) );
+		if ( sockParts.length ) pivot.add( mesh( merge( sockParts.map( g => g.index ? g.toNonIndexed() : g ) ), M.propSocket ?? M.brass ) );		// (a style's own, else the hinges')
 		group.add( pivot, mesh( merge( rimHinges ), M.brass ) );
 
 		if ( open ) {
@@ -1357,11 +1360,19 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			const zs = PROP_Z;
 			const a = THREE.MathUtils.degToRad( lidAngle ), ca = Math.cos( a ), sa = Math.sin( a );
 			const top = v3( - HALF_W + KN + sockTip.x * ca - sockTip.y * sa, RIM_TOP + KN + sockTip.x * sa + sockTip.y * ca, zs );
-			// the rim's inner face there, its tangent (the pin's axis) and normal (into the case)
-			const xi = bentsideX( inner, zs ), dz = 0.01, tan = v3( bentsideX( inner, zs + dz ) - bentsideX( inner, zs - dz ), 0, 2 * dz ).normalize();
-			const into = v3( - tan.z, 0, tan.x );
-			if ( into.x > 0 ) into.negate();		// (into the case: towards - x)
-			const pin = v3( xi, RIM_TOP - 0.03, zs ).addScaledVector( into, 0.016 );		// (the pin 16 mm off the rim's face, 30 mm below its top)
+			// the rim's inner face, its tangent (the pin's axis) and normal (into the case), where the pin 16 mm off
+			// it lands at zs (the rim curves there: the face's point a little behind or ahead of zs; two passes)
+			let zf = zs, xi, tan, into;
+			for ( let k = 0; k < 2; ++ k ) {
+
+				const dz = 0.01;
+				xi = bentsideX( inner, zf ); tan = v3( bentsideX( inner, zf + dz ) - bentsideX( inner, zf - dz ), 0, 2 * dz ).normalize();
+				into = v3( - tan.z, 0, tan.x );
+				if ( into.x > 0 ) into.negate();		// (into the case: towards - x)
+				zf = zs - 0.016 * into.z;
+
+			}
+			const pin = v3( xi, RIM_TOP - 0.03, zf ).addScaledVector( into, 0.016 );		// (the pin 16 mm off the rim's face, 30 mm below its top)
 			group.add( mesh( rod( pin, top, 0.011, 12, PROP_TIP ), PROP ) );
 			group.add( mesh( new THREE.SphereGeometry( PROP_TIP, 16, 10 ).translate( top.x, top.y, top.z ), PROP ) );		// (its rounded tip, in the cup)
 			group.add( mesh( new THREE.SphereGeometry( 0.0125, 16, 10 ).translate( pin.x, pin.y, pin.z ), PROP ) );		// (its rounded foot round the pin)
@@ -1373,7 +1384,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 				return g;
 
 			};
-			const face = v3( xi, RIM_TOP - 0.03, zs ), parts = [ at( face.clone().addScaledVector( v3( 0, 1, 0 ), 0.002 ), 0.06, 0.05, 0.003 ) ];
+			const face = v3( xi, RIM_TOP - 0.03, zf ), parts = [ at( face.clone().addScaledVector( v3( 0, 1, 0 ), 0.002 ), 0.06, 0.05, 0.003 ) ];
 			for ( const s of [ - 1, 1 ] ) parts.push( at( face.clone().addScaledVector( tan, s * 0.0165 ), 0.004, 0.03, 0.027 ) );
 			parts.push( rod( pin.clone().addScaledVector( tan, - 0.02 ), pin.clone().addScaledVector( tan, 0.02 ), 0.0028, 10 ) );
 			group.add( mesh( merge( parts.map( g => g.index ? g.toNonIndexed() : g ) ), M.brass ) );
