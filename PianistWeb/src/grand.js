@@ -1320,15 +1320,18 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// the lid's own geometry in the pivot's frame: the pivot at the barrels' axis (x -HALF_W + KN, y RIM_TOP + KN)
 		for ( const g of [ lidGeo, flapGeo ] ) g.translate( HALF_W - KN, - KN, 0 );
 		for ( const g of [ ...hinges, ...foldParts, ...rivetParts ] ) g.translate( HALF_W - KN, - KN, 0 );
-		// the prop's socket on the main lid's underside, near its front edge where the treble side's straight
-		// turns into the bentside (PROP_Z, back towards where the old prop met the lid): a square block (PS across,
-		// PT thick) with a round cup in its middle (PR: the stick's tip + 1 mm, PD deep) the stick's rounded tip
-		// sits in. In the pivot's frame (the lid's underside at y = -KN, x along the lid from its pivot); close to
-		// the lid's outer edge, its side PROP_GAP in from the rim's inner face (clear of the rim, closed too)
-		const PROP_Z = - 0.82, PROP_GAP = 0.003, PROP_TIP = 0.009, PS = 0.044, PT = 0.016, PR = PROP_TIP + 0.001, PD = 0.010;
-		const sockU = bentsideX( inner, PROP_Z ) - PROP_GAP - PS / 2 + HALF_W - KN;
-		// (where the tip's ball centre sits: touching the cup's floor, 1 mm inside its mouth)
-		const sockTip = v3( sockU, - KN - PT + PD - PROP_TIP, PROP_Z );
+		// the prop's socket on the main lid's underside, near its front edge (PROP_Z: 8 mm of lid in front of the
+		// block, before the fold at FOLD_Z): a square block (PS across, PT thick) with a round cup in its middle
+		// (PR: the stick's tip + 1 mm, PD deep: the tip's ball half in it, its centre at the mouth, so the stick's
+		// neck clears the cup's rim at any tilt) the rounded tip sits in. In the pivot's frame (the lid's underside
+		// at y = -KN, x along the lid from its pivot). Across the lid, where the old prop met it: the tip as high
+		// as the old stick's top at the usual 34 deg (the old top r_old out from the spine's corner, r_old as it
+		// was: 0.86 of the way to 6 cm inside the bentside at z -0.88)
+		const PROP_Z = FOLD_Z - 0.044 / 2 - 0.008, PROP_TIP = 0.009, PS = 0.044, PT = 0.016, PR = PROP_TIP + 0.001, PD = PROP_TIP;
+		const tipY = - KN - PT + PD - PROP_TIP;		// (the ball's centre: at the cup's mouth)
+		const a0 = THREE.MathUtils.degToRad( 34 ), rOld = ( bentsideX( outer, - 0.88 ) - 0.06 + HALF_W ) * 0.86;
+		const sockU = ( rOld * Math.sin( a0 ) - KN - tipY * Math.cos( a0 ) ) / Math.sin( a0 );
+		const sockTip = v3( sockU, tipY, PROP_Z );
 		const sockParts = [];
 		if ( open ) {
 
