@@ -280,8 +280,8 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 		}
 		// Split at wrapped jumps instead of drawing a false vein across the tile.
 		let run = [];
-		for ( const p of points ) { if ( run.length && Math.abs( p[ 1 ] - run.at( - 1 )[ 1 ] ) > Hh / 2 ) { stroke( run, 9, 0.10 ); stroke( run, 2.0, 0.26 ); run = []; } run.push( p ); }
-		stroke( run, 9, 0.10 ); stroke( run, 2.0, 0.26 );
+		for ( const p of points ) { if ( run.length && Math.abs( p[ 1 ] - run.at( - 1 )[ 1 ] ) > Hh / 2 ) { stroke( run, 13, 0.17 ); stroke( run, 2.8, 0.42 ); run = []; } run.push( p ); }
+		stroke( run, 13, 0.17 ); stroke( run, 2.8, 0.42 );
 		for ( let j = 7; j < 28; j += 7 ) { const p = points[ j ]; stroke( [ p, [ p[ 0 ] + 70, p[ 1 ] - 20 ], [ p[ 0 ] + 150, p[ 1 ] - 80 ], [ p[ 0 ] + 190, p[ 1 ] - 93 ] ], 1.1, 0.21 ); }
 
 	}
@@ -774,6 +774,7 @@ export class Azurea {
 			leaf: phys( { color: '#ffffff', vertexColors: true, roughness: 0.6, sheen: 0.3, side: THREE.DoubleSide } ),
 			packChrome: phys( { color: '#e8ebee', metalness: 1, roughness: 0.14, side: THREE.DoubleSide } ),
 		};
+		for ( const m of [ M.bottleAmber, M.bottleAqua, M.bottleRose, M.bottleGreen ] ) { m.transmission = 0; m.thickness = .05; m.ior = 1.33; m.attenuationColor.copy( m.color ); m.attenuationDistance = .18; m.roughness = .14; }
 		// the PT water's bottom and sides: no normal map, and ior 1 (the water touching the tiles: no interface there.
 		// With an air gap's 1.33 the rays a ripple sent steeply sideways met the bottom past the critical angle, were
 		// trapped between it and the surface until the traversals ran out: the pool's far part in black patches)
@@ -992,7 +993,9 @@ export class Azurea {
 				const a = cabA0 + 0.09 + ( i + 0.5 * ( shelf % 2 ) ) / 8 * ( cabA1 - cabA0 - 0.18 ), h = 0.66 + 0.08 * Math.sin( i * 2.7 + shelf );
 				const shape = new THREE.LatheGeometry( bottleProfile.map( p => new THREE.Vector2( p.x * ( 0.82 + 0.16 * Math.sin( i + shelf ) ), p.y * h ) ), 10 );
 				const rr = cabR + 0.11, px = bx + rr * Math.cos( a ), pz = bz + rr * Math.sin( a );
-				shape.translate( px, sy, pz ); add( shape, bottleMats[ ( i + shelf ) % bottleMats.length ] );
+				const liquid = shape.clone().scale( .91, .77, .91 ).translate( px, sy + .007, pz );
+				add( liquid, bottleMats[ ( i + shelf ) % bottleMats.length ] );
+				shape.translate( px, sy, pz ); add( shape, M.bottleGlass );
 				add( new THREE.CylinderGeometry( 0.014, 0.014, 0.018, 8 ).translate( px, sy + h * 0.41, pz ), M.chrome );
 
 			}
@@ -1874,7 +1877,7 @@ export class Azurea {
 		}
 		// the pictures: the sea, the marble (the floor, the bar, the stairs, the deck), the bottle wall
 		const map = slug => root.getObjectByName( slug )?.isMesh ? root.getObjectByName( slug ).material.map : root.getObjectByName( slug )?.children[ 0 ]?.material.map;
-		const marble = map( 'marble' ), bottles = map( 'bottle-wall' );
+		const marble = map( 'marble' );
 		// the sea by day, at golden hour, at night (one coastline); updateLights picks the hour's
 		this.seas = {};
 		for ( const [ k, slug ] of [ [ 'day', 'sea' ], [ 'sunset', 'sea-sunset' ], [ 'night', 'sea-night' ] ] ) {
@@ -1904,7 +1907,6 @@ export class Azurea {
 			} catch ( e ) { console.warn( 'azurea: the floor\'s normal map', e ); }
 
 		}
-		if ( bottles ) { bottles.colorSpace = THREE.SRGBColorSpace; bottles.anisotropy = 8; M.bottles.map = bottles; M.bottles.emissiveMap = bottles; M.bottles.needsUpdate = true; }
 		// the pack's quantised attributes (meshopt: normalized Int16 positions, Int8 normals, Uint8 colours) as
 		// floats, the same values: three-gpu-pathtracer copies an attribute into one of its own type and writes
 		// world-space metres into it (as Luminara's: the furniture became sheets 65 km across, walling the lobby
