@@ -311,6 +311,24 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 
 }
 
+function rugTextures() {
+
+	const W = 1024, Hh = 1024, cv = document.createElement( 'canvas' ); cv.width = cv.height = W; const ctx = cv.getContext( '2d' ), img = ctx.createImageData( W, Hh ), n = new Uint8Array( W * Hh * 4 ), r = new Uint8Array( W * Hh * 4 );
+	for ( let y = 0; y < Hh; ++ y ) for ( let x = 0; x < W; ++ x ) {
+
+		const u = x / W, v = y / Hh, i = y * W + x, o = i * 4, weave = .5 + .5 * Math.sin( x * Math.PI * .9 + 1.6 * Math.sin( y * .035 ) ) * Math.sin( y * Math.PI * 1.1 ), pattern = .5 + .25 * Math.sin( u * Math.PI * 6 + v * Math.PI * 4 ) + .25 * Math.cos( u * Math.PI * 4 - v * Math.PI * 6 );
+		img.data[ o ] = 112 + 22 * weave + 22 * pattern; img.data[ o + 1 ] = 139 + 24 * weave + 22 * pattern; img.data[ o + 2 ] = 155 + 25 * weave + 24 * pattern; img.data[ o + 3 ] = 255;
+		const dx = .18 * Math.cos( x * Math.PI * 1.4 ), dy = .18 * Math.sin( y * Math.PI * 1.7 ); n[ o ] = 128 + dx * 127; n[ o + 1 ] = 128 + dy * 127; n[ o + 2 ] = 252; n[ o + 3 ] = 255;
+		const rr = 220 + 23 * ( .5 + .5 * Math.sin( u * Math.PI * 6 + v * Math.PI * 4 ) ); r[ o ] = r[ o + 1 ] = r[ o + 2 ] = rr; r[ o + 3 ] = 255;
+
+	}
+	ctx.putImageData( img, 0, 0 ); const color = new THREE.CanvasTexture( cv ); color.colorSpace = THREE.SRGBColorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.set( 2, 2 ); color.anisotropy = 8;
+	const normal = new THREE.DataTexture( n, W, Hh, THREE.RGBAFormat ), roughness = new THREE.DataTexture( r, W, Hh, THREE.RGBAFormat );
+	for ( const t of [ normal, roughness ] ) { t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set( 2, 2 ); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 8; t.needsUpdate = true; }
+	return { color, normal, roughness };
+
+}
+
 /** The floor's (or ceiling's) outline: the front, the side walls, the glass's arc; in (x, z). */
 function footprint( segs = 64 ) {
 
@@ -793,6 +811,9 @@ export class Azurea {
 
 		}
 		M.boucle.normalScale.set( .18, .18 );
+		const rug = rugTextures();
+		for ( const m of [ M.rug, M.rugBorder ] ) { m.map = rug.color; m.normalMap = rug.normal; m.normalScale.set( .25, .25 ); m.roughnessMap = rug.roughness; }
+		M.rug.color.set( '#e0e9ef' ); M.rugBorder.color.set( '#7894a9' );
 		// the PT water's bottom and sides: no normal map, and ior 1 (the water touching the tiles: no interface there.
 		// With an air gap's 1.33 the rays a ripple sent steeply sideways met the bottom past the critical angle, were
 		// trapped between it and the surface until the traversals ran out: the pool's far part in black patches)
