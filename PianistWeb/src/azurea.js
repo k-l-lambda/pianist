@@ -66,14 +66,25 @@ const PIANO_YAW = 15 * D;		// (turned counter-clockwise seen from above: not squ
 const SKY = { cx: - 2, cz: 2, eye: 1.6, seaY: - 1.2, horV: 0.60, seaRow: 0.78, pa0: - 170 * D, pa1: - 10 * D };
 const photoTop = Math.asin( ( SKY.pa1 - SKY.pa0 ) * 2 / 9 );
 
+// the two lounges, each on its round rug (as the reference's, right of the bar: the larger at the frame's right
+// edge, the smaller by the glass right of the piano): a curved sofa at the rug's back, two chairs at its front
+// facing the coffee table at its centre, side tables with lit lamps at the sofa's ends. Each in its own frame:
+// turned yaw (its front, towards the room, (sin, cos)); offsets ( across, forward ) m in that frame
+const LOUNGES = [
+	{ x: 5.4, z: 3.8, r: 2.0, yaw: 0.15, sofa: - 1.0, chairs: [ [ - 1.15, 0.95 ], [ 1.15, 0.95 ] ], lamps: [ [ - 1.62, - 1.0 ], [ 1.62, - 1.0 ] ], styled: true },
+	{ x: 3.8, z: - 0.2, r: 1.7, yaw: 0.15, sofa: - 0.8, chairs: [ [ - 0.95, 0.8 ], [ 0.95, 0.8 ] ], lamps: [ [ 1.6, - 0.75 ] ] },
+];
+const loungeAt = ( g, across, fwd ) => [ g.x + across * Math.cos( g.yaw ) + fwd * Math.sin( g.yaw ), g.z - across * Math.sin( g.yaw ) + fwd * Math.cos( g.yaw ) ];
+
 // the pack's pieces: [ slug, x, z, yaw (rad: its front +z turned to face (sin, cos)) ]
 const LAYOUT = [
-	[ 'sofa', 5.0, 2.4, Math.PI ], [ 'sofa', 4.6, 5.0, - 0.45 ],
-	[ 'lounge-chair', 3.8, 1.0, Math.atan2( 1.5, 1.2 ) ], [ 'lounge-chair', 6.8, 1.0, Math.atan2( - 1.5, 1.2 ) ],
-	[ 'lounge-chair', 3.8, 5.6, 0.3 ], [ 'lounge-chair', 6.8, 4.8, - 1.2 ],
+	...LOUNGES.flatMap( g => [
+		[ 'sofa', ...loungeAt( g, 0, g.sofa ), g.yaw ],
+		...g.chairs.map( ( [ a, f ] ) => { const [ x, z ] = loungeAt( g, a, f ); return [ 'lounge-chair', x, z, Math.atan2( g.x - x, g.z - z ) ]; } ),
+	] ),
 	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 3.15 * Math.cos( a * D ), BAR.cz + 3.15 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
-	[ 'plant-tall', - 11.2, - 0.8, 0.4 ], [ 'plant-tall', 3.3, - 0.8, - 0.9 ], [ 'plant-tall', - 10.5, 5.8, 2.1 ],
-	[ 'plant-low', 2.2, 1.8, 0.3 ], [ 'plant-low', - 6.0, 5.8, 1.7 ], [ 'plant-low', 3.2, 4.5, - 1.1 ],
+	[ 'plant-tall', - 11.2, - 0.8, 0.4 ], [ 'plant-tall', 5.6, 0.6, - 0.9 ], [ 'plant-tall', - 10.5, 5.8, 2.1 ],
+	[ 'plant-low', 2.3, - 2.6, 0.3 ], [ 'plant-low', - 6.0, 5.8, 1.7 ], [ 'plant-low', 7.7, 5.9, - 1.1 ],
 ];
 
 // outside: the sea's photo ('day' | 'sunset' | 'night'); the key light (sun*) is the sun, or at night the moon;
@@ -696,6 +707,8 @@ export class Azurea {
 			water: phys( { color: '#178fa6', roughness: 0.03, metalness: 0, ior: 1.33 } ),		// (its normals the simulated surface's, its colour the floor seen through it: build, water.js)
 			waterPT: phys( { color: '#ffffff', roughness: 0.02, metalness: 0, ior: 1.33, transmission: 1, thickness: 1.2, attenuationColor: new THREE.Color( '#3cbfd2' ), attenuationDistance: 1.1 } ),		// (its normal map: the simulated surface's, snapshot: setMode)
 			rug: phys( { color: '#dbe8ef', roughness: 1, sheen: 1, sheenColor: new THREE.Color( '#ffffff' ), sheenRoughness: 0.6 } ),
+			rugBorder: phys( { color: '#7f9bb2', roughness: 1, sheen: 1, sheenColor: new THREE.Color( '#d8e8f4' ), sheenRoughness: 0.6 } ),
+			lampShade: phys( { color: '#fbf4e8', roughness: 0.9, emissive: new THREE.Color( '#ffd9ae' ), emissiveIntensity: 4.0, side: THREE.DoubleSide } ),
 			// outside: the dome (a gradient) and the backdrop (the sea's photo, the pack's)
 			backdrop: backdropMaterial( this.ocean, this.sky ),		// (its inner face turned to the room already; the photo by direction, the disc, the glitter)
 			// the pack's looks (tools/azurea-asset.mjs MAT; TRELLIS's mixed winding: two-sided)
@@ -800,7 +813,7 @@ export class Azurea {
 			'Reference lobby': { position: V( 6.7041624688, 2.0522652307, 14.0434261270 ), target: V( - 1.5839907226, 0.9041803703, 0.4920897680 ), fov: 36 },
 			'Piano hero': { position: V( 3.5, 2.2, 2.5 ), target: V( - 0.5, 1.0, - 4.2 ) },
 			'The bar': { position: V( - 3.0, 2.0, 10.2 ), target: V( - 2.6, 1.45, 3.8 ) },
-			'The lounge': { position: V( 2.4, 1.7, 7.4 ), target: V( 5.7, 0.85, 1.2 ) },
+			'The lounge': { position: V( 1.6, 1.7, 8.8 ), target: V( 5.0, 0.6, 2.6 ) },
 			'The staircase': { position: V( - 3.4, 2.2, 9.4 ), target: V( - 9.4, 2.8, 4.6 ) },
 			'The pool': { position: V( 3.0, 1.8, - 2.2 ), target: V( 0.5, 0.0, - 9.8 ) },
 			'Through the glass': { position: V( 5.5, 2.1, 7.5 ), target: V( - 1.5, 0.8, - 9 ) },
@@ -929,23 +942,41 @@ export class Azurea {
 
 		}
 
-		// the lounge's round table (marble on a glass drum, a chrome ring) and its rug
-		add( new THREE.CylinderGeometry( 0.48, 0.48, 0.05, 64 ).translate( 2.0, 0.405, 3.1 ), M.marble );
-		add( new THREE.CylinderGeometry( 0.32, 0.32, 0.33, 64 ).translate( 2.0, 0.215, 3.1 ), M.tableGlass );
-		add( new THREE.CylinderGeometry( 0.34, 0.34, 0.05, 64 ).translate( 2.0, 0.025, 3.1 ), M.chrome );
-		// Two round rugs anchor the two sofa groups in the wide reference composition.
-		add( new THREE.CircleGeometry( 2.15, 96 ).rotateX( - Math.PI / 2 ).translate( 1.2, 0.004, 2.4 ), M.rug );
-		add( new THREE.CircleGeometry( 2.0, 96 ).rotateX( - Math.PI / 2 ).translate( 0.8, 0.004, 5.0 ), M.rug );
-		// Quiet styling on the reference table: a cool book stack and a low white flower arrangement.
-		add( box( 1.68, 2.02, 0.438, 0.47, 2.98, 3.18 ), M.book );
-		add( box( 1.71, 1.99, 0.472, 0.502, 2.99, 3.17 ), M.marble );
-		add( new THREE.CylinderGeometry( 0.105, 0.075, 0.18, 24 ).translate( 2.26, 0.56, 3.1 ), M.ceramic );
-		const stem = new THREE.CylinderGeometry( 0.006, 0.006, 0.32, 6 );
-		for ( let i = 0; i < 9; ++ i ) {
+		// the lounges (LOUNGES): each rug (a pale field in a blue-grey border, as the reference's), its round coffee
+		// table (marble on a glass drum, a chrome ring) at the centre, a side table with a lit lamp at the sofa's end
+		for ( const g of LOUNGES ) {
 
-			const a = i * 2.399, x = 2.26 + 0.055 * Math.cos( a ), z = 3.1 + 0.055 * Math.sin( a );
-			add( stem.clone().translate( x, 0.81, z ), M.flower );
-			add( new THREE.IcosahedronGeometry( 0.045, 1 ).scale( 1, 0.62, 1 ).translate( x + 0.01 * Math.cos( a ), 0.98 + 0.02 * Math.sin( a ), z + 0.01 * Math.sin( a ) ), M.flower );
+			add( new THREE.CircleGeometry( g.r - 0.22, 96 ).rotateX( - Math.PI / 2 ).translate( g.x, 0.004, g.z ), M.rug );
+			add( new THREE.RingGeometry( g.r - 0.22, g.r, 96, 1 ).rotateX( - Math.PI / 2 ).translate( g.x, 0.004, g.z ), M.rugBorder );
+			add( new THREE.CylinderGeometry( 0.48, 0.48, 0.05, 64 ).translate( g.x, 0.405, g.z ), M.marble );
+			add( new THREE.CylinderGeometry( 0.32, 0.32, 0.33, 64 ).translate( g.x, 0.215, g.z ), M.tableGlass );
+			add( new THREE.CylinderGeometry( 0.34, 0.34, 0.05, 64 ).translate( g.x, 0.025, g.z ), M.chrome );
+			for ( const at of g.lamps ) {
+
+				const [ lx, lz ] = loungeAt( g, ...at );
+				add( new THREE.CylinderGeometry( 0.26, 0.26, 0.04, 48 ).translate( lx, 0.56, lz ), M.marble );
+				add( new THREE.CylinderGeometry( 0.035, 0.035, 0.54, 16 ).translate( lx, 0.27, lz ), M.chrome );
+				add( new THREE.CylinderGeometry( 0.2, 0.2, 0.02, 48 ).translate( lx, 0.01, lz ), M.chrome );
+				// the lamp: a ceramic gourd, a brass stem, a linen drum shade (lit from within: its point light, below)
+				add( new THREE.SphereGeometry( 0.1, 24, 16 ).scale( 1, 1.25, 1 ).translate( lx, 0.70, lz ), M.ceramic );
+				add( new THREE.CylinderGeometry( 0.008, 0.008, 0.2, 8 ).translate( lx, 0.90, lz ), M.chrome );
+				add( new THREE.CylinderGeometry( 0.15, 0.19, 0.24, 48, 1, true ).translate( lx, 1.03, lz ), M.lampShade );
+
+			}
+			if ( ! g.styled ) continue;
+			// (the larger table's styling: a cool book stack and a low white flower arrangement)
+			const tx = g.x, tz = g.z;
+			add( box( tx - 0.32, tx + 0.02, 0.438, 0.47, tz - 0.12, tz + 0.08 ), M.book );
+			add( box( tx - 0.29, tx - 0.01, 0.472, 0.502, tz - 0.11, tz + 0.07 ), M.marble );
+			add( new THREE.CylinderGeometry( 0.105, 0.075, 0.18, 24 ).translate( tx + 0.26, 0.56, tz ), M.ceramic );
+			const stem = new THREE.CylinderGeometry( 0.006, 0.006, 0.32, 6 );
+			for ( let i = 0; i < 9; ++ i ) {
+
+				const a = i * 2.399, x = tx + 0.26 + 0.055 * Math.cos( a ), z = tz + 0.055 * Math.sin( a );
+				add( stem.clone().translate( x, 0.81, z ), M.flower );
+				add( new THREE.IcosahedronGeometry( 0.045, 1 ).scale( 1, 0.62, 1 ).translate( x + 0.01 * Math.cos( a ), 0.98 + 0.02 * Math.sin( a ), z + 0.01 * Math.sin( a ) ), M.flower );
+
+			}
 
 		}
 
@@ -1080,6 +1111,14 @@ export class Azurea {
 		const chandFill = this.chandFill = new THREE.PointLight( '#ffd2a1', 0, 9, 2 );
 		chandFill.position.set( COVE.cx, Math.max( 1.2, H - 1.0 ), COVE.cz );
 		this.lights.add( chandFill );
+		// the lounges' table lamps: a warm point each, in its shade (no shadows: the shade's own glow is the look)
+		this.lampLights = LOUNGES.flatMap( g => g.lamps ).map( ( at, i ) => {
+
+			const g = LOUNGES.find( q => q.lamps.includes( at ) ), [ x, z ] = loungeAt( g, ...at ), l = new THREE.PointLight( '#ffcf9a', 0, 4.5, 2 );
+			l.position.set( x, 1.03, z ); this.lights.add( l );
+			return l;
+
+		} );
 		// the deck's ground lights: a dim warm point each, just above its lens (no shadows; their reach a few metres:
 		// a pool of light on the deck, the frame's outer caps and the glass grazed from below)
 		this.deckLights = DECK_LAMP.at.map( ( [ x, z ] ) => {
@@ -1124,6 +1163,7 @@ export class Azurea {
 		M.deckLamp.emissiveIntensity = 8 * ( L.deckLights ?? 0 );
 		this.chandLight.color.set( L.chandColor ?? '#ffcf96' ); this.chandLight.intensity = L.chand ?? 0; this.chandLight.visible = ( L.chand ?? 0 ) > 0;
 		this.chandFill.intensity = this.mode === 'pathtrace' ? 0.35 : ( L.outside === 'day' ? 0.75 : 1.2 ); this.chandFill.visible = this.chandFill.intensity > 0;
+		for ( const l of this.lampLights ) { l.intensity = ( L.outside === 'day' ? 0.5 : 1.2 ) * ( this.mode === 'pathtrace' ? 0.5 : 1 ); l.visible = l.intensity > 0; }
 		// the outside: its photo (the hour's), the disc and its path in the key light's direction
 		const sea = this.seas?.[ L.outside ] ?? this.seas?.day;
 		if ( sea && M.backdrop.map !== sea ) { M.backdrop.map = sea; M.backdrop.needsUpdate = true; }
