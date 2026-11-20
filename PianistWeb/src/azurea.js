@@ -203,7 +203,7 @@ function slab( x0, x1, z0, z1, y ) {
  * Moonlit Grand Piano by the Sea.png: large polished slabs, their joints fine lines). The normals by central
  * differences; `strength`: the slope scale. The normal map linear (NoColorSpace); both the picture's repeat.
  */
-function marbleNormalMap( map, { size = 2048, strength = 2.2, slabs = 2, joint = 2.5, period = 3 } = {} ) {
+function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint = 2.0, period = 6 } = {} ) {
 
 	const img = map.image, W = size, Hh = size;
 	const cv = document.createElement( 'canvas' ); cv.width = W; cv.height = Hh;
@@ -230,18 +230,44 @@ function marbleNormalMap( map, { size = 2048, strength = 2.2, slabs = 2, joint =
 	const n3 = noise( 512, 3 ), n4 = noise( 1024, 4 );
 	for ( let i = 0; i < W * Hh; ++ i ) h[ i ] = 0.004 * ( n3[ i ] - 0.5 ) + 0.002 * ( n4[ i ] - 0.5 );
 	const px = period / W, sw = W / slabs, half = joint / 1000 / 2 / px;
-	const out = new Uint8Array( 4 * W * Hh );
+	const out = new Uint8Array( 4 * W * Hh ), rough = new Uint8Array( 4 * W * Hh );
 	for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
 
 		const dx = ( h[ y * W + ( i + 1 ) % W ] - h[ y * W + ( i - 1 + W ) % W ] ) * 0.5 * W / 256 * strength;
 		const dy = ( h[ ( ( y + 1 ) % Hh ) * W + i ] - h[ ( ( y - 1 + Hh ) % Hh ) * W + i ] ) * 0.5 * Hh / 256 * strength;
 		const l = Math.hypot( dx, dy, 1 ), o = 4 * ( y * W + i );
 		out[ o ] = Math.round( ( - dx / l * 0.5 + 0.5 ) * 255 ); out[ o + 1 ] = Math.round( ( dy / l * 0.5 + 0.5 ) * 255 ); out[ o + 2 ] = Math.round( ( 1 / l * 0.5 + 0.5 ) * 255 ); out[ o + 3 ] = 255;
+		// Independently authored polish variation, not the colour/vein mask or a height-map conversion.
+		const polish = Math.round( 230 + 12 * Math.sin( i / W * Math.PI * 8 ) * Math.sin( y / Hh * Math.PI * 6 ) + 9 * ( n3[ y * W + i ] - 0.5 ) );
+		rough[ o ] = rough[ o + 1 ] = rough[ o + 2 ] = polish; rough[ o + 3 ] = 255;
 
 	}
 	// the floor's own colour map: the picture with the joints drawn in (a fine grey-brown grout line, `joint` mm,
 	// its edges a pixel softer)
 	cx.drawImage( img, 0, 0, W, Hh );
+	// Sparse branching mineral veins. The polish stays level across these inclusions: colour ONLY.
+	// Wrapped copies prevent a dark border seam; six metres per repeat avoids tiny leaf-like veining.
+	const stroke = ( points, width, alpha ) => {
+
+		cx.lineWidth = width; cx.strokeStyle = `rgba(117,135,146,${ alpha })`; cx.lineCap = 'round'; cx.lineJoin = 'round';
+		for ( const oy of [ - Hh, 0, Hh ] ) for ( const ox of [ - W, 0, W ] ) {
+
+			cx.beginPath(); points.forEach( ( [ x, y ], i ) => i ? cx.lineTo( x + ox, y + oy ) : cx.moveTo( x + ox, y + oy ) ); cx.stroke();
+
+		}
+
+	};
+	for ( let k = 0; k < 5; ++ k ) {
+
+		const points = [];
+		for ( let j = 0; j <= 32; ++ j ) { const x = j / 32 * W; points.push( [ x, ( k / 5 * Hh + 0.42 * x + 52 * Math.sin( j * 0.49 + k * 2 ) + 19 * Math.sin( j * 1.71 + k ) ) % Hh ] ); }
+		// Split at wrapped jumps instead of drawing a false vein across the tile.
+		let run = [];
+		for ( const p of points ) { if ( run.length && Math.abs( p[ 1 ] - run.at( - 1 )[ 1 ] ) > Hh / 2 ) { stroke( run, 9, 0.10 ); stroke( run, 2.0, 0.26 ); run = []; } run.push( p ); }
+		stroke( run, 9, 0.10 ); stroke( run, 2.0, 0.26 );
+		for ( let j = 7; j < 28; j += 7 ) { const p = points[ j ]; stroke( [ p, [ p[ 0 ] + 70, p[ 1 ] - 20 ], [ p[ 0 ] + 150, p[ 1 ] - 80 ], [ p[ 0 ] + 190, p[ 1 ] - 93 ] ], 1.1, 0.21 ); }
+
+	}
 	const col = cx.getImageData( 0, 0, W, Hh ), cd = col.data;
 	for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
 
@@ -256,11 +282,15 @@ function marbleNormalMap( map, { size = 2048, strength = 2.2, slabs = 2, joint =
 	cx.putImageData( col, 0, 0 );
 	const color = new THREE.CanvasTexture( cv );
 	color.colorSpace = map.colorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.copy( map.repeat ); color.flipY = map.flipY; color.anisotropy = 16;
+	for ( const tex of [ color ] ) { tex.repeat.set( 1 / period, 1 / period ); }
 	const t = new THREE.DataTexture( out, W, Hh, THREE.RGBAFormat );
-	t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.copy( map.repeat ); t.flipY = map.flipY;
+	t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.copy( color.repeat ); t.flipY = map.flipY;
 	t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 8;
 	t.needsUpdate = true;
-	return { normal: t, color };
+	const roughness = new THREE.DataTexture( rough, W, Hh, THREE.RGBAFormat );
+	roughness.colorSpace = THREE.NoColorSpace; roughness.wrapS = roughness.wrapT = THREE.RepeatWrapping; roughness.repeat.copy( color.repeat ); roughness.flipY = map.flipY;
+	roughness.generateMipmaps = true; roughness.minFilter = THREE.LinearMipmapLinearFilter; roughness.anisotropy = 8; roughness.needsUpdate = true;
+	return { normal: t, color, roughness };
 
 }
 
@@ -676,7 +706,7 @@ export class Azurea {
 		this.sky = new Sky();
 		const M = this.materials = {
 			// the floor: pale marble, mirror-polished (its marble from the pack; its reflection a planar one)
-			floor: phys( { color: '#dff2fc', roughness: 0.055, clearcoat: 1, clearcoatRoughness: 0.008, specularIntensity: 1 } ),
+			floor: phys( { color: '#f4f2ed', roughness: 0.075, clearcoat: 1, clearcoatRoughness: 0.055, specularIntensity: 1 } ),
 			marble: phys( { color: '#f8f8f6', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 } ),
 			plaster: phys( { color: '#f2f5f7', roughness: 0.92 } ),
 			ceiling: phys( { color: '#eaf5fb', roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.06, specularIntensity: 1 } ),
@@ -728,7 +758,7 @@ export class Azurea {
 		// trapped between it and the surface until the traversals ran out: the pool's far part in black patches)
 		M.waterPTBody = M.waterPT.clone(); M.waterPTBody.ior = 1.0;
 		this.clear = [ M.glass, M.railGlass, M.crystal, M.tableGlass ];
-		this.mirror = new PlaneMirror( new THREE.Plane( V( 0, 1, 0 ), 0 ) );		// (the floor's: src/mirror.js)
+		this.mirror = new PlaneMirror( new THREE.Plane( V( 0, 1, 0 ), 0 ), { blur: 0.35 } );		// (the floor's: src/mirror.js)
 		this.ceilingMirror = new PlaneMirror( new THREE.Plane( V( 0, - 1, 0 ), H ) );
 		this.mirror.addTo( M.floor );
 		this.ceilingMirror.addTo( M.ceiling );
@@ -1679,9 +1709,10 @@ export class Azurea {
 			// map; the planar mirror's reflection shifted by it a little: src/mirror.js), under the clearcoat too
 			try {
 
-				const { normal: nm, color } = marbleNormalMap( marble );
+				const { normal: nm, color, roughness } = marbleNormalMap( marble );
 				M.floor.map = color;
-				M.floor.normalMap = nm; M.floor.normalScale.set( 0.45, 0.45 );
+				M.floor.roughness = 0.075; M.floor.roughnessMap = roughness;
+				M.floor.normalMap = nm; M.floor.normalScale.set( 0.28, 0.28 );
 				M.floor.clearcoatNormalMap = nm; M.floor.clearcoatNormalScale.set( 0.2, 0.2 );
 				M.floor.needsUpdate = true;
 
