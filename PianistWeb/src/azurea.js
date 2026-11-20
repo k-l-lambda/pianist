@@ -42,11 +42,11 @@ const GLASS = { cx: - 3.25, cz: 8.4, r: 13 };			// half-radius curved glass wall
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
 const glassZ = x => GLASS.cz - Math.sqrt( GLASS.r ** 2 - ( x - GLASS.cx ) ** 2 );
-const BAR = { cx: - 2.5, cz: 2.1 };				// the bar's arc (its front towards +z), the bottle wall behind it
+const BAR = { cx: - 2.5, cz: 3.6 };				// the bar's arc (its front towards +z), the bottle wall behind it
 const BAR_SCALE = 0.82;					// a hospitality island, not a foreground wall
 // Keep the first step on the original 60° entrance ray; mirror the ascent about that ray.
 const STAIRS = { cx: - 8.5, cz: 2.1, r0: 0.9, r1: 2.8, rise: H - 2.0, steps: 24, start: 60 * D, sweep: - 300 * D };
-const COVE = { cx: - 2.0, cz: 2.2, r: 3.8, soffit: 2.7 };
+const COVE = { cx: - 2.0, cz: 5.2, r: 3.8, soffit: 2.7 };
 // the pool: a long arc concentric with the glass, right outside it (a coping strip between: r0 - GLASS.r), 5.08 m wide
 // and 2.4 m deep, its far side (5.43 m from the glass) the infinity edge; from behind the left wall to behind the right (x0..x1 at its near side)
 const POOL = { x0: - 16, x1: 10, w: 5.08, coping: 0.35, water: - 0.12, depth: 2.4, deck: - 0.03 };
@@ -71,7 +71,7 @@ const photoTop = Math.asin( ( SKY.pa1 - SKY.pa0 ) * 2 / 9 );
 // facing the coffee table at its centre, side tables with lit lamps at the sofa's ends. Each in its own frame:
 // turned yaw (its front, towards the room, (sin, cos)); offsets ( across, forward ) m in that frame
 const LOUNGES = [
-	{ x: 5.4, z: 3.8, r: 2.0, yaw: 0.15, sofa: - 1.0, chairs: [ [ - 1.15, 0.95 ], [ 1.15, 0.95 ] ], lamps: [ [ - 1.62, - 1.0 ], [ 1.62, - 1.0 ] ], styled: true },
+	{ x: 5.4, z: 5.8, r: 2.0, yaw: 0.15, sofa: - 1.0, chairs: [ [ - 1.15, 0.95 ], [ 1.15, 0.95 ] ], lamps: [ [ - 1.62, - 1.0 ], [ 1.62, - 1.0 ] ], styled: true },
 	{ x: 3.8, z: - 0.2, r: 1.7, yaw: 0.15, sofa: - 0.8, chairs: [ [ - 0.95, 0.8 ], [ 0.95, 0.8 ] ], lamps: [ [ 1.6, - 0.75 ] ] },
 ];
 const loungeAt = ( g, across, fwd ) => [ g.x + across * Math.cos( g.yaw ) + fwd * Math.sin( g.yaw ), g.z - across * Math.sin( g.yaw ) + fwd * Math.cos( g.yaw ) ];
@@ -83,7 +83,7 @@ const LAYOUT = [
 		...g.chairs.map( ( [ a, f ] ) => { const [ x, z ] = loungeAt( g, a, f ); return [ 'lounge-chair', x, z, Math.atan2( g.x - x, g.z - z ) ]; } ),
 	] ),
 	...[ 40, 65, 90, 115, 140 ].map( a => [ 'bar-stool', BAR.cx + 3.15 * Math.cos( a * D ), BAR.cz + 3.15 * Math.sin( a * D ), Math.atan2( - Math.cos( a * D ), - Math.sin( a * D ) ) ] ),
-	[ 'plant-tall', - 11.2, - 0.8, 0.4 ], [ 'plant-tall', 5.6, 0.6, - 0.9 ], [ 'plant-tall', - 10.5, 5.8, 2.1 ],
+	[ 'plant-tall', - 11.2, - 0.8, 0.4 ], [ 'plant-tall', 5.6, 0.6, - 0.9 ], [ 'plant-tall', - 9.6, 11.2, 2.1 ],
 	[ 'plant-low', 2.3, - 2.6, 0.3 ], [ 'plant-low', - 6.0, 5.8, 1.7 ], [ 'plant-low', 7.7, 5.9, - 1.1 ],
 ];
 
@@ -870,7 +870,7 @@ export class Azurea {
 		// cutting across the reference camera. The former broad left mezzanine platform is intentionally removed.
 		add( box( WALL.x1, WALL.x1 + 0.2, 0, H, glassZ( WALL.x1 ) - 0.3, WALL.z1 + 0.2 ), M.plaster );
 		add( box( WALL.x0 - 0.2, WALL.x1 + 0.2, 0, H, WALL.z1, WALL.z1 + 0.2 ), M.plaster );
-		for ( const [ x, z ] of [ [ - 11.7, 8.9 ], [ 11.5, 14.5 ] ] ) add( new THREE.CylinderGeometry( 0.42, 0.46, H, 48 ).translate( x, H / 2, z ), M.plaster );
+		for ( const [ x, z ] of [ [ - 10.9, 8.9 ], [ 11.5, 14.5 ] ] ) add( new THREE.CylinderGeometry( 0.42, 0.46, H, 48 ).translate( x, H / 2, z ), M.plaster );
 		// The stair's upper end continues inward; no residual second-floor platform is generated.
 
 
@@ -937,8 +937,47 @@ export class Azurea {
 			// thin warm decorative light under the stair's inner edge
 			add( band( { ...helix, r0: S.r0 - 0.065, r1: S.r0 - 0.055, lo: a => yAt( a ) - 0.30, hi: a => yAt( a ) - 0.27, faces: 'o' } ), M.barLight );
 			add( band( { ...helix, r0: S.r1 + 0.02, r1: S.r1 + 0.032, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
-			const pts = []; for ( let i = 0; i <= 120; ++ i ) { const a = a0 + S.sweep * i / 120; pts.push( V( S.cx + ( S.r1 + 0.026 ) * Math.cos( a ), yAt( a ) + 1.03, S.cz + ( S.r1 + 0.026 ) * Math.sin( a ) ) ); }
-			add( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( pts ), 240, 0.022, 10 ), M.chrome );
+			// (the inner side's glass too: both sides of the flight guarded; it runs on into the gallery's)
+			add( band( { ...helix, r0: S.r0 - 0.032, r1: S.r0 - 0.02, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
+			for ( const r of [ S.r1 + 0.026, S.r0 - 0.026 ] ) {
+
+				const pts = []; for ( let i = 0; i <= 120; ++ i ) { const a = a0 + S.sweep * i / 120; pts.push( V( S.cx + r * Math.cos( a ), yAt( a ) + 1.03, S.cz + r * Math.sin( a ) ) ); }
+				add( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( pts ), 240, 0.022, 10 ), M.chrome );
+
+			}
+
+			// the gallery: the flight's top lands on a floor that crosses behind the stair (clear of its upper treads,
+			// over the open wedge at its foot: 2.05 m headroom at the first step) to a long walk along the left wall,
+			// from near the glass to the back wall. Glass balustrades both sides; the flight's inner rail turns into
+			// the gallery's room side, its outer into the wall side's return
+			const top = S.rise, slab = 0.22, P = ( a, r ) => [ S.cx + r * Math.cos( a ), S.cz + r * Math.sin( a ) ];
+			const GX = WALL.x0 + 1.65, BZ0 = 5.0, BZ1 = 6.8, EX = - 7.78;		// (the gallery's room edge; the bridge's near and far z; its right end)
+			const pIn = P( a1, S.r0 ), pOut = P( a1, S.r1 ), pWedge = P( 75 * D, S.r0 ), pWedgeOut = P( 75 * D, S.r1 );
+			const outline = [ pIn, pWedge, [ EX, pWedgeOut[ 1 ] ], [ EX, BZ1 ], [ GX, BZ1 ], [ GX, WALL.z1 ], [ WALL.x0, WALL.z1 ], [ WALL.x0, 0.5 ], [ GX, 0.5 ], [ GX, BZ0 ], [ pOut[ 0 ] - 0.25, BZ0 ], pOut ];
+			const shape = new THREE.Shape( outline.map( ( [ x, z ] ) => new THREE.Vector2( x, z ) ) );
+			add( replanar( new THREE.ExtrudeGeometry( shape, { depth: slab, bevelEnabled: false, curveSegments: 1 } ).rotateX( Math.PI / 2 ).translate( 0, top, 0 ) ), M.marble );
+			// (its fascia's light: a warm line under the room edges, as the flight's)
+			const glass = ( [ x0, z0 ], [ x1, z1 ], led = false ) => {
+
+				const dx = x1 - x0, dz = z1 - z0, L = Math.hypot( dx, dz ), yaw = Math.atan2( - dz, dx ), cx = ( x0 + x1 ) / 2, cz = ( z0 + z1 ) / 2;
+				const at = g => g.rotateY( yaw ).translate( cx, 0, cz );
+				add( at( new THREE.BoxGeometry( L, 0.94, 0.012 ).translate( 0, top + 0.06 + 0.47, 0 ) ), M.railGlass );
+				add( at( new THREE.CylinderGeometry( 0.022, 0.022, L + 0.044, 10 ).rotateZ( Math.PI / 2 ).translate( 0, top + 1.03, 0 ) ), M.chrome );
+				if ( led ) add( at( new THREE.BoxGeometry( L, 0.03, 0.01 ).translate( 0, top - slab - 0.02, 0 ) ), M.barLight );
+
+			};
+			// (inset 3 cm from the slab's edge; the run from the flight's inner rail round the room side, then the
+			// gallery's room edge to the back wall)
+			const inset = ( q, cx, cz ) => { const dx = cx - q[ 0 ], dz = cz - q[ 1 ], l = Math.hypot( dx, dz ) || 1; return [ q[ 0 ] + 0.03 * dx / l, q[ 1 ] + 0.03 * dz / l ]; };
+			const C = [ - 10.5, 7.5 ];		// (a point inside, for the insets)
+			const room = [ P( a1, S.r0 - 0.026 ), pWedge, [ EX, pWedgeOut[ 1 ] ], [ EX, BZ1 ], [ GX, BZ1 ], [ GX, WALL.z1 ] ].map( ( q, i ) => i ? inset( q, ...C ) : q );
+			for ( let i = 0; i + 1 < room.length; ++ i ) glass( room[ i ], room[ i + 1 ], i >= 2 );
+			// (the other side: from the flight's outer rail along the bridge's near edge, the gallery's room edge to the
+			// glass, and across its end there)
+			const wall = [ P( a1, S.r1 + 0.026 ), [ pOut[ 0 ] - 0.25, BZ0 ], [ GX, BZ0 ], [ GX, 0.5 ], [ WALL.x0, 0.5 ] ].map( ( q, i ) => i ? inset( q, - 12.4, 3.0 ) : q );
+			for ( let i = 0; i + 1 < wall.length; ++ i ) glass( wall[ i ], wall[ i + 1 ], i === 1 || i === 2 );
+			// (two slim columns under the bridge's free end)
+			for ( const [ x, z ] of [ [ EX - 0.18, BZ1 - 0.18 ], [ - 9.6, BZ1 - 0.18 ] ] ) add( new THREE.CylinderGeometry( 0.07, 0.07, top - slab, 24 ).translate( x, ( top - slab ) / 2, z ), M.lacquer );
 
 		}
 
@@ -1069,7 +1108,12 @@ export class Azurea {
 			for ( let i = 0; i < n; ++ i ) {
 
 				const a = 2 * Math.PI * ( i + 0.5 * ( r * 3 % 1 ) ) / n, x = COVE.cx + r * Math.cos( a ), z = COVE.cz + r * Math.sin( a );
-				const bottom = top - ( 1.1 + 1.9 * ( 1 - r / 3.0 ) ** 2 + 0.12 * Math.sin( 3 * a + r * 2 ) );
+				// (the bar sits off the cove's centre: no strand through its pier and bottle cabinet; over its counter and
+				// its stools they stop above head height)
+				const dBar = Math.hypot( x - BAR.cx, z - BAR.cz );
+				if ( dBar < 0.85 ) continue;
+				let bottom = top - ( 1.1 + 1.9 * ( 1 - r / 3.0 ) ** 2 + 0.12 * Math.sin( 3 * a + r * 2 ) );
+				if ( dBar < 2.65 * BAR_SCALE * 1.06 + 1.2 ) bottom = Math.max( bottom, 2.35 + 0.1 * Math.sin( 3 * a + r * 2 ) );
 				wires.push( new THREE.CylinderGeometry( 0.0012, 0.0012, top - bottom, 3, 1, true ).translate( x, ( top + bottom ) / 2, z ) );
 				for ( let k = 0; k < 3; ++ k ) drops.push( drop.clone().translate( x, bottom + 0.075 + k * 0.17, z ) );
 
