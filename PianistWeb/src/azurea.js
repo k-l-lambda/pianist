@@ -210,14 +210,13 @@ function slab( x0, x1, z0, z1, y ) {
 
 /**
  * The polished floor's maps: a tangent-space normal map of a fine grain in the polish only (value noise at ~12 and
- * ~6 mm, two octaves; wrapped), an independent roughness map, and the floor's own colour map, the marble's picture laid in slabs (`slabs`² per
- * tile of the picture, `period` m: its repeat) with their joints drawn in, as the reference (Footages.local/ref/
- * Moonlit Grand Piano by the Sea.png: large polished slabs, their joints fine lines). The normals by central
+ * ~6 mm, two octaves; wrapped), an independent roughness map, and seamless pearl mineral clouding/veins
+ * with no slab joints or tile grid. `period` is the world-space repeat in metres. The normals by central
  * differences; `strength`: the slope scale. The normal map linear (NoColorSpace); both the picture's repeat.
  */
-function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint = 2.0, period = 6 } = {} ) {
+function marbleNormalMap( map, { size = 2048, strength = 1.2, period = 6 } = {} ) {
 
-	const img = map.image, W = size, Hh = size;
+	const W = size, Hh = size;
 	const cv = document.createElement( 'canvas' ); cv.width = W; cv.height = Hh;
 	const cx = cv.getContext( '2d', { willReadFrequently: true } );
 	const h = new Float32Array( W * Hh );
@@ -241,7 +240,6 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 	// a leaf's, not stone's; the joints are in the colour map)
 	const n3 = noise( 512, 3 ), n4 = noise( 1024, 4 );
 	for ( let i = 0; i < W * Hh; ++ i ) h[ i ] = 0.004 * ( n3[ i ] - 0.5 ) + 0.002 * ( n4[ i ] - 0.5 );
-	const px = period / W, sw = W / slabs, half = joint / 1000 / 2 / px;
 	const out = new Uint8Array( 4 * W * Hh ), rough = new Uint8Array( 4 * W * Hh );
 	for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
 
@@ -254,9 +252,15 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 		rough[ o ] = rough[ o + 1 ] = rough[ o + 2 ] = polish; rough[ o + 3 ] = 255;
 
 	}
-	// the floor's own colour map: the picture with the joints drawn in (a fine grey-brown grout line, `joint` mm,
-	// its edges a pixel softer)
-	cx.drawImage( img, 0, 0, W, Hh );
+	// Seamless mineral clouding only: no source photo seams or drawn slab/grid joints.
+	cx.fillStyle = '#f0efeb'; cx.fillRect( 0, 0, W, Hh );
+	for ( let k = 0; k < 28; ++ k ) {
+
+		const x = ( Math.sin( k * 7.31 ) * .5 + .5 ) * W, y = ( Math.cos( k * 4.71 ) * .5 + .5 ) * Hh;
+		const grad = cx.createRadialGradient( x, y, 0, x, y, 240 ); grad.addColorStop( 0, 'rgba(170,185,193,.10)' ); grad.addColorStop( 1, 'rgba(170,185,193,0)' );
+		cx.fillStyle = grad; cx.fillRect( 0, 0, W, Hh );
+
+	}
 	// Sparse branching mineral veins. The polish stays level across these inclusions: colour ONLY.
 	// Wrapped copies prevent a dark border seam; six metres per repeat avoids tiny leaf-like veining.
 	const stroke = ( points, width, alpha ) => {
@@ -285,18 +289,6 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 		for ( let j = 7; j < 28; j += 7 ) { const p = points[ j ]; stroke( [ p, [ p[ 0 ] + 70, p[ 1 ] - 20 ], [ p[ 0 ] + 150, p[ 1 ] - 80 ], [ p[ 0 ] + 190, p[ 1 ] - 93 ] ], 1.1, 0.21 ); }
 
 	}
-	const col = cx.getImageData( 0, 0, W, Hh ), cd = col.data;
-	for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
-
-		const sx = Math.floor( i / sw ), sy = Math.floor( y / sw );
-		const e = Math.min( i - sx * sw, ( sx + 1 ) * sw - i, y - sy * sw, ( sy + 1 ) * sw - y );
-		const w = Math.max( 0, Math.min( 1, half + 1 - e ) );
-		if ( w <= 0 ) continue;
-		const o = 4 * ( y * W + i );
-		cd[ o ] += ( 150 - cd[ o ] ) * w * 0.8; cd[ o + 1 ] += ( 146 - cd[ o + 1 ] ) * w * 0.8; cd[ o + 2 ] += ( 140 - cd[ o + 2 ] ) * w * 0.8;
-
-	}
-	cx.putImageData( col, 0, 0 );
 	const color = new THREE.CanvasTexture( cv );
 	color.colorSpace = map.colorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.copy( map.repeat ); color.flipY = map.flipY; color.anisotropy = 16;
 	color.repeat.set( 1 / period, 1 / period );
@@ -1079,7 +1071,7 @@ export class Azurea {
 			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r0, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
 			add( band( { ...helix, r0: S.r1 + .0605, r1: S.r1 + .064, lo: a => Math.max( .006, yAt( a ) - .29 ), hi: a => Math.max( .031, yAt( a ) - .265 ), faces: 'o' } ), M.barLight );
 			// thin warm decorative light under the stair's inner edge
-			add( band( { ...helix, r0: S.r0 - 0.065, r1: S.r0 - 0.055, lo: a => yAt( a ) - 0.30, hi: a => yAt( a ) - 0.27, faces: 'o' } ), M.barLight );
+			add( band( { ...helix, r0: S.r0 - .064, r1: S.r0 - .0605, lo: a => Math.max( .006, yAt( a ) - .29 ), hi: a => Math.max( .031, yAt( a ) - .265 ), faces: 'i' } ), M.barLight );
 			add( band( { ...helix, r0: S.r1 + 0.02, r1: S.r1 + 0.032, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
 			// (the inner side's glass too: both sides of the flight guarded; it runs on into the gallery's)
 			add( band( { ...helix, r0: S.r0 - 0.032, r1: S.r0 - 0.02, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
