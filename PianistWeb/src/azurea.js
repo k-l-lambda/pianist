@@ -208,17 +208,22 @@ function slab( x0, x1, z0, z1, y ) {
 
 }
 
-/**
- * The polished floor's maps: a tangent-space normal map of a fine grain in the polish only (value noise at ~12 and
- * ~6 mm, two octaves; wrapped), an independent roughness map, and seamless pearl mineral clouding/veins
- * with no slab joints or tile grid. `period` is the world-space repeat in metres. The normals by central
- * differences; `strength`: the slope scale. The normal map linear (NoColorSpace); both the picture's repeat.
- */
+/** Bar-side marble image projected once across the floor; independent floor polish below. */
+function floorMarbleTexture( source, size = 2048, worldPeriod = 32 ) {
+
+	const c = document.createElement( 'canvas' ); c.width = c.height = size; const ctx = c.getContext( '2d' );
+	ctx.fillStyle = '#f0efeb'; ctx.fillRect( 0, 0, size, size );
+	// One large world-space projection of the bar's actual marble image. The floor covers this
+	// source once across 32 m, rather than repeating a small slab tile or drawing joints.
+	ctx.save(); ctx.translate( size * .5, size * .5 ); ctx.rotate( .018 ); ctx.drawImage( source.image, - size * .5, - size * .5, size, size ); ctx.restore();
+	const t = new THREE.CanvasTexture( c ); t.colorSpace = source.colorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.repeat.set( 1 / worldPeriod, 1 / worldPeriod ); t.offset.set( .44, .18 ); t.flipY = source.flipY; t.anisotropy = 16; t.needsUpdate = true;
+	return t;
+
+}
+
 function marbleNormalMap( map, { size = 2048, strength = 1.2, period = 6 } = {} ) {
 
 	const W = size, Hh = size;
-	const cv = document.createElement( 'canvas' ); cv.width = W; cv.height = Hh;
-	const cx = cv.getContext( '2d', { willReadFrequently: true } );
 	const h = new Float32Array( W * Hh );
 	// (value noise on a periodic lattice of `cells`², smoothstepped)
 	const noise = ( cells, seed ) => {
@@ -237,7 +242,7 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, period = 6 } = {} 
 	};
 	// (only a fine grain in the polish: noise at ~6 and ~3 mm. The picture's veins as relief, the polish's slow
 	// undulation, the slabs' tilt and the joints' grooves were tried and dropped: at this scale the veins read as
-	// a leaf's, not stone's; the joints are in the colour map)
+	// a leaf's, not stone's; mineral inclusions remain colour-only, no slab grooves)
 	const n3 = noise( 512, 3 ), n4 = noise( 1024, 4 );
 	for ( let i = 0; i < W * Hh; ++ i ) h[ i ] = 0.004 * ( n3[ i ] - 0.5 ) + 0.002 * ( n4[ i ] - 0.5 );
 	const out = new Uint8Array( 4 * W * Hh ), rough = new Uint8Array( 4 * W * Hh );
@@ -252,54 +257,14 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, period = 6 } = {} 
 		rough[ o ] = rough[ o + 1 ] = rough[ o + 2 ] = polish; rough[ o + 3 ] = 255;
 
 	}
-	// Seamless mineral clouding only: no source photo seams or drawn slab/grid joints.
-	cx.fillStyle = '#f0efeb'; cx.fillRect( 0, 0, W, Hh );
-	for ( let k = 0; k < 28; ++ k ) {
-
-		const x = ( Math.sin( k * 7.31 ) * .5 + .5 ) * W, y = ( Math.cos( k * 4.71 ) * .5 + .5 ) * Hh;
-		const grad = cx.createRadialGradient( x, y, 0, x, y, 240 ); grad.addColorStop( 0, 'rgba(170,185,193,.10)' ); grad.addColorStop( 1, 'rgba(170,185,193,0)' );
-		cx.fillStyle = grad; cx.fillRect( 0, 0, W, Hh );
-
-	}
-	// Sparse branching mineral veins. The polish stays level across these inclusions: colour ONLY.
-	// Wrapped copies prevent a dark border seam; six metres per repeat avoids tiny leaf-like veining.
-	const stroke = ( points, width, alpha ) => {
-
-		cx.lineWidth = width; cx.strokeStyle = `rgba(117,135,146,${ alpha })`; cx.lineCap = 'round'; cx.lineJoin = 'round';
-		for ( const oy of [ - Hh, 0, Hh ] ) for ( const ox of [ - W, 0, W ] ) {
-
-			cx.beginPath(); points.forEach( ( [ x, y ], i ) => i ? cx.lineTo( x + ox, y + oy ) : cx.moveTo( x + ox, y + oy ) ); cx.stroke();
-
-		}
-
-	};
-	for ( let k = 0; k < 5; ++ k ) {
-
-		const points = [];
-		for ( let j = 0; j <= 64; ++ j ) {
-
-			const u = j / 64, x = u * W, phase = 2 * Math.PI * u;
-			points.push( [ x, ( Hh * ( k / 5 + 0.14 * Math.sin( phase + k ) + 0.024 * Math.sin( 3 * phase + k ) + 0.004 * Math.sin( 13 * phase + k * 2 ) ) + Hh ) % Hh ] );
-
-		}
-		// Split at wrapped jumps instead of drawing a false vein across the tile.
-		let run = [];
-		for ( const p of points ) { if ( run.length && Math.abs( p[ 1 ] - run.at( - 1 )[ 1 ] ) > Hh / 2 ) { stroke( run, 13, 0.17 ); stroke( run, 2.8, 0.42 ); run = []; } run.push( p ); }
-		stroke( run, 13, 0.17 ); stroke( run, 2.8, 0.42 );
-		for ( let j = 7; j < 28; j += 7 ) { const p = points[ j ]; stroke( [ p, [ p[ 0 ] + 70, p[ 1 ] - 20 ], [ p[ 0 ] + 150, p[ 1 ] - 80 ], [ p[ 0 ] + 190, p[ 1 ] - 93 ] ], 1.1, 0.21 ); }
-
-	}
-	const color = new THREE.CanvasTexture( cv );
-	color.colorSpace = map.colorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.copy( map.repeat ); color.flipY = map.flipY; color.anisotropy = 16;
-	color.repeat.set( 1 / period, 1 / period );
 	const t = new THREE.DataTexture( out, W, Hh, THREE.RGBAFormat );
-	t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.copy( color.repeat ); t.flipY = map.flipY;
+	t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set( 1 / period, 1 / period ); t.flipY = map.flipY;
 	t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 8;
 	t.needsUpdate = true;
 	const roughness = new THREE.DataTexture( rough, W, Hh, THREE.RGBAFormat );
-	roughness.colorSpace = THREE.NoColorSpace; roughness.wrapS = roughness.wrapT = THREE.RepeatWrapping; roughness.repeat.copy( color.repeat ); roughness.flipY = map.flipY;
+	roughness.colorSpace = THREE.NoColorSpace; roughness.wrapS = roughness.wrapT = THREE.RepeatWrapping; roughness.repeat.set( 1 / period, 1 / period ); roughness.flipY = map.flipY;
 	roughness.generateMipmaps = true; roughness.minFilter = THREE.LinearMipmapLinearFilter; roughness.anisotropy = 8; roughness.needsUpdate = true;
-	return { normal: t, color, roughness };
+	return { normal: t, roughness };
 
 }
 
@@ -1988,13 +1953,13 @@ export class Azurea {
 		if ( marble ) {
 
 			marble.wrapS = marble.wrapT = THREE.RepeatWrapping; marble.repeat.set( 1 / 3, 1 / 3 ); marble.anisotropy = 8; marble.colorSpace = THREE.SRGBColorSpace;
-			for ( const m of [ M.floor, M.marble, M.deck ] ) { m.map = marble; m.needsUpdate = true; }
-			// the floor: laid in slabs (its own colour map, the joints drawn in), a fine grain in its polish (a normal
+			for ( const m of [ M.marble, M.deck ] ) { m.map = marble; m.needsUpdate = true; }
+			M.floor.map = floorMarbleTexture( marble ); M.floor.needsUpdate = true;
+			// the floor: bar marble projected once across the room, plus its independent polish grain (a normal
 			// map; the planar mirror's reflection shifted by it a little: src/mirror.js), under the clearcoat too
 			try {
 
-				const { normal: nm, color, roughness } = marbleNormalMap( marble );
-				M.floor.map = color;
+				const { normal: nm, roughness } = marbleNormalMap( marble );
 				M.floor.roughness = 0.075; M.floor.roughnessMap = roughness;
 				M.floor.normalMap = nm; M.floor.normalScale.set( 0.28, 0.28 );
 				M.floor.clearcoatNormalMap = nm; M.floor.clearcoatNormalScale.set( 0.2, 0.2 );
