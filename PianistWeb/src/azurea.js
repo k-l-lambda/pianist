@@ -486,14 +486,15 @@ function backdropMaterial( ocean, sky ) {
 					// (the reflection: the view mirrored about the resolved normal; kept above the horizon: a facet's mirror
 					// of the sea itself is the sky just above it, at this scale)
 					vec3 rd = reflect( vd, nW );
-					// (the gusts (src/ocean.js): a rougher patch shows facets tilted more towards the eye (those facing away
-					// are masked: the visible slopes' mean along the view, σ Φ( a ) / ( a Φ( a ) + φ( a ) ), a = tan of the
-					// depression / σ), so it mirrors higher, darker sky: cat's paws darker. Only the gusts' change of it —
-					// without them the shading as it was; the path tracer has it of itself)
+					// (the facets the eye sees are tilted towards it (those facing away are masked: the visible slopes' mean
+					// along the view, σ Φ( a ) / ( a Φ( a ) + φ( a ) ), a = tan of the depression / σ), so the sea mirrors
+					// higher, darker sky than its mean normal would — most near the horizon, where without it the far sea
+					// mirrored the bright horizon band and read as sky, the horizon line lifting off the sea. Everywhere,
+					// gusts included (a rougher patch darker: cat's paws), as the path tracer has it of itself)
 					#ifdef OCEAN_PAWS
-					rd.y += 2.0 * ( azVisTilt( vd, seaCov ) - azVisTilt( vd, oceanCov0 ) ) * seaNear;		// (none in the photo's strip at the horizon: no seam)
+					rd.y += 2.0 * azVisTilt( vd, seaCov );		// (the photo's strip at the horizon is no longer drawn: no seam to avoid)		// (none in the photo's strip at the horizon: no seam)
 					#else
-					if ( uOcGust.x > 0.0 ) rd.y += 2.0 * ( azVisTilt( vd, seaCov ) - azVisTilt( vd, oceanCov0 ) ) * seaNear;		// (none in the photo's strip at the horizon: no seam)
+					if ( uOcGust.x > 0.0 ) rd.y += 2.0 * azVisTilt( vd, seaCov );		// (the photo's strip at the horizon is no longer drawn: no seam to avoid)		// (none in the photo's strip at the horizon: no seam)
 					#endif
 					rd.y = max( rd.y, 0.002 ); rd = normalize( rd );
 					float depR = rd.y;
