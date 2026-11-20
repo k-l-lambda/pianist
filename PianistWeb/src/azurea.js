@@ -37,7 +37,7 @@ const phys = p => new THREE.MeshPhysicalMaterial( p );
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
 const H = 7.8 * 0.7 * 0.8;						// lowered ceiling: 70% of the current room height									// the ceiling
-const WALL = { x0: - 13.25, x1: 8.5, z1: 18.0 };			// complete floor and distant entry/back wall			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
+const WALL = { x0: - 13.25, x1: 8.5, z1: 24.0 };			// complete floor and distant entry/back wall			// compact lobby shell; furniture dimensions stay unchanged		// the side walls, the front wall
 const GLASS = { cx: - 3.25, cz: 8.4, r: 13 };			// half-radius curved glass wall		// the glass wall: an arc round ( cx, cz )
 GLASS.a0 = - Math.acos( ( WALL.x0 - GLASS.cx ) / GLASS.r );		// (rad: x = cx + r cos a, z = cz + r sin a, its near side; at the left wall)
 GLASS.a1 = - Math.acos( ( WALL.x1 - GLASS.cx ) / GLASS.r );		// (at the right wall)
@@ -210,14 +210,13 @@ function slab( x0, x1, z0, z1, y ) {
 
 /**
  * The polished floor's maps: a tangent-space normal map of a fine grain in the polish only (value noise at ~12 and
- * ~6 mm, two octaves; wrapped), an independent roughness map, and the floor's own colour map, the marble's picture laid in slabs (`slabs`² per
- * tile of the picture, `period` m: its repeat) with their joints drawn in, as the reference (Footages.local/ref/
- * Moonlit Grand Piano by the Sea.png: large polished slabs, their joints fine lines). The normals by central
+ * ~6 mm, two octaves; wrapped), an independent roughness map, and seamless pearl mineral clouding/veins
+ * with no slab joints or tile grid. `period` is the world-space repeat in metres. The normals by central
  * differences; `strength`: the slope scale. The normal map linear (NoColorSpace); both the picture's repeat.
  */
-function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint = 2.0, period = 6 } = {} ) {
+function marbleNormalMap( map, { size = 2048, strength = 1.2, period = 6 } = {} ) {
 
-	const img = map.image, W = size, Hh = size;
+	const W = size, Hh = size;
 	const cv = document.createElement( 'canvas' ); cv.width = W; cv.height = Hh;
 	const cx = cv.getContext( '2d', { willReadFrequently: true } );
 	const h = new Float32Array( W * Hh );
@@ -241,7 +240,6 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 	// a leaf's, not stone's; the joints are in the colour map)
 	const n3 = noise( 512, 3 ), n4 = noise( 1024, 4 );
 	for ( let i = 0; i < W * Hh; ++ i ) h[ i ] = 0.004 * ( n3[ i ] - 0.5 ) + 0.002 * ( n4[ i ] - 0.5 );
-	const px = period / W, sw = W / slabs, half = joint / 1000 / 2 / px;
 	const out = new Uint8Array( 4 * W * Hh ), rough = new Uint8Array( 4 * W * Hh );
 	for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
 
@@ -254,9 +252,15 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 		rough[ o ] = rough[ o + 1 ] = rough[ o + 2 ] = polish; rough[ o + 3 ] = 255;
 
 	}
-	// the floor's own colour map: the picture with the joints drawn in (a fine grey-brown grout line, `joint` mm,
-	// its edges a pixel softer)
-	cx.drawImage( img, 0, 0, W, Hh );
+	// Seamless mineral clouding only: no source photo seams or drawn slab/grid joints.
+	cx.fillStyle = '#f0efeb'; cx.fillRect( 0, 0, W, Hh );
+	for ( let k = 0; k < 28; ++ k ) {
+
+		const x = ( Math.sin( k * 7.31 ) * .5 + .5 ) * W, y = ( Math.cos( k * 4.71 ) * .5 + .5 ) * Hh;
+		const grad = cx.createRadialGradient( x, y, 0, x, y, 240 ); grad.addColorStop( 0, 'rgba(170,185,193,.10)' ); grad.addColorStop( 1, 'rgba(170,185,193,0)' );
+		cx.fillStyle = grad; cx.fillRect( 0, 0, W, Hh );
+
+	}
 	// Sparse branching mineral veins. The polish stays level across these inclusions: colour ONLY.
 	// Wrapped copies prevent a dark border seam; six metres per repeat avoids tiny leaf-like veining.
 	const stroke = ( points, width, alpha ) => {
@@ -285,18 +289,6 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 		for ( let j = 7; j < 28; j += 7 ) { const p = points[ j ]; stroke( [ p, [ p[ 0 ] + 70, p[ 1 ] - 20 ], [ p[ 0 ] + 150, p[ 1 ] - 80 ], [ p[ 0 ] + 190, p[ 1 ] - 93 ] ], 1.1, 0.21 ); }
 
 	}
-	const col = cx.getImageData( 0, 0, W, Hh ), cd = col.data;
-	for ( let y = 0; y < Hh; ++ y ) for ( let i = 0; i < W; ++ i ) {
-
-		const sx = Math.floor( i / sw ), sy = Math.floor( y / sw );
-		const e = Math.min( i - sx * sw, ( sx + 1 ) * sw - i, y - sy * sw, ( sy + 1 ) * sw - y );
-		const w = Math.max( 0, Math.min( 1, half + 1 - e ) );
-		if ( w <= 0 ) continue;
-		const o = 4 * ( y * W + i );
-		cd[ o ] += ( 150 - cd[ o ] ) * w * 0.8; cd[ o + 1 ] += ( 146 - cd[ o + 1 ] ) * w * 0.8; cd[ o + 2 ] += ( 140 - cd[ o + 2 ] ) * w * 0.8;
-
-	}
-	cx.putImageData( col, 0, 0 );
 	const color = new THREE.CanvasTexture( cv );
 	color.colorSpace = map.colorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.copy( map.repeat ); color.flipY = map.flipY; color.anisotropy = 16;
 	color.repeat.set( 1 / period, 1 / period );
@@ -732,7 +724,7 @@ export class Azurea {
 		this.lights = new THREE.Group(); this.lights.name = 'azureaLights';
 		this.active = false;
 		this.mode = 'raster';
-		this.view = { maxDistance: 28, maxPolarAngle: Math.PI * 0.56 };
+		this.view = { maxDistance: 34, maxPolarAngle: Math.PI * 0.56 };
 		this.background = new THREE.Color( '#cfe6f5' );
 		this.precompile = null;		// async ( object ): its shaders compiled as the frame will draw them (main.js)
 		// the open sea's surface (src/ocean.js: its sea state from the preset: wind, swell)
@@ -1009,12 +1001,21 @@ export class Azurea {
 		const bs = BAR_SCALE, bx = BAR.cx, bz = BAR.cz, br = 2.65 * bs;
 		// Keep the opening clear down to the lobby floor, including the support and the recessed light.
 		const counter = { cx: bx, cz: bz, a0: 0, a1: 2 * Math.PI, segs: 96, faces: 'oitb' }, bore = 1.48;
-		const toeRadius = br * 0.86 - 0.12; // recess the kick 12 cm behind the marble face; no projecting plinth
+		const topRadius = br * 1.06, bodyRadius = topRadius - 0.15, toeRadius = bodyRadius - 0.12; // recess the kick 12 cm behind the marble face; no projecting plinth
 		add( band( { ...counter, r0: bore + 0.06, r1: toeRadius, lo: 0, hi: 0.14 } ), M.plinth );
-		add( band( { ...counter, r0: bore + 0.05, r1: br * 0.86, lo: 0.14, hi: 1.035 } ), M.marble );
-		add( band( { ...counter, r0: bore, r1: br * 1.06, lo: 1.035, hi: 1.105 } ), M.marble );
+		add( band( { ...counter, r0: bore + 0.05, r1: bodyRadius, lo: 0.14, hi: 1.035 } ), M.marble );
+		// Revolved slim top: flat upper surface, 30 mm outer lip and a smooth coved underside.
+		const topProfile = [ new THREE.Vector2( bore, 1.035 ), new THREE.Vector2( bodyRadius, 1.035 ) ];
+		for ( let i = 1; i <= 16; ++ i ) {
+
+			const u = i / 16; topProfile.push( new THREE.Vector2( bodyRadius + .15 * u, 1.035 + .040 * u * u * ( 3 - 2 * u ) ) );
+
+		}
+		topProfile.push( new THREE.Vector2( topRadius, 1.105 ), new THREE.Vector2( bore, 1.105 ), new THREE.Vector2( bore, 1.035 ) );
+		add( replanar( new THREE.LatheGeometry( topProfile, 128 ).translate( bx, 0, bz ) ), M.marble );
+		this.barDimensions = { topRadius, bodyRadius, toeRadius, bore, overhang: topRadius - bodyRadius, toeRecess: bodyRadius - toeRadius, lipThickness: .030 };
 		add( band( { ...counter, r0: toeRadius, r1: toeRadius + 0.003, lo: 0.10, hi: 0.128, faces: 'o' } ), M.barLight );
-		add( band( { ...counter, r0: br * 0.86, r1: br * 0.86 + 0.004, lo: 1.006, hi: 1.028, faces: 'o' } ), M.barLight );
+		add( band( { ...counter, r0: bodyRadius, r1: bodyRadius + 0.004, lo: 1.006, hi: 1.028, faces: 'o' } ), M.barLight );
 		add( new THREE.RingGeometry( br * 0.80, br * 0.89, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
 		add( new THREE.CylinderGeometry( 0.62, 0.70, H, 64 ).translate( bx, H / 2, bz ), M.plaster );
 		// The bottle display is a wall cabinet attached to the central pier, not a second outer cylinder.
@@ -1070,7 +1071,7 @@ export class Azurea {
 			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r0, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
 			add( band( { ...helix, r0: S.r1 + .0605, r1: S.r1 + .064, lo: a => Math.max( .006, yAt( a ) - .29 ), hi: a => Math.max( .031, yAt( a ) - .265 ), faces: 'o' } ), M.barLight );
 			// thin warm decorative light under the stair's inner edge
-			add( band( { ...helix, r0: S.r0 - 0.065, r1: S.r0 - 0.055, lo: a => yAt( a ) - 0.30, hi: a => yAt( a ) - 0.27, faces: 'o' } ), M.barLight );
+			add( band( { ...helix, r0: S.r0 - .064, r1: S.r0 - .0605, lo: a => Math.max( .006, yAt( a ) - .29 ), hi: a => Math.max( .031, yAt( a ) - .265 ), faces: 'i' } ), M.barLight );
 			add( band( { ...helix, r0: S.r1 + 0.02, r1: S.r1 + 0.032, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
 			// (the inner side's glass too: both sides of the flight guarded; it runs on into the gallery's)
 			add( band( { ...helix, r0: S.r0 - 0.032, r1: S.r0 - 0.02, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
@@ -1451,7 +1452,7 @@ export class Azurea {
 		sun.shadow.mapSize.set( 4096, 4096 );
 		sun.shadow.bias = - 0.0001; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
 		sun.shadow.camera.near = 0.1; sun.shadow.camera.far = 120;
-		sun.shadow.camera.left = - 28; sun.shadow.camera.right = 28; sun.shadow.camera.top = 28; sun.shadow.camera.bottom = - 28;
+		sun.shadow.camera.left = - 32; sun.shadow.camera.right = 32; sun.shadow.camera.top = 32; sun.shadow.camera.bottom = - 32;
 		sun.shadow.camera.updateProjectionMatrix();
 		this.lights.add( sun, sun.target );
 		// the path tracer's sun (or moon): the same directional source, its disc the drawn one's
