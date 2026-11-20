@@ -16,7 +16,7 @@
 // darker band opposite and the twilight's warm horizon are the atmosphere's. At night (the moon) the same air lit
 // by the moon, plus airglow (van Rhijn's brightening to the horizon).
 //
-// SKY_GLSL: `vec3 skyColor( vec3 d, float pix, float blur )`: the sky in direction d (unit, world: y up), pix the
+// SKY_GLSL: `vec3 skyColor( vec3 d, float pix, float blur, bool airOn )`: the sky in direction d (unit, world: y up), pix the
 // pixel's angular size (rad: the stars' footprint), blur an angular blur (rad: a rough sea's reflection; its stars
 // and clouds softened). Above the horizon; below it the air's own haze colour (the sea's far end).
 
@@ -33,7 +33,7 @@ const COMMON = /* glsl */`
 	precision highp float; precision highp sampler2D;
 	const float RG = 6360.0, RT = 6460.0;
 	const vec3 RAY_S = vec3( 5.802e-3, 13.558e-3, 33.1e-3 );
-	const float RAY_H = 8.0;
+	uniform float uRayHeight; // molecular scale height (km), shared by all three LUTs
 	const float MIE_S = 3.996e-3, MIE_A = 4.40e-3, MIE_H = 1.2, MIE_G = 0.8;
 	// (the sky view's own forward peak softer than Hillaire's 0.8: the drawn disc's halo (src/azurea.js, kept as it
 	// was) is the aureole; at 0.8 the two doubled into a white smear over a low sun)
@@ -44,7 +44,7 @@ const COMMON = /* glsl */`
 	struct Medium { vec3 scatR; float scatM; vec3 ext; };
 	Medium medium( float r ) {
 		float h = max( r - RG, 0.0 );
-		float dR = exp( - h / RAY_H ), dM = exp( - h / MIE_H ) * uHaze, dO = max( 0.0, 1.0 - abs( h - 25.0 ) / 15.0 );
+		float dR = exp( - h / uRayHeight ), dM = exp( - h / MIE_H ) * uHaze, dO = max( 0.0, 1.0 - abs( h - 25.0 ) / 15.0 );
 		Medium m;
 		m.scatR = RAY_S * dR; m.scatM = MIE_S * dM;
 		m.ext = m.scatR + vec3( m.scatM + MIE_A * dM ) + OZ_A * dO;
@@ -125,8 +125,8 @@ const MULTI = COMMON + /* glsl */`
 				vec3 scat = m.scatR + vec3( m.scatM ), Ts = exp( - m.ext * dt );
 				vec3 sunT = transmittance( ri, dot( p / ri, sunD ) );
 				vec3 S1 = scat * sunT / ( 4.0 * PI );		// (isotropic, as Hillaire)
-				Lw += T * ( S1 - S1 * Ts ) / m.ext;
-				Fw += T * ( scat - scat * Ts ) / m.ext;
+				Lw += T * ( S1 - S1 * Ts ) / max( m.ext, vec3( 1e-12 ) );
+				Fw += T * ( scat - scat * Ts ) / max( m.ext, vec3( 1e-12 ) );
 				T *= Ts;
 			}
 			if ( tG > 0.0 ) {
@@ -172,7 +172,7 @@ const VIEW = COMMON + /* glsl */`
 			vec3 sunT = transmittance( ri, muS );
 			vec3 S1 = ( m.scatR * pR + vec3( m.scatM * pM ) ) * sunT + ( m.scatR + vec3( m.scatM ) ) * multi( ri, muS );
 			vec3 Ts = exp( - m.ext * dt );
-			L += T * ( S1 - S1 * Ts ) / m.ext;
+			L += T * ( S1 - S1 * Ts ) / max( m.ext, vec3( 1e-12 ) );
 			T *= Ts;
 		}
 		o = vec4( L, dot( T, vec3( 0.2126, 0.7152, 0.0722 ) ) );
@@ -187,7 +187,7 @@ export const SKY_GLSL = /* glsl */`
 	uniform sampler2D uSkyView, uSkyTrans;
 	uniform vec3 uSkyLight;		// (the light's direction: the sun's, or the moon's at night)
 	uniform vec3 uSkyScale, uAirglow, uSkyHueProf[ 16 ];
-	uniform float uSkyHue, uClearDay;
+	uniform float uSkyHue, uClearDay, uCloudLight;
 	// (the photo's own hue by elevation (tools/azurea-sky-matte.py: 0, 2.5 .. 37.5 deg), a chroma: rgb / luminance)
 	vec3 skyHueAt( float el ) {
 		float e = clamp( el / 0.0436332, 0.0, 15.0 );
@@ -228,8 +228,8 @@ export const SKY_GLSL = /* glsl */`
 		// Clear coastal day: a luminous, pale horizon; deeper blue above, except towards the sun.
 		// Apply to clear air before clouds and the solar disc, including the sky sampled by reflections.
 		if ( uClearDay > 0.5 ) {
-			float blue = smoothstep( 0.0, 0.25, d.y ) * ( 1.0 - 0.55 * smoothstep( 0.65, 1.0, dot( d, uSkyLight ) ) );
-			c *= mix( vec3( 1.9, 1.65, 2.25 ), vec3( 0.84, 1.4, 2.6 ), blue );
+			float blue = smoothstep( 0.0, 0.12, d.y ) * ( 1.0 - 0.55 * smoothstep( 0.65, 1.0, dot( d, uSkyLight ) ) );
+			c *= mix( vec3( 1.9, 1.65, 2.25 ), vec3( 0.36, 0.98, 2.7 ), blue );
 		}
 		return vec4( c + uAirglow * vr * mix( 1.0, a.a, 0.5 ), a.a );
 	}
@@ -277,7 +277,7 @@ export const SKY_GLSL = /* glsl */`
 		return mix( mix( skyHash2( i ), skyHash2( i + vec2( 1, 0 ) ), f.x ), mix( skyHash2( i + vec2( 0, 1 ) ), skyHash2( i + vec2( 1, 1 ) ), f.x ), f.y ); }
 	// thin high cloud (cirrus, cirrostratus: a layer 8 km up): streaks of fbm along the wind, lit by the light through
 	// the air above it (the transmittance from 8 km: gold at sunset), forward scattering, and the sky's own light
-	vec4 skyCloud( vec3 d, float blur ) {
+	vec4 skyCloud( vec3 d, float blur, bool airOn ) {
 		if ( uClouds <= 0.0 || d.y < 0.002 ) return vec4( 0.0 );
 		float rc = 6360.0 + 8.0, r0 = uSkyEyeR;
 		float b = r0 * d.y, t = - b + sqrt( b * b - r0 * r0 + rc * rc );		// (km to the layer)
@@ -295,6 +295,7 @@ export const SKY_GLSL = /* glsl */`
 		float cov = smoothstep( 1.0 - uClouds, 1.0 - uClouds + 0.35, n );
 		float tau = cov * 0.9;
 		float alpha = 1.0 - exp( - tau );
+		if ( ! airOn ) return vec4( vec3( 0.95, 0.97, 1.0 ) * uCloudLight, alpha );
 		vec3 Lc = skyTrans( rc, dot( normalize( vec3( 0.0, rc, 0.0 ) + d * t ), uSkyLight ) );
 		float c = dot( d, uSkyLight ), g = 0.6, ph = 0.6 * ( 1.0 - g * g ) / ( 4.0 * SKY_PI * pow( 1.0 + g * g - 2.0 * g * c, 1.5 ) ) + 0.4 / ( 4.0 * SKY_PI );
 		vec4 air = skyAir( d );
@@ -307,7 +308,7 @@ export const SKY_GLSL = /* glsl */`
 	// sparse thin cloud lower down (fair-weather wisps, a layer 2.5 km up): scattered patches a km or two across,
 	// soft-edged and thin (half the light through at their cores), drifting slowly; lit as the cirrus, with a darker
 	// underside where they are densest (a little self-shadow), seen through the air below them
-	vec4 skyWisp( vec3 d, float blur ) {
+	vec4 skyWisp( vec3 d, float blur, bool airOn ) {
 		if ( uWisps <= 0.0 || d.y < 0.004 ) return vec4( 0.0 );
 		float rc = 6360.0 + 2.5, r0 = uSkyEyeR;
 		float b = r0 * d.y, t = - b + sqrt( b * b - r0 * r0 + rc * rc );
@@ -325,6 +326,7 @@ export const SKY_GLSL = /* glsl */`
 		float dens = smoothstep( 0.58, 0.88, n ) * mask * min( 1.0, 0.5 + uWisps );
 		float tau = dens * 0.5;
 		float alpha = 1.0 - exp( - tau );
+		if ( ! airOn ) return vec4( vec3( 0.95, 0.97, 1.0 ) * uCloudLight, alpha );
 		vec3 Lc = skyTrans( rc, dot( normalize( vec3( 0.0, rc, 0.0 ) + d * t ), uSkyLight ) );
 		float c = dot( d, uSkyLight ), g = 0.55, ph = 0.55 * ( 1.0 - g * g ) / ( 4.0 * SKY_PI * pow( 1.0 + g * g - 2.0 * g * c, 1.5 ) ) + 0.45 / ( 4.0 * SKY_PI );
 		vec4 air = skyAir( d );
@@ -332,13 +334,12 @@ export const SKY_GLSL = /* glsl */`
 		vec3 Tv = vec3( pow( max( air.a, 0.0 ), 0.35 ) );
 		return vec4( lit * Tv + air.rgb * ( 1.0 - Tv ), alpha );
 	}
-	vec3 skyColor( vec3 d, float pix, float blur ) {
-		vec4 air = skyAir( d );
-		vec3 c = air.rgb;
-		vec4 cl = skyCloud( d, max( pix, blur ) );
-		c += skyStars( d, max( pix, blur ) ) * ( 1.0 - cl.a );
+	vec3 skyColor( vec3 d, float pix, float blur, bool airOn ) {
+		vec3 c = airOn ? skyAir( d ).rgb : vec3( 0.0 );
+		vec4 cl = skyCloud( d, max( pix, blur ), airOn );
+		if ( airOn ) c += skyStars( d, max( pix, blur ) ) * ( 1.0 - cl.a );
 		c = mix( c, cl.rgb, cl.a );
-		vec4 w = skyWisp( d, max( pix, blur ) );
+		vec4 w = skyWisp( d, max( pix, blur ), airOn );
 		return mix( c, w.rgb, w.a );
 	}
 `;
@@ -376,17 +377,17 @@ export class Sky {
 		const rt = ( w, h ) => new THREE.WebGLRenderTarget( w, h, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, generateMipmaps: false, wrapS: THREE.ClampToEdgeWrapping, wrapT: THREE.ClampToEdgeWrapping } );
 		this.trans = rt( 256, 64 ); this.multi = rt( 32, 32 ); this.view = rt( 192, 108 );
 		const quad = ( fs, u ) => new FullScreenQuad( new THREE.RawShaderMaterial( { glslVersion: THREE.GLSL3, vertexShader: VERT, fragmentShader: fs, uniforms: u, depthTest: false, depthWrite: false } ) );
-		const haze = { value: 1 };
-		this.qTrans = quad( TRANS, { uHaze: haze, uSize: { value: new THREE.Vector2( 256, 64 ) }, uTrans: { value: null } } );
-		this.qMulti = quad( MULTI, { uHaze: haze, uSize: { value: new THREE.Vector2( 32, 32 ) }, uTrans: { value: this.trans.texture } } );
-		this.qView = quad( VIEW, { uHaze: haze, uSize: { value: new THREE.Vector2( 192, 108 ) }, uTrans: { value: this.trans.texture }, uMulti: { value: this.multi.texture }, uLightMu: { value: 0.5 }, uEye: { value: 0.03 } } );
-		this.haze = haze;
+		const haze = { value: 1 }, rayHeight = { value: 8 };
+		this.qTrans = quad( TRANS, { uHaze: haze, uRayHeight: rayHeight, uSize: { value: new THREE.Vector2( 256, 64 ) }, uTrans: { value: null } } );
+		this.qMulti = quad( MULTI, { uHaze: haze, uRayHeight: rayHeight, uSize: { value: new THREE.Vector2( 32, 32 ) }, uTrans: { value: this.trans.texture } } );
+		this.qView = quad( VIEW, { uHaze: haze, uRayHeight: rayHeight, uSize: { value: new THREE.Vector2( 192, 108 ) }, uTrans: { value: this.trans.texture }, uMulti: { value: this.multi.texture }, uLightMu: { value: 0.5 }, uEye: { value: 0.03 } } );
+		this.haze = haze; this.rayHeight = rayHeight;
 		const grey = Object.assign( new THREE.DataTexture( new Uint8Array( [ 128, 128, 128, 255 ] ), 1, 1 ), { needsUpdate: true } );
 		this.uniforms = {
 			uSkyView: { value: this.view.texture }, uSkyTrans: { value: this.trans.texture },
 			uSkyLight: { value: new THREE.Vector3( 0, 1, 0 ) }, uSkyScale: { value: new THREE.Vector3( 1, 1, 1 ) }, uAirglow: { value: new THREE.Vector3() },
 			uStars: { value: 0 }, uClouds: { value: 0 }, uWisps: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 }, uMoonCore: { value: 1 },
-			uClearDay: { value: 0 }, uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
+			uCloudLight: { value: 1 }, uClearDay: { value: 0 }, uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
 		};
 		this.params = null; this._built = null; this.dirty = true;
 		this._buf = new Uint16Array( 192 * 108 * 4 );
@@ -401,11 +402,12 @@ export class Sky {
 	 */
 	set( p ) {
 
-		const key = JSON.stringify( [ p.light.x.toFixed( 4 ), p.light.y.toFixed( 4 ), p.light.z.toFixed( 4 ), p.haze, p.target.map( v => v.toFixed( 5 ) ), p.hue, p.airglow, p.profile?.[ 0 ] ] );
+		const key = JSON.stringify( [ p.light.x.toFixed( 4 ), p.light.y.toFixed( 4 ), p.light.z.toFixed( 4 ), p.haze, p.clearDay, p.target.map( v => v.toFixed( 5 ) ), p.hue, p.airglow, p.profile?.[ 0 ] ] );
 		this.uniforms.uSkyLight.value.copy( p.light );
 		this.uniforms.uClearDay.value = p.clearDay ? 1 : 0;
 		this.uniforms.uStars.value = p.stars ?? 0;
 		if ( p.profile ) p.profile.forEach( ( c, i ) => this.uniforms.uSkyHueProf.value[ i ]?.set( c[ 0 ], c[ 1 ], c[ 2 ] ) );
+		this.uniforms.uCloudLight.value = 2.0 * lum( p.target );
 		this.uniforms.uClouds.value = p.clouds ?? 0;
 		this.uniforms.uWisps.value = p.wisps ?? 0;
 		this.params = p;
@@ -420,7 +422,10 @@ export class Sky {
 		this.dirty = false;
 		const p = this.params, prev = renderer.getRenderTarget(), auto = renderer.autoClear;
 		renderer.autoClear = false;
-		if ( this._haze !== p.haze ) {
+		const height = p.clearDay ? 5.0 : 8.0;
+		if ( this._haze !== p.haze || this.rayHeight.value !== height ) {
+
+			this.rayHeight.value = height;
 
 			this._haze = p.haze; this.haze.value = p.haze;
 			renderer.setRenderTarget( this.trans ); this.qTrans.render( renderer );
