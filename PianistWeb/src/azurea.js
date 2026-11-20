@@ -986,7 +986,7 @@ export class Azurea {
 		const bottleProfile = [ [ 0.035, 0 ], [ 0.052, 0.025 ], [ 0.055, 0.16 ], [ 0.045, 0.22 ], [ 0.023, 0.27 ], [ 0.018, 0.36 ], [ 0.012, 0.38 ], [ 0.012, 0.41 ] ].map( p => new THREE.Vector2( ...p ) );
 		for ( let shelf = 0; shelf < 6; ++ shelf ) {
 
-			const sy = cabY0 + 0.08 + shelf * ( cabY1 - cabY0 ) / 6;
+			const sy = cabY0 + 0.018 + shelf * ( cabY1 - cabY0 ) / 6;
 			for ( let i = 0; i < 8; ++ i ) {
 
 				const a = cabA0 + 0.09 + ( i + 0.5 * ( shelf % 2 ) ) / 8 * ( cabA1 - cabA0 - 0.18 ), h = 0.66 + 0.08 * Math.sin( i * 2.7 + shelf );
@@ -1099,12 +1099,11 @@ export class Azurea {
 			add( box( tx - 0.32, tx + 0.02, 0.438, 0.47, tz - 0.12, tz + 0.08 ), M.book );
 			add( box( tx - 0.29, tx - 0.01, 0.472, 0.502, tz - 0.11, tz + 0.07 ), M.marble );
 			add( new THREE.CylinderGeometry( 0.105, 0.075, 0.18, 24 ).translate( tx + 0.26, 0.56, tz ), M.ceramic );
-			const stem = new THREE.CylinderGeometry( 0.006, 0.006, 0.32, 6 );
-			for ( let i = 0; i < 9; ++ i ) {
+			for ( let i = 0; i < 13; ++ i ) {
 
-				const a = i * 2.399, x = tx + 0.26 + 0.055 * Math.cos( a ), z = tz + 0.055 * Math.sin( a );
-				add( stem.clone().translate( x, 0.81, z ), M.flower );
-				add( new THREE.IcosahedronGeometry( 0.045, 1 ).scale( 1, 0.62, 1 ).translate( x + 0.01 * Math.cos( a ), 0.98 + 0.02 * Math.sin( a ), z + 0.01 * Math.sin( a ) ), M.flower );
+				const a = i * 2.399, x = tx + .26 + .09 * Math.cos( a ), z = tz + .09 * Math.sin( a );
+				add( new THREE.CylinderGeometry( .003, .003, .12, 5 ).translate( x, .68, z ), M.stem );
+				for ( let k = 0; k < 5; ++ k ) add( new THREE.SphereGeometry( .03, 7, 5 ).scale( 1,.55,1 ).translate( x + .02 * Math.cos( k * 1.256 ), .75 + .025 * Math.sin( a ), z + .02 * Math.sin( k * 1.256 ) ), M.flower );
 
 			}
 
@@ -1209,6 +1208,15 @@ export class Azurea {
 				at( new THREE.SphereGeometry( 0.43, 20, 12 ).scale( 1, 0.25, 0.91 ).translate( 0, 0.31, 0.03 ), M.boucle );
 				const p = []; for ( let i = 0; i <= 24; ++ i ) { const a = Math.PI + Math.PI * i / 24; p.push( V( 0.34 * Math.cos( a ), 0.51 + 0.13 * Math.sin( - a ), 0.29 * Math.sin( a ) ) ); }
 				at( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( p ), 32, 0.13, 12 ).scale( 1, 1.5, 1 ).translate( 0, - 0.25, 0 ), M.boucle );
+				const shell = new Geo();
+				for ( let i = 0; i < 32; ++ i ) {
+
+					const a = Math.PI + Math.PI * i / 32, b = Math.PI + Math.PI * ( i + 1 ) / 32;
+					const P = ( q, y ) => V( 0.40 * Math.cos( q ), y, 0.34 * Math.sin( q ) );
+					shell.quad( P( a, .26 ), P( b, .26 ), P( b, .64 - .11 * Math.sin( b ) ), P( a, .64 - .11 * Math.sin( a ) ), [ V( Math.cos( a ), 0, Math.sin( a ) ), V( Math.cos( b ), 0, Math.sin( b ) ), V( Math.cos( b ), 0, Math.sin( b ) ), V( Math.cos( a ), 0, Math.sin( a ) ) ] );
+
+				}
+				at( shell.build(), M.boucle );
 				for ( const px of [ - 0.27, 0.27 ] ) for ( const pz of [ - 0.22, 0.24 ] ) at( new THREE.CylinderGeometry( 0.021, 0.021, 0.23, 8 ).translate( px, 0.115, pz ), M.chrome );
 
 			}
@@ -1243,26 +1251,27 @@ export class Azurea {
 		}
 		// Compact enamel espresso machine: body, black group-head recess, chrome group heads, cups and tray.
 		const ex = BAR.cx + 0.42, ez = BAR.cz + 1.77;
-		add( roundedBox( 0.72, 0.36, 0.32 ).translate( ex, y + 0.22, ez ), M.enamel );
-		add( box( ex - 0.30, ex + 0.30, y + 0.06, y + 0.21, ez + 0.13, ez + 0.17 ), M.blackMetal );
-		add( roundedBox( 0.75, 0.10, 0.35, 0.015 ).translate( ex, y + 0.34, ez + 0.01 ), M.chrome );
+		const machine = ( g, m ) => add( g.translate( - ex, - y, - ez ).scale( 0.60, 0.72, 0.72 ).translate( ex, y, ez ), m );
+		machine( roundedBox( 0.72, 0.36, 0.32 ).translate( ex, y + 0.22, ez ), M.enamel );
+		machine( box( ex - 0.30, ex + 0.30, y + 0.06, y + 0.21, ez + 0.13, ez + 0.17 ), M.blackMetal );
+		machine( roundedBox( 0.75, 0.10, 0.35, 0.015 ).translate( ex, y + 0.34, ez + 0.01 ), M.chrome );
 		for ( const dx of [ - 0.17, 0.17 ] ) {
 
-			add( new THREE.CylinderGeometry( 0.045, 0.045, 0.04, 16 ).translate( ex + dx, y + 0.21, ez + 0.20 ), M.chrome );
-			add( new THREE.CylinderGeometry( 0.012, 0.016, 0.07, 8 ).translate( ex + dx, y + 0.16, ez + 0.20 ), M.chrome );
-			add( new THREE.CylinderGeometry( 0.016, 0.016, 0.13, 8 ).rotateX( Math.PI / 2 ).translate( ex + dx, y + 0.21, ez + 0.27 ), M.blackMetal );
-			for ( const b of [ - 0.035, 0, 0.035 ] ) add( new THREE.SphereGeometry( 0.008, 6, 4 ).translate( ex + dx + b, y + 0.34, ez + 0.193 ), M.blackMetal );
+			machine( new THREE.CylinderGeometry( 0.045, 0.045, 0.04, 16 ).translate( ex + dx, y + 0.21, ez + 0.20 ), M.chrome );
+			machine( new THREE.CylinderGeometry( 0.012, 0.016, 0.07, 8 ).translate( ex + dx, y + 0.16, ez + 0.20 ), M.chrome );
+			machine( new THREE.CylinderGeometry( 0.016, 0.016, 0.13, 8 ).rotateX( Math.PI / 2 ).translate( ex + dx, y + 0.21, ez + 0.27 ), M.blackMetal );
+			for ( const b of [ - 0.035, 0, 0.035 ] ) machine( new THREE.SphereGeometry( 0.008, 6, 4 ).translate( ex + dx + b, y + 0.34, ez + 0.193 ), M.blackMetal );
 
 		}
-		add( new THREE.BoxGeometry( 0.62, 0.018, 0.23 ).translate( ex, y + 0.012, ez + 0.18 ), M.chrome );
-		for ( let i = 0; i < 9; ++ i ) add( new THREE.BoxGeometry( 0.003, 0.002, 0.19 ).translate( ex - 0.24 + i * 0.06, y + 0.023, ez + 0.18 ), M.blackMetal );
+		machine( new THREE.BoxGeometry( 0.62, 0.018, 0.23 ).translate( ex, y + 0.012, ez + 0.18 ), M.chrome );
+		for ( let i = 0; i < 9; ++ i ) machine( new THREE.BoxGeometry( 0.003, 0.002, 0.19 ).translate( ex - 0.24 + i * 0.06, y + 0.023, ez + 0.18 ), M.blackMetal );
 		const wand = new THREE.CatmullRomCurve3( [ V( ex + 0.31, y + 0.28, ez + 0.14 ), V( ex + 0.39, y + 0.18, ez + 0.24 ), V( ex + 0.39, y + 0.06, ez + 0.24 ) ] );
-		add( new THREE.TubeGeometry( wand, 8, 0.008, 6 ), M.chrome );
+		machine( new THREE.TubeGeometry( wand, 8, 0.008, 6 ), M.chrome );
 		for ( const dx of [ - 0.20, 0.04, 0.20 ] ) {
 
 			const cup = new THREE.LatheGeometry( [ [ 0.026, 0 ], [ 0.040, 0.055 ], [ 0.033, 0.055 ], [ 0.022, 0.008 ] ].map( p => new THREE.Vector2( ...p ) ), 16 );
-			add( cup.translate( ex + dx, y + 0.401, ez + 0.01 ), M.ceramic );
-			add( new THREE.TorusGeometry( 0.018, 0.005, 5, 12 ).translate( ex + dx + 0.041, y + 0.428, ez + 0.01 ), M.ceramic );
+			machine( cup.translate( ex + dx, y + 0.401, ez + 0.01 ), M.ceramic );
+			machine( new THREE.TorusGeometry( 0.018, 0.005, 5, 12 ).translate( ex + dx + 0.041, y + 0.428, ez + 0.01 ), M.ceramic );
 
 		}
 		// Three stemmed glasses on the bar's right hand side, merged by the caller's material bucket.
@@ -1323,21 +1332,21 @@ export class Azurea {
 		const leaf = lens.build();
 		const rib = new THREE.CylinderGeometry( 0.0025, 0.0025, 0.55, 5 ).rotateZ( Math.PI / 2 );
 		const rim = new THREE.TubeGeometry( new THREE.CatmullRomCurve3( leafShape.getPoints( 8 ).slice( 0, - 1 ).map( p => V( p.x, 0, p.y ) ), true ), 24, 0.003, 4, true );
-		for ( const r of [ 0.55, 1.25, 1.95, 2.65, 3.25 ] ) {
+		for ( const r of [ 0.38, 0.72, 1.06, 1.40, 1.74, 2.08, 2.42, 2.76, 3.10, 3.40 ] ) {
 
-			const n = Math.max( 5, Math.round( 2 * Math.PI * r / 0.80 ) );
+			const n = Math.max( 5, Math.round( 2 * Math.PI * r / 0.38 ) );
 			for ( let i = 0; i < n; ++ i ) {
 
 				const a = 2 * Math.PI * ( i + 0.5 * ( r * 3 % 1 ) ) / n, x = COVE.cx + r * Math.cos( a ), z = COVE.cz + r * Math.sin( a );
 				const dBar = Math.hypot( x - BAR.cx, z - BAR.cz );
 				if ( dBar < 0.85 ) continue;
 				let bottom = top - ( 1.0 + 1.75 * ( 1 - r / 3.0 ) ** 2 + 0.18 * Math.sin( 3 * a + r * 2 ) );
-				if ( dBar < 2.65 * BAR_SCALE * 1.06 + 1.2 ) bottom = Math.max( bottom, 2.35 + 0.1 * Math.sin( 3 * a + r * 2 ) );
+				if ( dBar < 2.65 * BAR_SCALE * 1.06 + 1.2 ) bottom = Math.max( bottom, 2.25 + 0.42 * Math.sin( 2 * a + r * 1.6 ) );
 				const yaw = Math.PI / 2 - a + 0.35 * Math.sin( r * 2.7 ), tilt = 0.2 * Math.sin( a * 2.0 + r ), pitch = 0.65 + 0.35 * Math.sin( a + r * 2 );
 				wires.push( new THREE.CylinderGeometry( 0.0013, 0.0013, top - bottom, 3, 1, true ).translate( x, ( top + bottom ) / 2, z ) );
-				const at = g => g.scale( 0.95, 0.6, 0.95 ).rotateX( pitch ).rotateZ( tilt ).rotateY( yaw ).translate( x, bottom + 0.03, z );
+				const at = g => g.scale( 0.45 + 0.08 * Math.sin( a * 7 ), 0.9, 0.55 ).rotateX( pitch ).rotateZ( tilt ).rotateY( yaw ).translate( x, bottom + 0.03, z );
 				leaves.push( at( leaf.clone() ) ); ribs.push( at( rib.clone() ), at( rim.clone() ) );
-				if ( i % 3 === 0 ) add( new THREE.SphereGeometry( 0.012, 6, 4 ).translate( x, bottom + 0.03, z ), M.barLight );
+				if ( i % 2 === 0 ) add( new THREE.SphereGeometry( 0.010, 6, 4 ).translate( x, bottom + 0.03, z ), M.barLight );
 
 			}
 
