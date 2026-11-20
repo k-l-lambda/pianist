@@ -118,7 +118,7 @@ document.body.appendChild( renderer.domElement );
 const TONE = { AgX: THREE.AgXToneMapping, ACES: THREE.ACESFilmicToneMapping, Neutral: THREE.NeutralToneMapping };
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera( 36, window.innerWidth / window.innerHeight, 0.03, 60 );
+const camera = new THREE.PerspectiveCamera( 36, window.innerWidth / window.innerHeight, 0.01, 160 );
 
 const controls = new OrbitControls( camera, renderer.domElement );
 controls.enableDamping = true;

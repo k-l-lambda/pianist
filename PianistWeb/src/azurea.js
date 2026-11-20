@@ -65,7 +65,7 @@ const PIANO_YAW = 15 * D;		// (turned counter-clockwise seen from above: not squ
 // the backdrop's arc (the sea's photo, 3:1), its horizon at the eye; within the cameras' far planes (main.js 60, the probe's 50)
 // (the arc wraps all the way round behind the room: at the glass's ends the wall hid a 10-170 degree strip, but a
 // camera at the window looking sideways saw past it into the clear colour — the backdrop now closes round)
-const SKY = { cx: - 2, cz: 2, r: 40, a0: - 180 * D, a1: 180 * D, eye: 1.6, dome: 42, seaY: - 1.2, horV: 0.60, seaRow: 0.78, nearD: 12 };
+const SKY = { cx: - 2, cz: 2, r: 120, a0: - 180 * D, a1: 180 * D, eye: 1.6, dome: 130, seaY: - 1.2, horV: 0.60, seaRow: 0.78, nearD: 12 };
 // The photo's own azimuth: 160° facing the room. The arc wraps all the way round behind the room and
 // fades into the atmosphere beyond the generated panorama's reliable coastline span.
 SKY.pa0 = - 170 * D; SKY.pa1 = - 10 * D;
