@@ -1320,11 +1320,31 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		// the lid's own geometry in the pivot's frame: the pivot at the barrels' axis (x -HALF_W + KN, y RIM_TOP + KN)
 		for ( const g of [ lidGeo, flapGeo ] ) g.translate( HALF_W - KN, - KN, 0 );
 		for ( const g of [ ...hinges, ...foldParts, ...rivetParts ] ) g.translate( HALF_W - KN, - KN, 0 );
+		// the prop's socket on the main lid's underside, near its front edge where the treble side's straight
+		// turns into the bentside (PROP_Z): a square block (PS across, PT thick) with a round cup in its middle
+		// (PR: the stick's tip + 1 mm, PD deep) the stick's rounded tip sits in. In the pivot's frame (the lid's
+		// underside at y = -KN, x along the lid from its pivot); 15 mm in from the rim's inner face, so it clears
+		// the rim closed too
+		const PROP_Z = - 0.70, PROP_TIP = 0.009, PS = 0.044, PT = 0.016, PR = PROP_TIP + 0.001, PD = 0.010;
+		const sockU = bentsideX( inner, PROP_Z ) - 0.015 - PS / 2 + HALF_W - KN;
+		// (where the tip's ball centre sits: touching the cup's floor, 1 mm inside its mouth)
+		const sockTip = v3( sockU, - KN - PT + PD - PROP_TIP, PROP_Z );
+		const sockParts = [];
+		if ( open ) {
+
+			const sq = new THREE.Shape( [ v2( - PS / 2, - PS / 2 ), v2( PS / 2, - PS / 2 ), v2( PS / 2, PS / 2 ), v2( - PS / 2, PS / 2 ) ] );
+			sq.holes.push( new THREE.Path().absarc( 0, 0, PR, 0, 2 * Math.PI, true ) );
+			// (the cup's wall: the square with the hole, PD high, open downwards; above it the solid back against the lid)
+			sockParts.push( new THREE.ExtrudeGeometry( sq, { depth: PD, bevelEnabled: false, curveSegments: 32 } ).rotateX( Math.PI / 2 ).translate( sockU, - KN - PT + PD, PROP_Z ) );
+			sockParts.push( woodBox( v3( sockU - PS / 2, - KN - PT + PD, PROP_Z - PS / 2 ), v3( sockU + PS / 2, - KN, PROP_Z + PS / 2 ), { noUV: true } ) );
+
+		}
 		const pivot = new THREE.Group();
 		pivot.position.set( - HALF_W + KN, RIM_TOP + KN, 0 );
 		pivot.rotation.z = THREE.MathUtils.degToRad( lidAngle );
 		pivot.add( mesh( lidGeo, LID ), mesh( flapGeo, LID ), mesh( merge( hinges ), M.brass ), mesh( merge( foldParts ), FH ) );
 		if ( rivetParts.length ) pivot.add( mesh( merge( rivetParts ), RIV ) );
+		if ( sockParts.length ) pivot.add( mesh( merge( sockParts.map( g => g.index ? g.toNonIndexed() : g ) ), M.brass ) );
 		group.add( pivot, mesh( merge( rimHinges ), M.brass ) );
 
 		if ( open ) {
@@ -1332,17 +1352,18 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			// the prop stick: its foot in a bracket on the bentside's inner face, a little below the rim's top, on a
 			// pin along the rim (it folds down along the rim to close; MHGF3, GF-TYPE-3: the foot inside the case);
 			// its top where the lid's underside was met before
-			const zs = - 0.88;
-			const bx = bentsideX( outer, zs ) - 0.06;
-			const a = THREE.MathUtils.degToRad( lidAngle );
-			const r = ( bx + HALF_W ) * 0.86;
-			const top = v3( - HALF_W + r * Math.cos( a ), RIM_TOP + r * Math.sin( a ), zs );
+			// its top in the lid's socket (above): the socket's tip point carried round the lid's pivot; its foot level
+			// with it along the rim (PROP_Z), so the stick stands square to the rim, in the plane across the case
+			const zs = PROP_Z;
+			const a = THREE.MathUtils.degToRad( lidAngle ), ca = Math.cos( a ), sa = Math.sin( a );
+			const top = v3( - HALF_W + KN + sockTip.x * ca - sockTip.y * sa, RIM_TOP + KN + sockTip.x * sa + sockTip.y * ca, zs );
 			// the rim's inner face there, its tangent (the pin's axis) and normal (into the case)
 			const xi = bentsideX( inner, zs ), dz = 0.01, tan = v3( bentsideX( inner, zs + dz ) - bentsideX( inner, zs - dz ), 0, 2 * dz ).normalize();
 			const into = v3( - tan.z, 0, tan.x );
 			if ( into.x > 0 ) into.negate();		// (into the case: towards - x)
 			const pin = v3( xi, RIM_TOP - 0.03, zs ).addScaledVector( into, 0.016 );		// (the pin 16 mm off the rim's face, 30 mm below its top)
-			group.add( mesh( rod( pin, top, 0.011, 12, 0.009 ), PROP ) );
+			group.add( mesh( rod( pin, top, 0.011, 12, PROP_TIP ), PROP ) );
+			group.add( mesh( new THREE.SphereGeometry( PROP_TIP, 16, 10 ).translate( top.x, top.y, top.z ), PROP ) );		// (its rounded tip, in the cup)
 			group.add( mesh( new THREE.SphereGeometry( 0.0125, 16, 10 ).translate( pin.x, pin.y, pin.z ), PROP ) );		// (its rounded foot round the pin)
 			// the bracket: a plate on the rim's face, two cheeks either side of the foot, the pin through them
 			const at = ( p, w, h, d ) => {		// a box w (along the rim) × h × d (into the case), its back at p
