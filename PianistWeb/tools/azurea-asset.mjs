@@ -8,7 +8,7 @@
 //     the sea outside (by day, at golden hour, at night), the floor's marble (made to tile), the bar's bottle wall
 // Each a node named by its slug at the origin; src/azurea.js places copies of them.
 //
-//   node tools/azurea-asset.mjs --generated <dir> [--out public/azurea/azurea.glb] [--only a,b]
+//   node tools/azurea-asset.mjs --generated <dir> [--out public/azurea/azurea.glb] [--only a,b] [--patch-marble (replace only marble in existing --out)]
 
 import fs from 'fs';
 import path from 'path';
@@ -40,7 +40,8 @@ const MAT = {
 	leather: { color: [ 0.95, 0.94, 0.92 ] }, ceramic: { color: [ 0.95, 0.95, 0.94 ] }, leaf: { color: [ 1, 1, 1 ], vertexColor: true },
 };
 
-const opt = { generated: null, out: path.join( root, 'public', 'azurea', 'azurea.glb' ), only: null };
+const MARBLE_SIZE = 2048;
+const opt = { generated: null, out: path.join( root, 'public', 'azurea', 'azurea.glb' ), only: null, patchMarble: false };
 const argv = process.argv.slice( 2 );
 for ( let i = 0; i < argv.length; ++ i ) {
 
@@ -48,6 +49,7 @@ for ( let i = 0; i < argv.length; ++ i ) {
 	if ( a === '--generated' ) opt.generated = path.resolve( v() );
 	else if ( a === '--out' ) opt.out = path.resolve( v() );
 	else if ( a === '--only' ) opt.only = new Set( v().split( ',' ) );
+	else if ( a === '--patch-marble' ) opt.patchMarble = true;
 	else throw new Error( `unknown argument ${ a }` );
 
 }
@@ -79,6 +81,32 @@ function normalsOf( pos, idx ) {
 	}
 	for ( let i = 0; i < n.length; i += 3 ) { const l = Math.hypot( n[ i ], n[ i + 1 ], n[ i + 2 ] ) || 1; n[ i ] /= l; n[ i + 1 ] /= l; n[ i + 2 ] /= l; }
 	return n;
+
+}
+
+// Texture-only GLB patch: keep every other bufferView/mesh/material/image byte unchanged.
+// Append the replacement image and redirect just its bufferView; shared meshopt buffers are not rebuilt.
+if ( opt.patchMarble ) {
+
+	const before = fs.readFileSync( opt.out );
+	if ( before.readUInt32LE( 0 ) !== 0x46546c67 || before.readUInt32LE( 4 ) !== 2 ) throw new Error( 'Expected GLB v2' );
+	const jsonLength = before.readUInt32LE( 12 ), binHeader = 20 + jsonLength;
+	if ( before.readUInt32LE( 16 ) !== 0x4e4f534a || before.readUInt32LE( binHeader + 4 ) !== 0x004e4942 ) throw new Error( 'Expected JSON/BIN chunks' );
+	const json = JSON.parse( before.subarray( 20, binHeader ).toString() ), oldBin = before.subarray( binHeader + 8, binHeader + 8 + before.readUInt32LE( binHeader ) );
+	const image = json.images.find( i => i.name === 'marble' );
+	if ( ! image || image.mimeType !== 'image/webp' || ! json.extensionsRequired.includes( 'EXT_texture_webp' ) ) throw new Error( 'Missing packed marble WebP' );
+	const data = await ( await tileable( fs.readFileSync( path.join( G, 'marble-raw.jpg' ) ), MARBLE_SIZE ) ).webp( { quality: 86, effort: 5 } ).toBuffer();
+	const oldView = json.bufferViews[ image.bufferView ], tailEnd = oldView.byteOffset + Math.ceil( oldView.byteLength / 4 ) * 4;
+	const offset = tailEnd === oldBin.length ? oldView.byteOffset : Math.ceil( oldBin.length / 4 ) * 4;
+	const bin = Buffer.alloc( Math.ceil( ( offset + data.length ) / 4 ) * 4 ); oldBin.copy( bin, 0, 0, offset ); data.copy( bin, offset );
+	json.bufferViews[ image.bufferView ] = { ...json.bufferViews[ image.bufferView ], byteOffset: offset, byteLength: data.length };
+	json.buffers[ 0 ].byteLength = bin.length;
+	const text = Buffer.from( JSON.stringify( json ) ), j = Buffer.alloc( Math.ceil( text.length / 4 ) * 4, 0x20 ); text.copy( j );
+	const out = Buffer.alloc( 12 + 8 + j.length + 8 + bin.length ); out.writeUInt32LE( 0x46546c67, 0 ); out.writeUInt32LE( 2, 4 ); out.writeUInt32LE( out.length, 8 );
+	out.writeUInt32LE( j.length, 12 ); out.writeUInt32LE( 0x4e4f534a, 16 ); j.copy( out, 20 );
+	out.writeUInt32LE( bin.length, 20 + j.length ); out.writeUInt32LE( 0x004e4942, 24 + j.length ); bin.copy( out, 28 + j.length );
+	fs.writeFileSync( opt.out, out ); say( `marble patched: ${ MARBLE_SIZE }² WebP ${ data.length } bytes; pack ${ before.length } -> ${ out.length } bytes (+${ out.length - before.length }); non-marble BIN bytes preserved` );
+	process.exit( 0 );
 
 }
 
@@ -188,9 +216,9 @@ for ( const k of [ 'sea', 'sea-sunset', 'sea-night' ] ) if ( ! opt.only || opt.o
 if ( ! opt.only || opt.only.has( 'bottle-wall' ) ) await picture( 'bottle-wall', 'bottles', 1600, 1000, 84 );
 if ( ( ! opt.only || opt.only.has( 'marble' ) ) && fs.existsSync( path.join( G, 'marble-raw.jpg' ) ) ) {
 
-	const b = await ( await tileable( fs.readFileSync( path.join( G, 'marble-raw.jpg' ) ), 1024 ) ).webp( { quality: 86, effort: 5 } ).toBuffer();
+	const b = await ( await tileable( fs.readFileSync( path.join( G, 'marble-raw.jpg' ) ), MARBLE_SIZE ) ).webp( { quality: 86, effort: 5 } ).toBuffer();
 	swatch( 'marble', doc.createMaterial( 'marble' ).setBaseColorTexture( doc.createTexture( 'marble' ).setImage( b ).setMimeType( 'image/webp' ) ).setExtras( { look: 'marble' } ) );
-	say( `marble: 1024 tileable, ${ ( b.length / 1024 ).toFixed( 0 ) } KB` );
+	say( `marble: ${ MARBLE_SIZE } tileable, ${ ( b.length / 1024 ).toFixed( 0 ) } KB` );
 
 }
 
