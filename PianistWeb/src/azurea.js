@@ -208,17 +208,22 @@ function slab( x0, x1, z0, z1, y ) {
 
 }
 
-/**
- * The polished floor's maps: a tangent-space normal map of a fine grain in the polish only (value noise at ~12 and
- * ~6 mm, two octaves; wrapped), an independent roughness map, and seamless pearl mineral clouding/veins
- * with no slab joints or tile grid. `period` is the world-space repeat in metres. The normals by central
- * differences; `strength`: the slope scale. The normal map linear (NoColorSpace); both the picture's repeat.
- */
+/** Bar-side marble image projected once across the floor; independent floor polish below. */
+function floorMarbleTexture( source, size = 2048, worldPeriod = 32 ) {
+
+	const c = document.createElement( 'canvas' ); c.width = c.height = size; const ctx = c.getContext( '2d' );
+	ctx.fillStyle = '#f0efeb'; ctx.fillRect( 0, 0, size, size );
+	// One large world-space projection of the bar's actual marble image. The floor covers this
+	// source once across 32 m, rather than repeating a small slab tile or drawing joints.
+	ctx.save(); ctx.translate( size * .5, size * .5 ); ctx.rotate( .018 ); ctx.drawImage( source.image, - size * .5, - size * .5, size, size ); ctx.restore();
+	const t = new THREE.CanvasTexture( c ); t.colorSpace = source.colorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.repeat.set( 1 / worldPeriod, 1 / worldPeriod ); t.offset.set( .44, .18 ); t.flipY = source.flipY; t.anisotropy = 16; t.needsUpdate = true;
+	return t;
+
+}
+
 function marbleNormalMap( map, { size = 2048, strength = 1.2, period = 6 } = {} ) {
 
 	const W = size, Hh = size;
-	const cv = document.createElement( 'canvas' ); cv.width = W; cv.height = Hh;
-	const cx = cv.getContext( '2d', { willReadFrequently: true } );
 	const h = new Float32Array( W * Hh );
 	// (value noise on a periodic lattice of `cells`², smoothstepped)
 	const noise = ( cells, seed ) => {
@@ -237,7 +242,7 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, period = 6 } = {} 
 	};
 	// (only a fine grain in the polish: noise at ~6 and ~3 mm. The picture's veins as relief, the polish's slow
 	// undulation, the slabs' tilt and the joints' grooves were tried and dropped: at this scale the veins read as
-	// a leaf's, not stone's; the joints are in the colour map)
+	// a leaf's, not stone's; mineral inclusions remain colour-only, no slab grooves)
 	const n3 = noise( 512, 3 ), n4 = noise( 1024, 4 );
 	for ( let i = 0; i < W * Hh; ++ i ) h[ i ] = 0.004 * ( n3[ i ] - 0.5 ) + 0.002 * ( n4[ i ] - 0.5 );
 	const out = new Uint8Array( 4 * W * Hh ), rough = new Uint8Array( 4 * W * Hh );
@@ -252,54 +257,14 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, period = 6 } = {} 
 		rough[ o ] = rough[ o + 1 ] = rough[ o + 2 ] = polish; rough[ o + 3 ] = 255;
 
 	}
-	// Seamless mineral clouding only: no source photo seams or drawn slab/grid joints.
-	cx.fillStyle = '#f0efeb'; cx.fillRect( 0, 0, W, Hh );
-	for ( let k = 0; k < 28; ++ k ) {
-
-		const x = ( Math.sin( k * 7.31 ) * .5 + .5 ) * W, y = ( Math.cos( k * 4.71 ) * .5 + .5 ) * Hh;
-		const grad = cx.createRadialGradient( x, y, 0, x, y, 240 ); grad.addColorStop( 0, 'rgba(170,185,193,.10)' ); grad.addColorStop( 1, 'rgba(170,185,193,0)' );
-		cx.fillStyle = grad; cx.fillRect( 0, 0, W, Hh );
-
-	}
-	// Sparse branching mineral veins. The polish stays level across these inclusions: colour ONLY.
-	// Wrapped copies prevent a dark border seam; six metres per repeat avoids tiny leaf-like veining.
-	const stroke = ( points, width, alpha ) => {
-
-		cx.lineWidth = width; cx.strokeStyle = `rgba(117,135,146,${ alpha })`; cx.lineCap = 'round'; cx.lineJoin = 'round';
-		for ( const oy of [ - Hh, 0, Hh ] ) for ( const ox of [ - W, 0, W ] ) {
-
-			cx.beginPath(); points.forEach( ( [ x, y ], i ) => i ? cx.lineTo( x + ox, y + oy ) : cx.moveTo( x + ox, y + oy ) ); cx.stroke();
-
-		}
-
-	};
-	for ( let k = 0; k < 5; ++ k ) {
-
-		const points = [];
-		for ( let j = 0; j <= 64; ++ j ) {
-
-			const u = j / 64, x = u * W, phase = 2 * Math.PI * u;
-			points.push( [ x, ( Hh * ( k / 5 + 0.14 * Math.sin( phase + k ) + 0.024 * Math.sin( 3 * phase + k ) + 0.004 * Math.sin( 13 * phase + k * 2 ) ) + Hh ) % Hh ] );
-
-		}
-		// Split at wrapped jumps instead of drawing a false vein across the tile.
-		let run = [];
-		for ( const p of points ) { if ( run.length && Math.abs( p[ 1 ] - run.at( - 1 )[ 1 ] ) > Hh / 2 ) { stroke( run, 13, 0.17 ); stroke( run, 2.8, 0.42 ); run = []; } run.push( p ); }
-		stroke( run, 13, 0.17 ); stroke( run, 2.8, 0.42 );
-		for ( let j = 7; j < 28; j += 7 ) { const p = points[ j ]; stroke( [ p, [ p[ 0 ] + 70, p[ 1 ] - 20 ], [ p[ 0 ] + 150, p[ 1 ] - 80 ], [ p[ 0 ] + 190, p[ 1 ] - 93 ] ], 1.1, 0.21 ); }
-
-	}
-	const color = new THREE.CanvasTexture( cv );
-	color.colorSpace = map.colorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.copy( map.repeat ); color.flipY = map.flipY; color.anisotropy = 16;
-	color.repeat.set( 1 / period, 1 / period );
 	const t = new THREE.DataTexture( out, W, Hh, THREE.RGBAFormat );
-	t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.copy( color.repeat ); t.flipY = map.flipY;
+	t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set( 1 / period, 1 / period ); t.flipY = map.flipY;
 	t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 8;
 	t.needsUpdate = true;
 	const roughness = new THREE.DataTexture( rough, W, Hh, THREE.RGBAFormat );
-	roughness.colorSpace = THREE.NoColorSpace; roughness.wrapS = roughness.wrapT = THREE.RepeatWrapping; roughness.repeat.copy( color.repeat ); roughness.flipY = map.flipY;
+	roughness.colorSpace = THREE.NoColorSpace; roughness.wrapS = roughness.wrapT = THREE.RepeatWrapping; roughness.repeat.set( 1 / period, 1 / period ); roughness.flipY = map.flipY;
 	roughness.generateMipmaps = true; roughness.minFilter = THREE.LinearMipmapLinearFilter; roughness.anisotropy = 8; roughness.needsUpdate = true;
-	return { normal: t, color, roughness };
+	return { normal: t, roughness };
 
 }
 
@@ -1392,7 +1357,8 @@ export class Azurea {
 	}
 	_chandelier( add ) {
 
-		const M = this.materials, top = H - 0.2, leaves = [], wires = [], ribs = [];
+		const M = this.materials, top = H - 0.2, leaves = [], wires = [], ribs = [], placements = [];
+		this.chandelierChecks = { requestedRaise: .6, minimumSoffitClearance: Infinity, maximumLeafY: - Infinity, minimumTowerRadialGap: Infinity, compression: 1 };
 		const leafShape = new THREE.Shape();
 		leafShape.moveTo( - 0.34, 0 ); leafShape.bezierCurveTo( - 0.16, 0.186, 0.16, 0.186, 0.34, 0 );
 		leafShape.bezierCurveTo( 0.16, - 0.147, - 0.16, - 0.147, - 0.34, 0 );
@@ -1428,14 +1394,39 @@ export class Azurea {
 				let bottom = top - ( 1.0 + 1.75 * ( 1 - r / 3.0 ) ** 2 + 0.18 * Math.sin( 3 * a + r * 2 ) );
 				if ( dBar < 2.65 * BAR_SCALE * 1.06 + 1.2 ) bottom = Math.max( bottom, 2.25 + 0.42 * Math.sin( 2 * a + r * 1.6 ) );
 				const yaw = Math.PI / 2 - a + 0.35 * Math.sin( r * 2.7 ), tilt = 0.2 * Math.sin( a * 2.0 + r ), pitch = 0.65 + 0.35 * Math.sin( a + r * 2 );
-				wires.push( new THREE.CylinderGeometry( 0.0013, 0.0013, top - bottom, 3, 1, true ).translate( x, ( top + bottom ) / 2, z ) );
-				const at = g => g.scale( 0.45 + 0.08 * Math.sin( a * 7 ), 0.9, 0.55 ).rotateX( pitch ).rotateZ( tilt ).rotateY( yaw ).translate( x, bottom + 0.03, z );
-				leaves.push( at( leaf.clone() ) ); ribs.push( at( rib.clone() ), at( rim.clone() ) );
-				if ( i % 2 === 0 ) add( new THREE.SphereGeometry( 0.010, 6, 4 ).translate( x, bottom + 0.03, z ), M.barLight );
+				const at = g => g.scale( 0.45 + 0.08 * Math.sin( a * 7 ), 0.9, 0.55 ).rotateX( pitch ).rotateZ( tilt ).rotateY( yaw );
+				const L = at( leaf.clone() ), R = at( rib.clone() ), rimPart = at( rim.clone() );
+				for ( const g of [ L, R, rimPart ] ) g.computeBoundingBox();
+				placements.push( { x, z, bottom, geometries: [ L, R, rimPart ], halfHeight: Math.max( .01, L.boundingBox.max.y, R.boundingBox.max.y, rimPart.boundingBox.max.y ), bead: i % 2 === 0 } );
 
 			}
 
 		}
+		// Raise sockets uniformly; if the leaf envelope reaches the soffit, compress the
+		// centre heights around the lowest raised socket instead of clipping individual leaves.
+		const minSocket = Math.min( ...placements.map( p => p.bottom + .6 ) );
+		let compression = 1;
+		for ( const p of placements ) {
+
+			const desired = p.bottom + .6, limit = top - .04 - .03 - p.halfHeight;
+			if ( desired > limit ) compression = Math.min( compression, ( limit - minSocket ) / Math.max( desired - minSocket, .001 ) );
+
+		}
+		this.chandelierChecks.compression = compression;
+		for ( const p of placements ) {
+
+			const bottom = minSocket + ( p.bottom + .6 - minSocket ) * compression;
+			wires.push( new THREE.CylinderGeometry( .0013, .0013, top - bottom, 3, 1, true ).translate( p.x, ( top + bottom ) / 2, p.z ) );
+			const [ L, R, E ] = p.geometries;
+			for ( const g of p.geometries ) g.translate( p.x, bottom + .03, p.z );
+			leaves.push( L ); ribs.push( R, E );
+			if ( p.bead ) add( new THREE.SphereGeometry( .010, 6, 4 ).translate( p.x, bottom + .03, p.z ), M.barLight );
+			this.chandelierChecks.minimumSoffitClearance = Math.min( this.chandelierChecks.minimumSoffitClearance, top - bottom - .03 - p.halfHeight );
+			this.chandelierChecks.maximumLeafY = Math.max( this.chandelierChecks.maximumLeafY, bottom + .03 + p.halfHeight );
+			this.chandelierChecks.minimumTowerRadialGap = Math.min( this.chandelierChecks.minimumTowerRadialGap, Math.hypot( p.x - BAR.cx, p.z - BAR.cz ) - .95 - .20 );
+
+		}
+		if ( this.chandelierChecks.minimumSoffitClearance < .039 ) throw new Error( 'Chandelier leaf intersects soffit clearance' );
 		add( mergeGeometries( leaves.map( g => g.toNonIndexed() ), false ), M.crystal );
 		add( mergeGeometries( ribs.map( g => g.toNonIndexed() ), false ), M.leafGlow );
 		add( mergeGeometries( wires.map( g => g.toNonIndexed() ), false ), M.chrome );
@@ -1466,11 +1457,11 @@ export class Azurea {
 		this.lights.add( portal );
 		// the chandelier's warm light (night): a point in its crystals
 		const chand = this.chandLight = new THREE.PointLight( '#ffcf96', 0, 0, 2 );
-		chand.position.set( COVE.cx, H - 1.9, COVE.cz );
+		chand.position.set( COVE.cx, H - 1.3, COVE.cz );
 		this.lights.add( chand );
 		// Warm fill from the chandelier's actual center, kept subtle in daylight.
 		const chandFill = this.chandFill = new THREE.PointLight( '#ffd2a1', 0, 9, 2 );
-		chandFill.position.set( COVE.cx, Math.max( 1.2, H - 1.0 ), COVE.cz );
+		chandFill.position.set( COVE.cx, Math.max( 1.2, H - .4 ), COVE.cz );
 		this.lights.add( chandFill );
 		// Broad warm architectural bounce is local to the interior; sky/exposure are untouched.
 		this.coveFill = new THREE.RectAreaLight( '#ffdfb6', 1.3, 6.0, 6.0 );
@@ -1988,13 +1979,13 @@ export class Azurea {
 		if ( marble ) {
 
 			marble.wrapS = marble.wrapT = THREE.RepeatWrapping; marble.repeat.set( 1 / 3, 1 / 3 ); marble.anisotropy = 8; marble.colorSpace = THREE.SRGBColorSpace;
-			for ( const m of [ M.floor, M.marble, M.deck ] ) { m.map = marble; m.needsUpdate = true; }
-			// the floor: laid in slabs (its own colour map, the joints drawn in), a fine grain in its polish (a normal
+			for ( const m of [ M.marble, M.deck ] ) { m.map = marble; m.needsUpdate = true; }
+			M.floor.map = floorMarbleTexture( marble ); M.floor.needsUpdate = true;
+			// the floor: bar marble projected once across the room, plus its independent polish grain (a normal
 			// map; the planar mirror's reflection shifted by it a little: src/mirror.js), under the clearcoat too
 			try {
 
-				const { normal: nm, color, roughness } = marbleNormalMap( marble );
-				M.floor.map = color;
+				const { normal: nm, roughness } = marbleNormalMap( marble );
 				M.floor.roughness = 0.075; M.floor.roughnessMap = roughness;
 				M.floor.normalMap = nm; M.floor.normalScale.set( 0.28, 0.28 );
 				M.floor.clearcoatNormalMap = nm; M.floor.clearcoatNormalScale.set( 0.2, 0.2 );

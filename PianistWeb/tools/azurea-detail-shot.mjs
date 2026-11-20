@@ -90,7 +90,7 @@ try {
 			} );
 			if ( stoolChecks.some( c => c.bodyClearanceLowerBound < 0 ) ) throw new Error( 'Conservative stool/body bound intersects; inspect before accepting' );
 			return { calls: median( 'calls' ), triangles: median( 'triangles' ), frames,
-				memory: { ...r.info.memory }, programs: r.info.programs.length, mode: A.mode, closureChecks: A.closureChecks, bounds: A.bounds(), acousticBox: A.acousticBox(), barDimensions: A.barDimensions, stoolChecks, pillowChecks: A.pillowChecks ?? [], mirror: { enabled: A.mirror.enabled, hiddenNames: [ A.floorMesh.name ], cameraLayerMask: A.mirror.camera.layers.mask, glowMeshes: A.group.children.filter( o => o.isMesh && [ A.materials.leafGlow, A.materials.barLight ].includes( o.material ) ).map( o => ( { name: o.name, visible: o.visible, layerMask: o.layers.mask, emissive: o.material.emissiveIntensity } ) ) } };
+				memory: { ...r.info.memory }, programs: r.info.programs.length, mode: A.mode, chandelierChecks: A.chandelierChecks, closureChecks: A.closureChecks, bounds: A.bounds(), acousticBox: A.acousticBox(), barDimensions: A.barDimensions, stoolChecks, pillowChecks: A.pillowChecks ?? [], mirror: { enabled: A.mirror.enabled, hiddenNames: [ A.floorMesh.name ], cameraLayerMask: A.mirror.camera.layers.mask, glowMeshes: A.group.children.filter( o => o.isMesh && [ A.materials.leafGlow, A.materials.barLight ].includes( o.material ) ).map( o => ( { name: o.name, visible: o.visible, layerMask: o.layers.mask, emissive: o.material.emissiveIntensity } ) ) } };
 		} );
 		results.push( { shot: s, info } ); console.log( s.name, JSON.stringify( info ) );
 	}
