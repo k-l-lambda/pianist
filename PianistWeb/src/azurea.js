@@ -209,8 +209,8 @@ function slab( x0, x1, z0, z1, y ) {
 }
 
 /**
- * The polished floor's maps: a tangent-space normal map of a fine grain in the polish only (value noise at ~6 and
- * ~3 mm, two octaves; wrapped), and the floor's own colour map, the marble's picture laid in slabs (`slabs`² per
+ * The polished floor's maps: a tangent-space normal map of a fine grain in the polish only (value noise at ~12 and
+ * ~6 mm, two octaves; wrapped), an independent roughness map, and the floor's own colour map, the marble's picture laid in slabs (`slabs`² per
  * tile of the picture, `period` m: its repeat) with their joints drawn in, as the reference (Footages.local/ref/
  * Moonlit Grand Piano by the Sea.png: large polished slabs, their joints fine lines). The normals by central
  * differences; `strength`: the slope scale. The normal map linear (NoColorSpace); both the picture's repeat.
@@ -272,7 +272,12 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 	for ( let k = 0; k < 5; ++ k ) {
 
 		const points = [];
-		for ( let j = 0; j <= 32; ++ j ) { const x = j / 32 * W; points.push( [ x, ( k / 5 * Hh + 0.42 * x + 52 * Math.sin( j * 0.49 + k * 2 ) + 19 * Math.sin( j * 1.71 + k ) ) % Hh ] ); }
+		for ( let j = 0; j <= 64; ++ j ) {
+
+			const u = j / 64, x = u * W, phase = 2 * Math.PI * u;
+			points.push( [ x, ( Hh * ( k / 5 + 0.14 * Math.sin( phase + k ) + 0.024 * Math.sin( 3 * phase + k ) + 0.004 * Math.sin( 13 * phase + k * 2 ) ) + Hh ) % Hh ] );
+
+		}
 		// Split at wrapped jumps instead of drawing a false vein across the tile.
 		let run = [];
 		for ( const p of points ) { if ( run.length && Math.abs( p[ 1 ] - run.at( - 1 )[ 1 ] ) > Hh / 2 ) { stroke( run, 9, 0.10 ); stroke( run, 2.0, 0.26 ); run = []; } run.push( p ); }
@@ -294,7 +299,7 @@ function marbleNormalMap( map, { size = 2048, strength = 1.2, slabs = 4, joint =
 	cx.putImageData( col, 0, 0 );
 	const color = new THREE.CanvasTexture( cv );
 	color.colorSpace = map.colorSpace; color.wrapS = color.wrapT = THREE.RepeatWrapping; color.repeat.copy( map.repeat ); color.flipY = map.flipY; color.anisotropy = 16;
-	for ( const tex of [ color ] ) { tex.repeat.set( 1 / period, 1 / period ); }
+	color.repeat.set( 1 / period, 1 / period );
 	const t = new THREE.DataTexture( out, W, Hh, THREE.RGBAFormat );
 	t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.copy( color.repeat ); t.flipY = map.flipY;
 	t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 8;
@@ -735,7 +740,6 @@ export class Azurea {
 			stem: phys( { color: '#5d846d', roughness: 0.6, sheen: 0.15, sheenColor: new THREE.Color( '#b6d3bb' ), sheenRoughness: 0.7 } ),
 			enamel: phys( { color: '#e8edf0', roughness: 0.24, clearcoat: 0.6, clearcoatRoughness: 0.055 } ),
 			blackMetal: phys( { color: '#11181c', metalness: 0.72, roughness: 0.24, clearcoat: 0.25, clearcoatRoughness: 0.12 } ),
-			brass: phys( { color: '#b88d55', metalness: 0.82, roughness: 0.2 } ),
 			book: phys( { color: '#b9c8d1', roughness: 0.52, clearcoat: 0.25, clearcoatRoughness: 0.2 } ),
 			cove: phys( { color: '#f2f6f8', roughness: 0.9, emissive: new THREE.Color( '#e6f4ff' ), emissiveIntensity: 1, side: THREE.DoubleSide } ),
 			// the bar's bottle wall: a backlit picture (the pack's)
@@ -1224,7 +1228,7 @@ export class Azurea {
 
 	_sculpture( add ) {
 
-		const M = this.materials, x = - 7.0, z = 6.0;
+		const M = this.materials, x = - 7.2, z = 6.0;
 		// Newly added sculpture only: existing stair, gallery, plants and furniture anchors are untouched.
 		add( new THREE.CylinderGeometry( 0.62, 0.62, 0.22, 64 ).translate( x, 0.11, z ), M.marble );
 		add( new THREE.CylinderGeometry( 0.52, 0.52, 0.018, 64 ).translate( x, 0.229, z ), M.chrome );
@@ -1277,9 +1281,9 @@ export class Azurea {
 				if ( dBar < 0.85 ) continue;
 				let bottom = top - ( 1.0 + 1.75 * ( 1 - r / 3.0 ) ** 2 + 0.18 * Math.sin( 3 * a + r * 2 ) );
 				if ( dBar < 2.65 * BAR_SCALE * 1.06 + 1.2 ) bottom = Math.max( bottom, 2.35 + 0.1 * Math.sin( 3 * a + r * 2 ) );
-				const yaw = a + Math.PI * 0.18 * Math.sin( r * 2.7 ), tilt = 0.38 + 0.25 * Math.sin( a * 2.0 + r );
+				const yaw = Math.PI / 2 - a + 0.35 * Math.sin( r * 2.7 ), tilt = 0.2 * Math.sin( a * 2.0 + r ), pitch = 0.65 + 0.35 * Math.sin( a + r * 2 );
 				wires.push( new THREE.CylinderGeometry( 0.0013, 0.0013, top - bottom, 3, 1, true ).translate( x, ( top + bottom ) / 2, z ) );
-				const at = g => g.scale( 0.85, 0.6, 0.85 ).rotateZ( tilt ).rotateY( yaw ).translate( x, bottom + 0.03, z );
+				const at = g => g.scale( 0.95, 0.6, 0.95 ).rotateX( pitch ).rotateZ( tilt ).rotateY( yaw ).translate( x, bottom + 0.03, z );
 				leaves.push( at( leaf.clone() ) ); ribs.push( at( rib.clone() ), at( rim.clone() ) );
 				if ( i % 3 === 0 ) add( new THREE.SphereGeometry( 0.012, 6, 4 ).translate( x, bottom + 0.03, z ), M.barLight );
 
