@@ -195,7 +195,7 @@ export const SKY_GLSL = /* glsl */`
 		int i = int( floor( e ) );
 		return mix( uSkyHueProf[ i ], uSkyHueProf[ min( i + 1, 15 ) ], e - float( i ) );
 	}
-	uniform float uStars, uClouds, uWisps, uSkyEyeR;
+	uniform float uStars, uClouds, uWisps, uSkyEyeR, uCloudHorizon, uCloudWind;
 	const float SKY_PI = 3.14159265359;
 	vec2 skyTransUV( float r, float mu ) {
 		float H = sqrt( 6460.0 * 6460.0 - 6360.0 * 6360.0 ), rho = sqrt( max( r * r - 6360.0 * 6360.0, 0.0 ) );
@@ -279,6 +279,15 @@ export const SKY_GLSL = /* glsl */`
 	float skyHash2( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
 	float skyNoise( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
 		return mix( mix( skyHash2( i ), skyHash2( i + vec2( 1, 0 ) ), f.x ), mix( skyHash2( i + vec2( 0, 1 ) ), skyHash2( i + vec2( 1, 1 ) ), f.x ), f.y ); }
+	// Distant cloud banks: coverage rises with spherical distance, so the horizon is
+	// brightened by real layer intersection/slant optical depth rather than a screen tint.
+	float skyCloudBank( float distanceKm, float heightKm ) {
+		return mix( 1.0, smoothstep( heightKm * 6.0, heightKm * 13.0, distanceKm ), uCloudHorizon );
+	}
+	vec2 skyCloudWind( vec2 p ) {
+		float c = cos( uCloudWind ), s = sin( uCloudWind );
+		return mat2( c, - s, s, c ) * p;
+	}
 	// thin high cloud (cirrus, cirrostratus: a layer 8 km up): streaks of fbm along the wind, lit by the light through
 	// the air above it (the transmittance from 8 km: gold at sunset), forward scattering, and the sky's own light
 	vec4 skyCloud( vec3 d, float blur, bool airOn ) {
@@ -287,17 +296,22 @@ export const SKY_GLSL = /* glsl */`
 		float b = r0 * d.y, t = - b + sqrt( b * b - r0 * r0 + rc * rc );		// (km to the layer)
 		vec2 p = d.xz * t;		// (km on the layer)
 		p += vec2( 0.012, 0.004 ) * uTime;		// (drift: ~12 m/s)
-		vec2 q = vec2( p.x * 0.55 + p.y * 0.2, p.y * 1.6 - p.x * 0.3 );		// (streaks)
+		vec2 wind = skyCloudWind( p );
+		vec2 q = mix( vec2( p.x * 0.55 + p.y * 0.2, p.y * 1.6 - p.x * 0.3 ), wind * vec2( 0.32, 1.8 ), uCloudHorizon );		// (wind-sheared streaks)
 		float n = 0.0, amp = 0.5, fq = 0.12;
 		// (the octaves finer than the pixel's or the blur's footprint left out: no shimmer at the horizon)
-		float foot = max( t * max( blur, 1e-4 ) / max( d.y, 0.02 ), 1e-3 );
+		float layerMu = sqrt( max( 1.0 - pow( r0 / rc, 2.0 ) * ( 1.0 - d.y * d.y ), 0.0001 ) );
+		float foot = max( t * max( blur, 1e-4 ) / mix( max( d.y, 0.02 ), sqrt( layerMu ), uCloudHorizon ), 1e-3 );
 		for ( int i = 0; i < 6; ++ i ) {
 			float k = 1.0 - smoothstep( 0.5, 2.0, foot * fq );
 			n += amp * ( skyNoise( q * fq ) * k + 0.5 * ( 1.0 - k ) );
 			fq *= 2.07; amp *= 0.5; q = mat2( 0.8, 0.6, - 0.6, 0.8 ) * q + 3.1;
 		}
-		float cov = smoothstep( 1.0 - uClouds, 1.0 - uClouds + 0.35, n );
-		float tau = cov * 0.9;
+		float weather = mix( 1.0, smoothstep( 0.24, 0.72, skyNoise( p * 0.016 + 7.1 ) ), uCloudHorizon );
+		float coverage = uClouds * skyCloudBank( t, 8.0 ) * weather;
+		float cov = smoothstep( 1.0 - coverage, 1.0 - coverage + mix( 0.35, 0.24, uCloudHorizon ), n );
+		float slant = inversesqrt( max( 1.0 - pow( r0 / rc, 2.0 ) * ( 1.0 - d.y * d.y ), 0.001 ) );
+		float tau = cov * mix( 0.9, min( 2.0, 0.13 * slant ), uCloudHorizon );
 		float alpha = 1.0 - exp( - tau );
 		if ( ! airOn ) return vec4( vec3( 0.95, 0.97, 1.0 ) * uCloudLight, alpha );
 		vec3 Lc = skyTrans( rc, dot( normalize( vec3( 0.0, rc, 0.0 ) + d * t ), uSkyLight ) );
@@ -305,7 +319,7 @@ export const SKY_GLSL = /* glsl */`
 		vec4 air = skyAir( d );
 		// (lit: the light (unit illuminance in the LUT's units, so the sky's scale) by the phase, a cloud's
 		// white; plus the sky's light on it; then seen through the air below it (its own transmittance))
-		vec3 lit = Lc * ph * uSkyScale * 5.0 + skyAir( normalize( vec3( d.x, max( d.y, 0.05 ) + 0.3, d.z ) ) ).rgb * 0.7;
+		vec3 lit = Lc * ph * uSkyScale * mix( 5.0, 1.35, uCloudHorizon ) + skyAir( normalize( vec3( d.x, max( d.y, 0.05 ) + 0.3, d.z ) ) ).rgb * 0.7;
 		vec3 Tv = vec3( pow( max( air.a, 0.0 ), 0.5 ) );
 		return vec4( lit * Tv + air.rgb * ( 1.0 - Tv ), alpha );
 	}
@@ -317,24 +331,29 @@ export const SKY_GLSL = /* glsl */`
 		float rc = 6360.0 + 2.5, r0 = uSkyEyeR;
 		float b = r0 * d.y, t = - b + sqrt( b * b - r0 * r0 + rc * rc );
 		vec2 p = d.xz * t + vec2( 0.006, - 0.0025 ) * uTime + vec2( 37.0, 11.0 );
-		vec2 q = vec2( p.x * 0.8 + p.y * 0.15, p.y * 1.25 - p.x * 0.1 );		// (stretched a little along the wind)
-		float foot = max( t * max( blur, 1e-4 ) / max( d.y, 0.02 ), 1e-3 );
-		float n = 0.0, amp = 0.5, fq = 0.45;
+		vec2 wind = skyCloudWind( p );
+		vec2 q = mix( vec2( p.x * 0.8 + p.y * 0.15, p.y * 1.25 - p.x * 0.1 ), wind * vec2( 0.65, 1.2 ), uCloudHorizon );		// (stretched along the wind)
+		float layerMu = sqrt( max( 1.0 - pow( r0 / rc, 2.0 ) * ( 1.0 - d.y * d.y ), 0.0001 ) );
+		float foot = max( t * max( blur, 1e-4 ) / mix( max( d.y, 0.02 ), sqrt( layerMu ), uCloudHorizon ), 1e-3 );
+		float n = 0.0, amp = 0.5, fq = mix( 0.45, 0.10, uCloudHorizon );
 		for ( int i = 0; i < 6; ++ i ) {
 			float k = 1.0 - smoothstep( 0.5, 2.0, foot * fq );
 			n += amp * ( skyNoise( q * fq ) * k + 0.5 * ( 1.0 - k ) );
 			fq *= 2.13; amp *= 0.5; q = mat2( 0.8, - 0.6, 0.6, 0.8 ) * q + 5.7;
 		}
 		// (sparse: where a broad mask allows (a quarter of the sky at cover 1) and the detail is high)
-		float mask = smoothstep( 0.72 - 0.16 * uWisps, 0.84 - 0.16 * uWisps, skyNoise( p * 0.07 + 3.3 ) );
-		float dens = smoothstep( 0.58, 0.88, n ) * mask * min( 1.0, 0.5 + uWisps );
-		float tau = dens * 0.5;
+		float coverage = uWisps * skyCloudBank( t, 1.4 );
+		float mask = smoothstep( 0.72 - mix( 0.16, 0.30, uCloudHorizon ) * coverage, 0.84 - mix( 0.16, 0.30, uCloudHorizon ) * coverage, skyNoise( p * mix( 0.07, 0.012, uCloudHorizon ) + 3.3 ) );
+		float dens = smoothstep( mix( 0.58, 0.36, uCloudHorizon ), mix( 0.88, 0.70, uCloudHorizon ), n ) * mask * min( 1.0, 0.5 + coverage );
+		dens *= mix( 1.0, skyCloudBank( t, 1.4 ), uCloudHorizon );
+		float slant = inversesqrt( max( 1.0 - pow( r0 / rc, 2.0 ) * ( 1.0 - d.y * d.y ), 0.0005 ) );
+		float tau = dens * mix( 0.5, min( 3.0, 0.22 * slant ), uCloudHorizon );
 		float alpha = 1.0 - exp( - tau );
 		if ( ! airOn ) return vec4( vec3( 0.95, 0.97, 1.0 ) * uCloudLight, alpha );
 		vec3 Lc = skyTrans( rc, dot( normalize( vec3( 0.0, rc, 0.0 ) + d * t ), uSkyLight ) );
 		float c = dot( d, uSkyLight ), g = 0.55, ph = 0.55 * ( 1.0 - g * g ) / ( 4.0 * SKY_PI * pow( 1.0 + g * g - 2.0 * g * c, 1.5 ) ) + 0.45 / ( 4.0 * SKY_PI );
 		vec4 air = skyAir( d );
-		vec3 lit = Lc * ph * uSkyScale * 5.0 * mix( 1.0, 0.7, smoothstep( 0.3, 0.9, dens ) ) + skyAir( normalize( vec3( d.x, max( d.y, 0.05 ) + 0.3, d.z ) ) ).rgb * 0.75;
+		vec3 lit = Lc * ph * uSkyScale * mix( 5.0, 1.35, uCloudHorizon ) * mix( 1.0, 0.7, smoothstep( 0.3, 0.9, dens ) ) + skyAir( normalize( vec3( d.x, max( d.y, 0.05 ) + 0.3, d.z ) ) ).rgb * 0.75;
 		vec3 Tv = vec3( pow( max( air.a, 0.0 ), 0.35 ) );
 		return vec4( lit * Tv + air.rgb * ( 1.0 - Tv ), alpha );
 	}
@@ -391,6 +410,7 @@ export class Sky {
 			uSkyView: { value: this.view.texture }, uSkyTrans: { value: this.trans.texture },
 			uSkyLight: { value: new THREE.Vector3( 0, 1, 0 ) }, uSkyScale: { value: new THREE.Vector3( 1, 1, 1 ) }, uAirglow: { value: new THREE.Vector3() },
 			uStars: { value: 0 }, uClouds: { value: 0 }, uWisps: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 }, uMoonCore: { value: 1 },
+			uCloudHorizon: { value: 0 }, uCloudWind: { value: 0 },
 			uCloudLight: { value: 1 }, uClearDay: { value: 0 }, uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
 			uSkySat: { value: 1 }, uSkyExposure: { value: 1 },
 			uSkyTint: { value: new THREE.Vector3( 0.36, 0.98, 2.7 ) },
@@ -419,6 +439,8 @@ export class Sky {
 		this.uniforms.uCloudLight.value = 2.0 * lum( p.target );
 		this.uniforms.uClouds.value = p.clouds ?? 0;
 		this.uniforms.uWisps.value = p.wisps ?? 0;
+		this.uniforms.uCloudHorizon.value = p.cloudHorizon ?? 0;
+		this.uniforms.uCloudWind.value = ( p.cloudWind ?? 0 ) * Math.PI / 180;
 		this.uniforms.uSkySat.value = p.sat ?? 1;
 		this.uniforms.uSkyExposure.value = p.exposure ?? 1;
 		if ( p.tint ) this.uniforms.uSkyTint.value.copy( p.tint );
