@@ -107,7 +107,7 @@ export const AZUREA_PRESETS = {
 	// along the coast)
 	'Calm evening': { wisps: 0, deckLights: 0.35, moonCore: 1, sunCore: 16, seaVis: 22, wind: 0, windDir: 20, gust: 0, gustScale: 50, paws: 0.45, pawWind: 2.5, pawCover: 1, pawScale: 15, swell: 0.06, swellDir: 90, swellPeriod: 11, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, skyExposure: 1.0, skySat: 1.2, skyRayH: 8, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
 	// (the moon low over the sea, a little right of straight out: az -75, 9 deg up; its light the main light, cool)
-	'Night': { wisps: 0.35, deckLights: 0.5, moonCore: 0.3, sunCore: 1, seaVis: 30, wind: 0.3, windDir: 90, gust: 0.12, gustScale: 40, paws: 0.35, pawWind: 3, pawCover: 1, pawScale: 40, swell: 0.08, swellDir: 90, swellPeriod: 11, outside: 'night', sun: 1.5, sunColor: '#b4c8ff', sunAz: - 75, sunEl: 9, moon: true, disc: 1, glitter: 0.06, sky: 1.0, skyExposure: 1.0, skySat: 1.0, skyRayH: 8, haze: 1.0, skyHue: 0.75, clouds: 0.12, stars: 1.6, airglow: 0.2, tint: '#ffffff', portal: 0.08, cove: 0.9, coveColor: '#ffd8a8', led: 2.4, ledColor: '#8fd2ff', bottles: 1.2, chand: 4, chandColor: '#ffcf96', keySpec: 0.05, env: 0.45, exposure: 0.6, bloom: 0.06, bloomThreshold: 9 },
+	'Night': { wisps: 0.35, deckLights: 0.5, moonCore: 0.3, sunCore: 1, seaVis: 30, wind: 0.3, windDir: 90, gust: 0.12, gustScale: 40, paws: 0.35, pawWind: 3, pawCover: 1, pawScale: 40, swell: 0.08, swellDir: 90, swellPeriod: 11, outside: 'night', sun: 1.5, sunColor: '#b4c8ff', sunAz: - 75, sunEl: 9, moon: true, disc: 1, glitter: 0.02, sky: 1.0, skyExposure: 1.0, skySat: 1.0, skyRayH: 8, haze: 1.0, skyHue: 0.75, clouds: 0.12, stars: 1.6, airglow: 0.2, tint: '#ffffff', portal: 0.08, cove: 0.9, coveColor: '#ffd8a8', led: 2.4, ledColor: '#8fd2ff', bottles: 1.2, chand: 4, chandColor: '#ffcf96', keySpec: 0.05, env: 0.45, exposure: 0.6, bloom: 0.06, bloomThreshold: 9 },
 };
 const DEFAULT_PRESET = 'Day';
 
@@ -641,7 +641,7 @@ function keySpecular( material, u ) {
 		// (three's light chunks: snapshot the point lights, then the directional/sun lights; indoor point fixtures are
 		// excluded from polished-surface highlights while the directional sun/moon is retained)
 		const point = '#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )', spot = '#if ( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )',
-			end = '#if ( NUM_SUN_LIGHTS > 0 ) && defined( RE_Direct )';
+			end = '#if ( NUM_RECT_AREA_LIGHTS > 0 ) && defined( RE_Direct_RectArea )';		// (after the spot, sun and directional lights: the key light is a DirectionalLight now)
 		let fs = THREE.ShaderChunk.lights_fragment_begin;
 		if ( ! ( fs.includes( point ) && fs.includes( spot ) && fs.includes( end ) ) || fs.indexOf( point ) > fs.indexOf( spot ) ) {
 
@@ -803,7 +803,7 @@ export class Azurea {
 		for ( const m of [ M.floor, M.ceiling ] ) diffuseWindowFill( m );
 		// The direct-light shader treatment separates the directional sun from indoor point/area fixtures.
 		// The same uniform is retained for the sun's specular contribution in both raster and PT.
-		this.keySpec = { value: 1 }; this.keySpecGlass = { value: 1 };
+		this.keySpec = { value: 1 }; this.keySpecGlass = { value: 1 }; this.keySpecWater = { value: 1 };
 		for ( const [ m, u ] of [ [ M.floor, this.keySpec ], [ M.marble, this.keySpec ], [ M.glass, this.keySpecGlass ] ] ) if ( ! m.userData.azureaSpec ) { m.userData.azureaSpec = true; keySpecular( m, u ); }		// (once: rebuild() runs again, its chain would declare uKeySpec twice)
 		this._buildLights();
 		this._built = false;
@@ -1544,6 +1544,10 @@ export class Azurea {
 		this.coveFill.intensity = this.mode === 'pathtrace' ? .3 : 1.3;
 		for ( const l of this.shelfFills ) l.intensity = ( L.bottles ?? 1.3 ) * .16;
 		this.keySpec.value = L.keySpec ?? 1; this.keySpecGlass.value = L.keySpecGlass ?? 0;
+		// (the pool's mirror of the moon: its environment (the captured sky) already holds the drawn disc at its own
+		// radiance; the key light's analytic highlight on top, from a light far brighter than the drawn disc (it lights
+		// the room), mirrored it many times brighter than the moon itself. By day the sun's highlight is kept)
+		this.keySpecWater.value = L.keySpecWater ?? ( L.moon ? 0 : this.keySpec.value );
 		for ( const l of this.deckLights ) { l.intensity = L.deckLights ?? 0; l.visible = l.intensity > 0; }
 		M.deckLamp.emissiveIntensity = 8 * ( L.deckLights ?? 0 );
 		this.chandLight.color.set( L.chandColor ?? '#ffcf96' ); this.chandLight.intensity = L.chand ?? 0; this.chandLight.visible = ( L.chand ?? 0 ) > 0;
