@@ -34,6 +34,8 @@ import { CubeToEquirectGenerator } from 'three-gpu-pathtracer/src/utils/CubeToEq
 const V = ( x, y, z ) => new THREE.Vector3( x, y, z );
 const D = Math.PI / 180;
 const phys = p => new THREE.MeshPhysicalMaterial( p );
+// Floor-only vein absorption; white source ground (linear luminance >= .94) stays unchanged.
+const FLOOR_VEIN_CONTRAST = 3.5;
 
 // ---- the plan (m; the piano at the origin, its keys towards +z, the glass behind it at -z) ----
 const H = 7.8 * 0.7 * 0.8;						// lowered ceiling: 70% of the current room height									// the ceiling
@@ -241,7 +243,11 @@ function stochasticFloor( material ) {
 				return w.x * floorSample(uv,a,dx,dy) + w.y * floorSample(uv,b,dx,dy) + w.z * floorSample(uv,c,dx,dy);
 			}
 			#endif` ).replace( '#include <map_fragment>', `#ifdef USE_MAP
-				diffuseColor *= floorMarble( vMapUv );
+				vec4 marbleSample = floorMarble( vMapUv );
+				float veinLuma = dot( marbleSample.rgb, vec3(.2126,.7152,.0722) );
+				float vein = max( .94 - veinLuma, 0.0 ) * ( 1.0 - smoothstep(.84,.94,veinLuma) );
+				marbleSample.rgb *= exp( - ${ FLOOR_VEIN_CONTRAST.toFixed( 2 ) } * vein * vec3(1.05,1.0,.94) );
+				diffuseColor *= marbleSample;
 			#endif` );
 
 	}, 'azureaStochasticFloor' );
