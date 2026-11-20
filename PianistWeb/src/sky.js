@@ -44,7 +44,8 @@ const COMMON = /* glsl */`
 	struct Medium { vec3 scatR; float scatM; vec3 ext; };
 	Medium medium( float r ) {
 		float h = max( r - RG, 0.0 );
-		float dR = exp( - h / uRayHeight ), dM = exp( - h / MIE_H ) * uHaze, dO = max( 0.0, 1.0 - abs( h - 25.0 ) / 15.0 );
+		float dR = exp( - h / max( uRayHeight, 1e-4 ) ),		// (0: no molecules above the sea)
+			 dM = exp( - h / MIE_H ) * uHaze, dO = max( 0.0, 1.0 - abs( h - 25.0 ) / 15.0 );
 		Medium m;
 		m.scatR = RAY_S * dR; m.scatM = MIE_S * dM;
 		m.ext = m.scatR + vec3( m.scatM + MIE_A * dM ) + OZ_A * dO;
@@ -186,8 +187,8 @@ const VIEW = COMMON + /* glsl */`
 export const SKY_GLSL = /* glsl */`
 	uniform sampler2D uSkyView, uSkyTrans;
 	uniform vec3 uSkyLight;		// (the light's direction: the sun's, or the moon's at night)
-	uniform vec3 uSkyScale, uAirglow, uSkyHueProf[ 16 ];
-	uniform float uSkyHue, uClearDay, uCloudLight;
+	uniform vec3 uSkyScale, uAirglow, uSkyHueProf[ 16 ], uSkyTint;
+	uniform float uSkyHue, uClearDay, uCloudLight, uSkySat, uSkyExposure;
 	// (the photo's own hue by elevation (tools/azurea-sky-matte.py: 0, 2.5 .. 37.5 deg), a chroma: rgb / luminance)
 	vec3 skyHueAt( float el ) {
 		float e = clamp( el / 0.0436332, 0.0, 15.0 );
@@ -220,18 +221,21 @@ export const SKY_GLSL = /* glsl */`
 		// (airglow: brighter to the horizon, van Rhijn: 1 / sqrt( 1 - 0.96 cos² z ))
 		// (capped at 2.5: the haze hides the last of it)
 		float vr = min( 1.0 / sqrt( max( 1.0 - 0.96 * ( 1.0 - max( d.y, 0.0 ) * max( d.y, 0.0 ) ), 0.04 ) ), 2.5 );
-		vec3 c = a.rgb * uSkyScale;
+		vec3 c = a.rgb * ( uSkyScale * uSkyExposure );
 		// (the hue: towards the photo's at this elevation (its warm horizon, its blue above), its luminance kept: the
 		// brightness and the glow round the light the air's own)
 		float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
 		c = mix( c, l * skyHueAt( el ), uSkyHue );
-		// Clear coastal day: a luminous, pale horizon; deeper blue above, except towards the sun.
-		// Apply to clear air before clouds and the solar disc, including the sky sampled by reflections.
-		if ( uClearDay > 0.5 ) {
-			float blue = smoothstep( 0.0, 0.12, d.y ) * ( 1.0 - 0.55 * smoothstep( 0.65, 1.0, dot( d, uSkyLight ) ) );
-			c *= mix( vec3( 1.9, 1.65, 2.25 ), vec3( 0.36, 0.98, 2.7 ), blue );
+		// Clear day: one colour × gain (uSkyTint) over the clear air, before clouds and the disc (the reflections' sky
+		// too); the horizon's whitening and the glow round the sun are the atmosphere's own
+		if ( uClearDay > 0.5 ) c *= uSkyTint;
+		// (saturation about the luminance: 1 leaves the air's own colour, > 1 deepens it; the sea tint no longer
+		// touches the air, so this is where the sky's colour is set)
+		if ( uSkySat != 1.0 ) {
+			float ls = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
+			c = max( vec3( 0.0 ), ls + ( c - ls ) * uSkySat );
 		}
-		return vec4( c + uAirglow * vr * mix( 1.0, a.a, 0.5 ), a.a );
+		return vec4( c + uAirglow * vr * mix( 1.0, a.a, 0.5 ) * uSkyExposure, a.a );
 	}
 	uint skyPcg( uvec3 v ) {
 		v = v * 1664525u + 1013904223u; v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
@@ -388,9 +392,12 @@ export class Sky {
 			uSkyLight: { value: new THREE.Vector3( 0, 1, 0 ) }, uSkyScale: { value: new THREE.Vector3( 1, 1, 1 ) }, uAirglow: { value: new THREE.Vector3() },
 			uStars: { value: 0 }, uClouds: { value: 0 }, uWisps: { value: 0 }, uSkyEyeR: { value: 6360.03 }, uMoonTex: { value: grey }, uSunCore: { value: 1 }, uMoonCore: { value: 1 },
 			uCloudLight: { value: 1 }, uClearDay: { value: 0 }, uSkyHue: { value: 0 }, uSkyHueProf: { value: Array.from( { length: 16 }, () => new THREE.Vector3( 1, 1, 1 ) ) },
+			uSkySat: { value: 1 }, uSkyExposure: { value: 1 },
+			uSkyTint: { value: new THREE.Vector3( 0.36, 0.98, 2.7 ) },
 		};
 		this.params = null; this._built = null; this.dirty = true;
 		this._buf = new Uint16Array( 192 * 108 * 4 );
+		this._bufRef = new Uint16Array( 192 * 108 * 4 );		// (the same air at haze 1: the scale's reference)
 		this.mean = [ 1, 1, 1 ];		// (the band's mean sky colour after the scale: the portal light's)
 
 	}
@@ -398,11 +405,13 @@ export class Sky {
 	/**
 	 * The state: light (unit direction, the sun's or the moon's), haze (Mie density × Hillaire's), target (linear
 	 * RGB: the photo's clear sky's mean over the band), hue (0: the atmosphere's own, 1: the photo's), airglow
-	 * (a share of the target: the night's), stars (0..), clouds (0..1 cover), wisps (the lower thin cloud's, 0..1).
+	 * (a share of the target: the night's), stars (0..), clouds (0..1 cover), wisps (the lower thin cloud's, 0..1),
+	 * rayH (the molecular scale height, km), sat (the sky's saturation about its luminance), exposure (its gain),
+	 * tint (clear day: a linear rgb gain on the air's colour).
 	 */
 	set( p ) {
 
-		const key = JSON.stringify( [ p.light.x.toFixed( 4 ), p.light.y.toFixed( 4 ), p.light.z.toFixed( 4 ), p.haze, p.clearDay, p.target.map( v => v.toFixed( 5 ) ), p.hue, p.airglow, p.profile?.[ 0 ] ] );
+		const key = JSON.stringify( [ p.light.x.toFixed( 4 ), p.light.y.toFixed( 4 ), p.light.z.toFixed( 4 ), p.haze, p.clearDay, p.target.map( v => v.toFixed( 5 ) ), p.hue, p.airglow, p.rayH, p.profile?.[ 0 ] ] );
 		this.uniforms.uSkyLight.value.copy( p.light );
 		this.uniforms.uClearDay.value = p.clearDay ? 1 : 0;
 		this.uniforms.uStars.value = p.stars ?? 0;
@@ -410,6 +419,9 @@ export class Sky {
 		this.uniforms.uCloudLight.value = 2.0 * lum( p.target );
 		this.uniforms.uClouds.value = p.clouds ?? 0;
 		this.uniforms.uWisps.value = p.wisps ?? 0;
+		this.uniforms.uSkySat.value = p.sat ?? 1;
+		this.uniforms.uSkyExposure.value = p.exposure ?? 1;
+		if ( p.tint ) this.uniforms.uSkyTint.value.copy( p.tint );
 		this.params = p;
 		if ( key !== this._key ) { this._key = key; this.dirty = true; }
 
@@ -422,41 +434,66 @@ export class Sky {
 		this.dirty = false;
 		const p = this.params, prev = renderer.getRenderTarget(), auto = renderer.autoClear;
 		renderer.autoClear = false;
-		const height = p.clearDay ? 5.0 : 8.0;
-		if ( this._haze !== p.haze || this.rayHeight.value !== height ) {
+		const height = Math.max( p.rayH ?? ( p.clearDay ? 5.0 : 8.0 ), 0 );
+		// the LUTs for an air (its haze, its molecular scale height); the transmittance and multiple scattering
+		// rebuilt only when that air changes
+		const build = ( haze, h ) => {
 
-			this.rayHeight.value = height;
+			const k = haze + ',' + h;
+			if ( this._lut !== k ) {
 
-			this._haze = p.haze; this.haze.value = p.haze;
-			renderer.setRenderTarget( this.trans ); this.qTrans.render( renderer );
-			renderer.setRenderTarget( this.multi ); this.qMulti.render( renderer );
+				this._lut = k; this.haze.value = haze; this.rayHeight.value = h;
+				renderer.setRenderTarget( this.trans ); this.qTrans.render( renderer );
+				renderer.setRenderTarget( this.multi ); this.qMulti.render( renderer );
+
+			}
+			renderer.setRenderTarget( this.view ); this.qView.render( renderer );
+
+		};
+		this.qView.material.uniforms.uLightMu.value = THREE.MathUtils.clamp( p.light.y, - 1, 1 );
+		// the scale's reference: a fixed air (haze 1, the hour's usual scale height: 5 km clear day, else 8), so
+		// neither the haze nor the scale height is normalised away — less air is a darker, less blue sky, as it is.
+		// Built first: the LUTs end as the state's own (the stars' and clouds' transmittance read them)
+		const refH = p.clearDay ? 5.0 : 8.0;
+		let ref = this._buf;
+		if ( p.haze !== 1 || height !== refH ) {
+
+			build( 1, refH );
+			renderer.readRenderTargetPixels( this.view, 0, 0, 192, 108, this._bufRef );
+			ref = this._bufRef;
 
 		}
-		this.qView.material.uniforms.uLightMu.value = THREE.MathUtils.clamp( p.light.y, - 1, 1 );
-		renderer.setRenderTarget( this.view ); this.qView.render( renderer );
+		build( p.haze, height );
 		renderer.readRenderTargetPixels( this.view, 0, 0, 192, 108, this._buf );
 		renderer.setRenderTarget( prev ); renderer.autoClear = auto;
 		// the band's mean (the LUT's): 5..30 deg up over the photo's azimuths (pa0..pa1, absolute; from the light's)
-		const f = THREE.DataUtils.fromHalfFloat, B = this._buf, s = [ 0, 0, 0 ];
+		const f = THREE.DataUtils.fromHalfFloat;
 		let n = 0;
 		const la = Math.atan2( p.light.z, p.light.x );
-		for ( let i = 0; i < 24; ++ i ) for ( let j = 0; j < 8; ++ j ) {
+		const bandMean = B => {
 
-			const a = p.az0 + ( p.az1 - p.az0 ) * ( i + 0.5 ) / 24, el = ( 5 + 25 * ( j + 0.5 ) / 8 ) * Math.PI / 180;
-			let da = Math.abs( ( ( a - la ) % ( 2 * Math.PI ) + 3 * Math.PI ) % ( 2 * Math.PI ) - Math.PI );
-			// (not the light's own glow: the sky's level is the rest's, as the photo's even sky)
-			const cosA = Math.cos( el ) * Math.cos( Math.asin( Math.max( - 1, Math.min( 1, p.light.y ) ) ) ) * Math.cos( da ) + Math.sin( el ) * p.light.y;
-			if ( cosA > Math.cos( 20 * Math.PI / 180 ) ) continue;
-			const u = da / Math.PI, v = 0.5 + 0.5 * Math.sqrt( el / ( Math.PI / 2 ) );
-			const x = Math.min( 191, Math.max( 0, Math.round( u * 191 ) ) ), y = Math.min( 107, Math.max( 0, Math.round( v * 107 ) ) ), k = 4 * ( y * 192 + x );
-			s[ 0 ] += f( B[ k ] ); s[ 1 ] += f( B[ k + 1 ] ); s[ 2 ] += f( B[ k + 2 ] ); n ++;
+			const s = [ 0, 0, 0 ];
+			n = 0;
+			for ( let i = 0; i < 24; ++ i ) for ( let j = 0; j < 8; ++ j ) {
 
-		}
-		const m = s.map( v => Math.max( v / n, 1e-9 ) ), T = p.target, glow = p.airglow ?? 0;
+				const a = p.az0 + ( p.az1 - p.az0 ) * ( i + 0.5 ) / 24, el = ( 5 + 25 * ( j + 0.5 ) / 8 ) * Math.PI / 180;
+				let da = Math.abs( ( ( a - la ) % ( 2 * Math.PI ) + 3 * Math.PI ) % ( 2 * Math.PI ) - Math.PI );
+				// (not the light's own glow: the sky's level is the rest's, as the photo's even sky)
+				const cosA = Math.cos( el ) * Math.cos( Math.asin( Math.max( - 1, Math.min( 1, p.light.y ) ) ) ) * Math.cos( da ) + Math.sin( el ) * p.light.y;
+				if ( cosA > Math.cos( 20 * Math.PI / 180 ) ) continue;
+				const u = da / Math.PI, v = 0.5 + 0.5 * Math.sqrt( el / ( Math.PI / 2 ) );
+				const x = Math.min( 191, Math.max( 0, Math.round( u * 191 ) ) ), y = Math.min( 107, Math.max( 0, Math.round( v * 107 ) ) ), k = 4 * ( y * 192 + x );
+				s[ 0 ] += f( B[ k ] ); s[ 1 ] += f( B[ k + 1 ] ); s[ 2 ] += f( B[ k + 2 ] ); n ++;
+
+			}
+			return s.map( v => Math.max( v / n, 1e-9 ) );
+
+		};
+		const m = bandMean( this._buf ), mRef = ref === this._buf ? m : bandMean( ref ), T = p.target, glow = p.airglow ?? 0;
 		// (the air's share of the target: all of it by day; at night the airglow takes its part)
 		const Tair = T.map( v => v * ( 1 - glow ) );
-		const k = lum( Tair ) / lum( m );
-		this.uniforms.uSkyScale.value.set( k, k, k );		// (the luminance matched; the hue mixed in the shader: uSkyHue)
+		const k = lum( Tair ) / lum( mRef );
+		this.uniforms.uSkyScale.value.set( k, k, k );		// (the luminance matched at haze 1; the haze's own share kept)
 		const tl = lum( Tair ) || 1;
 		this.uniforms.uSkyHue.value = p.hue ?? 0;
 		const hue = p.hue ?? 0, ml = lum( m ) * k, sc = m.map( ( v, c ) => ( v * k * ( 1 - hue ) + ml * Tair[ c ] / tl * hue ) / Math.max( v, 1e-9 ) );
