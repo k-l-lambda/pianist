@@ -178,6 +178,18 @@ function box( x0, x1, y0, y1, z0, z1 ) {
 
 }
 
+/** A solid rounded housing: a real edge bevel, not an albedo highlight. */
+function roundedBox( w, h, d, r = 0.025 ) {
+
+	const s = new THREE.Shape(), x = - w / 2, y = - h / 2;
+	s.moveTo( x + r, y ); s.lineTo( x + w - r, y ); s.quadraticCurveTo( x + w, y, x + w, y + r );
+	s.lineTo( x + w, y + h - r ); s.quadraticCurveTo( x + w, y + h, x + w - r, y + h );
+	s.lineTo( x + r, y + h ); s.quadraticCurveTo( x, y + h, x, y + h - r );
+	s.lineTo( x, y + r ); s.quadraticCurveTo( x, y, x + r, y );
+	return new THREE.ExtrudeGeometry( s, { depth: d - 2 * r, bevelEnabled: true, bevelThickness: r, bevelSize: r / 3, bevelSegments: 2, curveSegments: 3 } ).translate( 0, 0, - d / 2 + r );
+
+}
+
 function replanar( g ) {
 
 	const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv ?? new THREE.BufferAttribute( new Float32Array( p.count * 2 ), 2 );
@@ -952,6 +964,7 @@ export class Azurea {
 		add( band( { ...counter, r0: bore + 0.05, r1: br * 0.86, lo: 0.14, hi: 1.035 } ), M.marble );
 		add( band( { ...counter, r0: bore, r1: br * 1.06, lo: 1.035, hi: 1.105 } ), M.marble );
 		add( band( { ...counter, r0: toeRadius, r1: toeRadius + 0.003, lo: 0.10, hi: 0.128, faces: 'o' } ), M.barLight );
+		add( band( { ...counter, r0: br * 0.86, r1: br * 0.86 + 0.004, lo: 1.006, hi: 1.028, faces: 'o' } ), M.barLight );
 		add( new THREE.RingGeometry( br * 0.80, br * 0.89, 96 ).rotateX( - Math.PI / 2 ).translate( bx, 1.112, bz ), M.barLight );
 		add( new THREE.CylinderGeometry( 0.62, 0.70, H, 64 ).translate( bx, H / 2, bz ), M.plaster );
 		// The bottle display is a wall cabinet attached to the central pier, not a second outer cylinder.
@@ -959,9 +972,19 @@ export class Azurea {
 		// Curved wall cabinet: the bottle display follows the central pier's cylindrical surface instead of a flat plane.
 		const cu = a => ( a - cabA0 ) / ( cabA1 - cabA0 ), cv = y => 1 - ( y - cabY0 ) / ( cabY1 - cabY0 );
 		add( band( { cx: bx, cz: bz, a0: cabA0, a1: cabA1, r0: cabR, r1: cabR + 0.025, lo: cabY0, hi: cabY1, faces: 'o', uv: ( a, b, la, lb, ha, hb ) => [ [ cu( a ), cv( la ) ], [ cu( b ), cv( lb ) ], [ cu( b ), cv( hb ) ], [ cu( a ), cv( ha ) ] ] } ), M.bottles );
-		for ( const y of [ cabY0, 2.15, 3.1, 4.05, cabY1 ] ) add( band( { cx: bx, cz: bz, a0: cabA0 - 0.02, a1: cabA1 + 0.02, r0: cabR - 0.035, r1: cabR + 0.065, lo: y - 0.025, hi: y + 0.025, faces: 'o' } ), M.lacquer );
+		// Six shelf lips follow the cabinet's usable height; no shelves floating above the lowered ceiling.
+		for ( let i = 0; i <= 6; ++ i ) {
+
+			const y = cabY0 + i * ( cabY1 - cabY0 ) / 6;
+			add( band( { cx: bx, cz: bz, a0: cabA0 - 0.02, a1: cabA1 + 0.02, r0: cabR - 0.035, r1: cabR + 0.065, lo: y - 0.012, hi: y + 0.018, faces: 'otb' } ), M.lacquer );
+			add( band( { cx: bx, cz: bz, a0: cabA0 - 0.02, a1: cabA1 + 0.02, r0: cabR + 0.062, r1: cabR + 0.066, lo: y - 0.020, hi: y - 0.012, faces: 'o' } ), M.barLight );
+
+		}
 		add( band( { cx: bx, cz: bz, a0: cabA0 - 0.025, a1: cabA1 + 0.025, r0: cabR - 0.04, r1: cabR + 0.07, lo: cabY0 - 0.03, hi: cabY0 + 0.03, faces: 'o' } ), M.barLight );
 		add( band( { cx: bx, cz: bz, a0: cabA0 - 0.025, a1: cabA1 + 0.025, r0: cabR - 0.04, r1: cabR + 0.07, lo: cabY1 - 0.03, hi: cabY1 + 0.03, faces: 'o' } ), M.barLight );
+
+		this._barStyling( add );
+		this._sculpture( add );
 
 		// the spiral staircase: floating marble treads round a white column, a white stringer each side, a glass
 		// balustrade outside with a chrome handrail
@@ -1138,19 +1161,115 @@ export class Azurea {
 
 	}
 
-	/** Leaf-crystal chandelier: a light, faceted botanical cloud inside the original radial footprint. */
+	_barStyling( add ) {
+
+		const M = this.materials, x0 = BAR.cx - 0.9, z0 = BAR.cz + 1.76, y = 1.11;
+		// Thin-walled vase and an airy, branching white rose bouquet; grounded on the stone annulus.
+		const vaseProfile = [ [ 0.07, 0 ], [ 0.12, 0.06 ], [ 0.14, 0.24 ], [ 0.09, 0.34 ], [ 0.05, 0.37 ], [ 0.043, 0.37 ], [ 0.083, 0.34 ], [ 0.133, 0.24 ], [ 0.113, 0.06 ], [ 0.063, 0.01 ] ].map( p => new THREE.Vector2( ...p ) );
+		add( new THREE.LatheGeometry( vaseProfile, 24 ).translate( x0, y, z0 ), M.crystal );
+		const petal = new THREE.SphereGeometry( 0.055, 8, 6 ).scale( 1.0, 0.55, 0.7 );
+		for ( let i = 0; i < 19; ++ i ) {
+
+			const a = i * 2.399, r = 0.24 * Math.sqrt( i / 18 );
+			const head = V( x0 + r * Math.cos( a ), y + 0.64 + 0.18 * ( 1 - i / 19 ), z0 + r * Math.sin( a ) );
+			const root = V( x0 + 0.015 * Math.cos( a ), y + 0.08, z0 + 0.015 * Math.sin( a ) ), d = head.clone().sub( root );
+			const stem = new THREE.CylinderGeometry( 0.004, 0.004, d.length(), 5 );
+			stem.applyQuaternion( new THREE.Quaternion().setFromUnitVectors( V( 0, 1, 0 ), d.clone().normalize() ) ); stem.translate( ...root.addScaledVector( d, 0.5 ).toArray() ); add( stem, M.stem );
+			for ( let p = 0; p < 6; ++ p ) {
+
+				const b = p * Math.PI / 3;
+				add( petal.clone().rotateY( b ).translate( head.x + 0.035 * Math.cos( b ), head.y + 0.012 * ( p % 2 ), head.z + 0.035 * Math.sin( b ) ), M.flower );
+
+			}
+			add( new THREE.SphereGeometry( 0.045, 8, 6 ).translate( ...head.toArray() ), M.flower );
+			if ( i % 2 === 0 ) add( petal.clone().scale( 1.4, 0.4, 0.8 ).rotateY( a ).translate( head.x, head.y - 0.12, head.z ), M.stem );
+
+		}
+		// Compact enamel espresso machine: body, black group-head recess, chrome group heads, cups and tray.
+		const ex = BAR.cx + 0.42, ez = BAR.cz + 1.77;
+		add( roundedBox( 0.72, 0.36, 0.32 ).translate( ex, y + 0.22, ez ), M.enamel );
+		add( box( ex - 0.30, ex + 0.30, y + 0.06, y + 0.21, ez + 0.13, ez + 0.17 ), M.blackMetal );
+		add( roundedBox( 0.75, 0.10, 0.35, 0.015 ).translate( ex, y + 0.34, ez + 0.01 ), M.chrome );
+		for ( const dx of [ - 0.17, 0.17 ] ) {
+
+			add( new THREE.CylinderGeometry( 0.045, 0.045, 0.04, 16 ).translate( ex + dx, y + 0.21, ez + 0.20 ), M.chrome );
+			add( new THREE.CylinderGeometry( 0.012, 0.016, 0.07, 8 ).translate( ex + dx, y + 0.16, ez + 0.20 ), M.chrome );
+			add( new THREE.CylinderGeometry( 0.016, 0.016, 0.13, 8 ).rotateX( Math.PI / 2 ).translate( ex + dx, y + 0.21, ez + 0.27 ), M.blackMetal );
+			for ( const b of [ - 0.035, 0, 0.035 ] ) add( new THREE.SphereGeometry( 0.008, 6, 4 ).translate( ex + dx + b, y + 0.34, ez + 0.193 ), M.blackMetal );
+
+		}
+		add( new THREE.BoxGeometry( 0.62, 0.018, 0.23 ).translate( ex, y + 0.012, ez + 0.18 ), M.chrome );
+		for ( let i = 0; i < 9; ++ i ) add( new THREE.BoxGeometry( 0.003, 0.002, 0.19 ).translate( ex - 0.24 + i * 0.06, y + 0.023, ez + 0.18 ), M.blackMetal );
+		const wand = new THREE.CatmullRomCurve3( [ V( ex + 0.31, y + 0.28, ez + 0.14 ), V( ex + 0.39, y + 0.18, ez + 0.24 ), V( ex + 0.39, y + 0.06, ez + 0.24 ) ] );
+		add( new THREE.TubeGeometry( wand, 8, 0.008, 6 ), M.chrome );
+		for ( const dx of [ - 0.20, 0.04, 0.20 ] ) {
+
+			const cup = new THREE.LatheGeometry( [ [ 0.026, 0 ], [ 0.040, 0.055 ], [ 0.033, 0.055 ], [ 0.022, 0.008 ] ].map( p => new THREE.Vector2( ...p ) ), 16 );
+			add( cup.translate( ex + dx, y + 0.401, ez + 0.01 ), M.ceramic );
+			add( new THREE.TorusGeometry( 0.018, 0.005, 5, 12 ).translate( ex + dx + 0.041, y + 0.428, ez + 0.01 ), M.ceramic );
+
+		}
+		// Three stemmed glasses on the bar's right hand side, merged by the caller's material bucket.
+		for ( let i = 0; i < 3; ++ i ) {
+
+				const gx = BAR.cx + 1.15 + i * 0.14, gz = BAR.cz + 1.46 + ( i % 2 ) * 0.08;
+			const bowl = [ [ 0.004, 0.16 ], [ 0.045, 0.18 ], [ 0.065, 0.24 ], [ 0.060, 0.29 ], [ 0.056, 0.29 ], [ 0.060, 0.24 ], [ 0.040, 0.185 ], [ 0.004, 0.165 ] ].map( p => new THREE.Vector2( ...p ) );
+			add( new THREE.CylinderGeometry( 0.004, 0.004, 0.16, 6 ).translate( gx, y + 0.08, gz ), M.crystal );
+			add( new THREE.LatheGeometry( bowl, 16 ).translate( gx, y, gz ), M.crystal );
+			add( new THREE.CylinderGeometry( 0.05, 0.05, 0.005, 16 ).translate( gx, y + 0.003, gz ), M.crystal );
+
+		}
+
+	}
+
+	_sculpture( add ) {
+
+		const M = this.materials, x = - 7.0, z = 6.0;
+		// Newly added sculpture only: existing stair, gallery, plants and furniture anchors are untouched.
+		add( new THREE.CylinderGeometry( 0.62, 0.62, 0.22, 64 ).translate( x, 0.11, z ), M.marble );
+		add( new THREE.CylinderGeometry( 0.52, 0.52, 0.018, 64 ).translate( x, 0.229, z ), M.chrome );
+		const loops = [];
+		for ( const [ w, h, base, radius ] of [ [ 0.43, 1.50, 0.30, 0.065 ], [ 0.29, 0.72, 0.34, 0.049 ], [ 0.23, 0.58, 1.05, 0.043 ] ] ) {
+
+			const points = [];
+			for ( let i = 0; i < 48; ++ i ) { const a = 2 * Math.PI * i / 48; points.push( V( x + w * Math.sin( a ) * ( 0.9 - 0.18 * Math.cos( a ) ), base + h * ( 0.5 + 0.5 * Math.cos( a ) ), z + 0.10 * Math.sin( 2 * a ) ) ); }
+			loops.push( new THREE.TubeGeometry( new THREE.CatmullRomCurve3( points, true ), 64, radius, 10, true ) );
+
+		}
+		add( mergeGeometries( loops.map( g => g.toNonIndexed() ), false ), M.chrome );
+		add( new THREE.SphereGeometry( 0.12, 16, 10 ).scale( 1, 0.4, 1 ).translate( x, 0.28, z ), M.chrome );
+
+	}
 	_chandelier( add ) {
 
 		const M = this.materials, top = H - 0.2, leaves = [], wires = [], ribs = [];
 		const leafShape = new THREE.Shape();
-		leafShape.moveTo( - 0.34, 0 ); leafShape.bezierCurveTo( - 0.16, 0.24, 0.16, 0.24, 0.34, 0 );
-		leafShape.bezierCurveTo( 0.16, - 0.17, - 0.16, - 0.17, - 0.34, 0 );
-		const leaf = new THREE.ExtrudeGeometry( leafShape, { depth: 0.045, bevelEnabled: true, bevelSegments: 1, bevelSize: 0.025, bevelThickness: 0.012, curveSegments: 3 } ).translate( 0, 0, - 0.0225 ).rotateX( Math.PI / 2 );
+		leafShape.moveTo( - 0.34, 0 ); leafShape.bezierCurveTo( - 0.16, 0.186, 0.16, 0.186, 0.34, 0 );
+		leafShape.bezierCurveTo( 0.16, - 0.147, - 0.16, - 0.147, - 0.34, 0 );
+		// Biconvex faceted lens: pointed silhouette and tapered thickness, no dark extruded slab edge.
+		const lens = new Geo(), ring = t => {
+
+			const w = Math.sin( Math.PI * t ), x = ( t - 0.5 ) * 0.68;
+			return [ V( x, 0, - 0.11 * w ), V( x, 0.028 * w, 0 ), V( x, 0, 0.14 * w ), V( x, - 0.018 * w, 0 ) ];
+
+		};
+		for ( let j = 0; j < 8; ++ j ) {
+
+			const a = ring( j / 8 ), b = ring( ( j + 1 ) / 8 );
+			for ( let k = 0; k < 4; ++ k ) {
+
+				const n = V( 0, k < 2 ? 1 : - 1, k === 0 || k === 3 ? - 0.25 : 0.25 ).normalize(), next = ( k + 1 ) % 4;
+				lens.quad( a[ k ], b[ k ], b[ next ], a[ next ], n );
+
+			}
+
+		}
+		const leaf = lens.build();
 		const rib = new THREE.CylinderGeometry( 0.0025, 0.0025, 0.55, 5 ).rotateZ( Math.PI / 2 );
 		const rim = new THREE.TubeGeometry( new THREE.CatmullRomCurve3( leafShape.getPoints( 8 ).slice( 0, - 1 ).map( p => V( p.x, 0, p.y ) ), true ), 24, 0.003, 4, true );
-		for ( const r of [ 0.42, 0.9, 1.38, 1.86, 2.34, 2.82, 3.28 ] ) {
+		for ( const r of [ 0.55, 1.25, 1.95, 2.65, 3.25 ] ) {
 
-			const n = Math.max( 5, Math.round( 2 * Math.PI * r / 0.42 ) );
+			const n = Math.max( 5, Math.round( 2 * Math.PI * r / 0.80 ) );
 			for ( let i = 0; i < n; ++ i ) {
 
 				const a = 2 * Math.PI * ( i + 0.5 * ( r * 3 % 1 ) ) / n, x = COVE.cx + r * Math.cos( a ), z = COVE.cz + r * Math.sin( a );
