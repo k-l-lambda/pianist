@@ -208,16 +208,43 @@ function slab( x0, x1, z0, z1, y ) {
 
 }
 
-/** Bar-side marble image projected once across the floor; independent floor polish below. */
-function floorMarbleTexture( source, size = 2048, worldPeriod = 32 ) {
+/** Stochastic triangular-lattice albedo sampling; independent floor polish UVs are untouched. */
+function floorMarbleTexture( source, renderer ) {
 
-	const c = document.createElement( 'canvas' ); c.width = c.height = size; const ctx = c.getContext( '2d' );
-	ctx.fillStyle = '#f0efeb'; ctx.fillRect( 0, 0, size, size );
-	// One large world-space projection of the bar's actual marble image. The floor covers this
-	// source once across 32 m, rather than repeating a small slab tile or drawing joints.
-	ctx.save(); ctx.translate( size * .5, size * .5 ); ctx.rotate( .018 ); ctx.drawImage( source.image, - size * .5, - size * .5, size, size ); ctx.restore();
-	const t = new THREE.CanvasTexture( c ); t.colorSpace = source.colorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.repeat.set( 1 / worldPeriod, 1 / worldPeriod ); t.offset.set( .44, .18 ); t.flipY = source.flipY; t.anisotropy = 16; t.needsUpdate = true;
-	return t;
+	const t = source.clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set( 1 / 3, 1 / 3 ); t.offset.set( 0, 0 );
+	t.colorSpace = THREE.SRGBColorSpace; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+	t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.needsUpdate = true; return t;
+
+}
+
+function stochasticFloor( material ) {
+
+	if ( material.userData.stochasticFloor ) return;
+	material.userData.stochasticFloor = true;
+	chainCompile( material, sh => {
+
+		sh.fragmentShader = sh.fragmentShader.replace( '#include <map_pars_fragment>', `#include <map_pars_fragment>
+			#ifdef USE_MAP
+			vec2 floorHash( vec2 p ) { return fract( sin( vec2( dot( p, vec2(127.1,311.7) ), dot( p, vec2(269.5,183.3) ) ) ) * 43758.5453 ); }
+			vec4 floorSample( vec2 uv, vec2 id, vec2 dx, vec2 dy ) {
+				vec2 h = floorHash( id ); float a = floor( h.x * 4.0 ) * 1.57079632679;
+				mat2 R = mat2( cos(a), -sin(a), sin(a), cos(a) );
+				return textureGrad( map, R * uv + h * 13.17, R * dx, R * dy );
+			}
+			vec4 floorMarble( vec2 uv ) {
+				vec2 skew = vec2( uv.x - .577350269 * uv.y, 1.154700538 * uv.y ), cell = floor(skew), f = fract(skew);
+				vec2 a = cell, b = cell + vec2(1,0), c = cell + vec2(0,1); vec3 w = vec3(1.0-f.x-f.y,f.x,f.y);
+				if ( f.x + f.y > 1.0 ) { a = cell + vec2(1,1); w = vec3(f.x+f.y-1.0,1.0-f.y,1.0-f.x); }
+				w = pow( max(w,vec3(0)), vec3(3.0) ); w /= dot(w,vec3(1));
+				vec2 dx = dFdx(uv), dy = dFdy(uv);
+				// Positive normalized linear-radiance weights: no bright borders, same mean luminance.
+				return w.x * floorSample(uv,a,dx,dy) + w.y * floorSample(uv,b,dx,dy) + w.z * floorSample(uv,c,dx,dy);
+			}
+			#endif` ).replace( '#include <map_fragment>', `#ifdef USE_MAP
+				diffuseColor *= floorMarble( vMapUv );
+			#endif` );
+
+	}, 'azureaStochasticFloor' );
 
 }
 
@@ -2000,7 +2027,7 @@ export class Azurea {
 
 			marble.wrapS = marble.wrapT = THREE.RepeatWrapping; marble.repeat.set( 1 / 3, 1 / 3 ); marble.anisotropy = 8; marble.colorSpace = THREE.SRGBColorSpace;
 			for ( const m of [ M.marble, M.deck ] ) { m.map = marble; m.needsUpdate = true; }
-			M.floor.map = floorMarbleTexture( marble ); M.floor.needsUpdate = true;
+			M.floor.map = floorMarbleTexture( marble, this._renderer ?? this.baker.renderer ); stochasticFloor( M.floor ); M.floor.needsUpdate = true;
 			// the floor: bar marble projected once across the room, plus its independent polish grain (a normal
 			// map; the planar mirror's reflection shifted by it a little: src/mirror.js), under the clearcoat too
 			try {
