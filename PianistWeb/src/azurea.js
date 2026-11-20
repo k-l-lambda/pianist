@@ -1195,7 +1195,7 @@ export class Azurea {
 		this.group.add( this.backdrop );
 
 		// the merged parts: a mesh each
-		const noShadow = new Set( [ M.glass, M.railGlass, M.crystal, M.tableGlass, M.led, M.barLight, M.deckLamp, M.cove, M.rug, M.deck, M.tile ] );
+		const noShadow = new Set( [ M.glass, M.railGlass, M.crystal, M.leafGlow, M.tableGlass, M.led, M.barLight, M.deckLamp, M.cove, M.rug, M.rugBorder, M.deck, M.tile ] );
 		for ( const [ mat, geos ] of parts ) {
 
 			const m = new THREE.Mesh( mergeGeometries( geos, false ), mat );
