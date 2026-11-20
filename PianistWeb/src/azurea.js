@@ -751,6 +751,7 @@ export class Azurea {
 			mullion: phys( { color: '#dce7eb', metalness: 0.25, roughness: 0.26 } ),
 			// the deck's ground lights' lenses (frosted, warm; their glow per preset: deckLights)
 			deckLamp: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 0.4, emissive: new THREE.Color( DECK_LAMP.color ), emissiveIntensity: 2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
+			leafGlow: new THREE.MeshStandardMaterial( { color: '#fff4df', roughness: .25, emissive: '#ffe8c6', emissiveIntensity: 5, side: THREE.DoubleSide } ),
 			// lines of light (the bar's strips, the soffit's rim) and the cove's glow
 			led: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#bfe7ff' ), emissiveIntensity: 3.5, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
 			barLight: new THREE.MeshStandardMaterial( { color: '#000000', roughness: 1, emissive: new THREE.Color( '#ffe6bb' ), emissiveIntensity: 2.2, polygonOffset: true, polygonOffsetFactor: - 2, polygonOffsetUnits: - 2 } ),
@@ -1067,6 +1068,7 @@ export class Azurea {
 			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r1 + 0.06, lo: a => Math.max( 0, yAt( a ) - 0.30 ), hi: a => Math.max( 0.025, yAt( a ) - 0.025 ), faces: 'oitbse' } ), M.lacquer );
 			add( band( { ...helix, r0: S.r1, r1: S.r1 + 0.06, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
 			add( band( { ...helix, r0: S.r0 - 0.06, r1: S.r0, lo: a => yAt( a ) - 0.32, hi: a => yAt( a ) + 0.06 } ), M.lacquer );
+			add( band( { ...helix, r0: S.r1 + .0605, r1: S.r1 + .064, lo: a => Math.max( .006, yAt( a ) - .29 ), hi: a => Math.max( .031, yAt( a ) - .265 ), faces: 'o' } ), M.barLight );
 			// thin warm decorative light under the stair's inner edge
 			add( band( { ...helix, r0: S.r0 - 0.065, r1: S.r0 - 0.055, lo: a => yAt( a ) - 0.30, hi: a => yAt( a ) - 0.27, faces: 'o' } ), M.barLight );
 			add( band( { ...helix, r0: S.r1 + 0.02, r1: S.r1 + 0.032, lo: a => yAt( a ) + 0.06, hi: a => yAt( a ) + 1.0 } ), M.railGlass );
@@ -1432,7 +1434,7 @@ export class Azurea {
 
 		}
 		add( mergeGeometries( leaves.map( g => g.toNonIndexed() ), false ), M.crystal );
-		add( mergeGeometries( ribs.map( g => g.toNonIndexed() ), false ), M.chrome );
+		add( mergeGeometries( ribs.map( g => g.toNonIndexed() ), false ), M.leafGlow );
 		add( mergeGeometries( wires.map( g => g.toNonIndexed() ), false ), M.chrome );
 
 	}
