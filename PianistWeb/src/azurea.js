@@ -283,6 +283,19 @@ function tileTexture() {
 
 }
 
+// Photo-only sky for the dome, the visible backdrop, and the ocean's reflected rays.
+// Mirror the panorama beyond its ends and extend its top row above its photographed elevation.
+const PHOTO_SKY_GLSL = `
+	uniform bool uAtmosphere;
+	vec3 photoSky( sampler2D photo, vec3 d, float lod ) {
+		float angle = atan( d.z, d.x );
+		float u = 0.5 + ( mod( angle - ${ ( ( SKY.pa0 + SKY.pa1 ) / 2 ).toFixed( 6 ) } + 3.14159265, 6.2831853 ) - 3.14159265 ) / ${ ( SKY.pa1 - SKY.pa0 ).toFixed( 6 ) };
+		u = 1.0 - abs( mod( u, 2.0 ) - 1.0 );
+		float e = clamp( asin( clamp( d.y, 0.0, 1.0 ) ) / ${ Math.asin( ( SKY.y0 + SKY.h - SKY.eye ) / SKY.r ).toFixed( 5 ) }, 0.0, 1.0 );
+		return textureLod( photo, vec2( u, ${ SKY.horV } * ( 1.0 - pow( e, 0.7 ) ) ), lod ).rgb;
+	}
+`;
+
 /**
  * The backdrop's material: the sea's photo looked up by the view's direction (as seen from the arc's centre: at
  * infinity, so it does not slide against the mullions as the eye moves; the dome and the path tracer's
@@ -295,7 +308,7 @@ function backdropMaterial( ocean, sky ) {
 	// (a map from the start: the shader reads it; the pack's photo replaces this grey until it loads)
 	const grey = Object.assign( new THREE.DataTexture( new Uint8Array( [ 150, 180, 205, 255 ] ), 1, 1 ), { needsUpdate: true } );
 	const m = new THREE.MeshBasicMaterial( { color: '#ffffff', fog: false, map: grey, toneMapped: false } );
-	const U = m.userData.u = { uLightDir: { value: V( 0, 1, 0 ) }, uDiscColor: { value: new THREE.Color() }, uDisc: { value: 0 }, uGlitter: { value: 0 }, uMoon: { value: 0 }, uTime: { value: 0 },
+	const U = m.userData.u = { uAtmosphere: { value: true }, uSkyPhoto: { value: grey }, uLightDir: { value: V( 0, 1, 0 ) }, uDiscColor: { value: new THREE.Color() }, uDisc: { value: 0 }, uGlitter: { value: 0 }, uMoon: { value: 0 }, uTime: { value: 0 },
 		uSkyHor: { value: new THREE.Color( '#dfeaf2' ) }, uSkyZen: { value: new THREE.Color( '#3f7fb8' ) }, uSeaColor: { value: new THREE.Color( '#1d6480' ) },
 		uSeaExt: { value: new THREE.Vector3( 0.30, 0.055, 0.020 ) }, uSeaExtScale: { value: 1.0 }, uSeaVis: { value: 25 }, ...ocean.uniforms, ...sky.uniforms,
 		// (the photo's land matte: tools/azurea-sky-matte.py; black until loaded: all sky)
@@ -346,6 +359,7 @@ function backdropMaterial( ocean, sky ) {
 			}
 			const float SKY_W = ${ ( SKY.a1 - SKY.a0 ).toFixed( 6 ) };
 			${ SKY_GLSL }
+			${ PHOTO_SKY_GLSL }
 			${ DISC_GLSL }
 			uniform sampler2D uMatte;
 			float landA = 0.0;		// (how much of this pixel is the photo's land: the disc behind it)` )
@@ -414,8 +428,7 @@ function backdropMaterial( ocean, sky ) {
 				if ( up > 0.0 ) {
 
 					landA = mt * ( 1.0 - skyMix );
-					vec3 sky = skyColor( vd, pix, 0.0 );
-					ph = mix( sky, ph, landA );
+					ph = uAtmosphere ? mix( skyColor( vd, pix, 0.0 ), ph, landA ) : photoSky( map, vd, 0.0 );
 
 				}
 				// below the horizon: the sea's surface (src/ocean.js). Its normal: the waves resolved at this pixel (their
@@ -458,8 +471,7 @@ function backdropMaterial( ocean, sky ) {
 					// (what it mirrors: the photo's land (its matte), else the sky (src/sky.js), blurred by the spread: its
 					// stars and clouds softened)
 					float aM = textureLod( uMatte, uvM, 0.0 ).r * ( 1.0 - smoothstep( 0.78, 0.99, pow( eM, 0.7 ) ) ) * ( 1.0 - smoothstep( 0.0, ${ ( 22 * D ).toFixed( 6 ) }, outR ) );
-					vec3 skyR = skyColor( rd, pix, spread );
-					vec3 reflSky = mix( skyR, phM, aM );
+					vec3 reflSky = uAtmosphere ? mix( skyColor( rd, pix, spread ), phM, aM ) : photoSky( map, rd, lodR );
 					float cosI = clamp( dot( - vd, nW ), 0.0, 1.0 );
 					float fres = azFresnel( max( cosI, 1e-3 ) );
 					// (the body: the light's path in the water — its extinction per metre, red first)
@@ -472,7 +484,8 @@ function backdropMaterial( ocean, sky ) {
 					// the sea dimmed, the haze's own light added — the horizon's colour, the sky just above it in this
 					// direction, so the far sea meets the sky (the horizon ~6 km off from this eye)
 					seaAirT = exp( - 3.912 * dist / ( 1000.0 * uSeaVis ) );
-					vec3 hz = skyAir( normalize( vec3( vd.x, 0.002, vd.z ) ) ).rgb;
+					vec3 horizonDir = normalize( vec3( vd.x, 0.002, vd.z ) );
+					vec3 hz = uAtmosphere ? skyAir( horizonDir ).rgb : photoSky( map, horizonDir, 0.0 );
 					ph = ph * seaAirT + hz * ( 1.0 - seaAirT );
 
 				}
@@ -565,19 +578,21 @@ function domeMaterial( sky, shared ) {
 	m.onBeforeCompile = sh => {
 
 		const S = shared;
-		Object.assign( sh.uniforms, sky.uniforms, own, { uLightDir: S.uLightDir, uDiscColor: S.uDiscColor, uDisc: S.uDisc, uMoon: S.uMoon, uTime: S.uTime } );
+		Object.assign( sh.uniforms, sky.uniforms, own, { uAtmosphere: S.uAtmosphere, uSkyPhoto: S.uSkyPhoto, uLightDir: S.uLightDir, uDiscColor: S.uDiscColor, uDisc: S.uDisc, uMoon: S.uMoon, uTime: S.uTime } );
 		sh.vertexShader = sh.vertexShader.replace( '#include <common>', '#include <common>\nvarying vec3 vWP;' )
 			.replace( '#include <project_vertex>', '#include <project_vertex>\nvWP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;' );
 		sh.fragmentShader = sh.fragmentShader.replace( '#include <common>', `#include <common>
 			varying vec3 vWP;
+			uniform sampler2D uSkyPhoto;
 			uniform vec3 uLightDir, uDiscColor, uDomeSea;
 			uniform float uDisc, uMoon, uTime;
 			${ SKY_GLSL }
+			${ PHOTO_SKY_GLSL }
 			${ DISC_GLSL }` )
 			.replace( '#include <map_fragment>', `
 			vec3 vd = normalize( vWP - cameraPosition );
 			float pix = length( fwidth( vd ) );
-			vec3 sc = vd.y >= 0.0 ? skyColor( vd, pix, 0.0 ) : mix( uDomeSea, skyAir( normalize( vec3( vd.x, 0.0005, vd.z ) ) ).rgb, exp( vd.y * 25.0 ) );
+			vec3 sc = ! uAtmosphere ? ( vd.y >= 0.0 ? photoSky( uSkyPhoto, vd, 0.0 ) : mix( uDomeSea, photoSky( uSkyPhoto, vd, 0.0 ), exp( vd.y * 25.0 ) ) ) : vd.y >= 0.0 ? skyColor( vd, pix, 0.0 ) : mix( uDomeSea, skyAir( normalize( vec3( vd.x, 0.0005, vd.z ) ) ).rgb, exp( vd.y * 25.0 ) );
 			diffuseColor.rgb *= sc;` )
 			.replace( '#include <opaque_fragment>', `
 			outgoingLight += uDisc * smoothstep( - 0.0004, 0.0012, vd.y ) * skyDisc( vd, normalize( uLightDir ), uDiscColor, uMoon );
@@ -667,7 +682,7 @@ export class Azurea {
 		this.highQuality = true;
 		this.presets = AZUREA_PRESETS;
 		this.preset = new URLSearchParams( location.search ).get( 'preset' ) in AZUREA_PRESETS ? new URLSearchParams( location.search ).get( 'preset' ) : DEFAULT_PRESET;
-		this.light = { ...AZUREA_PRESETS[ this.preset ] };
+		this.light = { atmosphere: true, ...AZUREA_PRESETS[ this.preset ] };
 		this.group = new THREE.Group(); this.group.name = 'azurea';
 		this.lights = new THREE.Group(); this.lights.name = 'azureaLights';
 		this.active = false;
@@ -830,7 +845,7 @@ export class Azurea {
 	lightControls() {
 
 		return [
-			[ 'outside', [ 'day', 'sunset', 'night' ], 'Outside' ], [ 'moon', 'bool', 'Moon (not sun)' ], [ 'disc', 0, 3, 0.01, 'Sun / moon disc' ], [ 'glitter', 0, 3, 0.01, 'Sea glitter' ],
+			[ 'outside', [ 'day', 'sunset', 'night' ], 'Outside' ], [ 'atmosphere', 'bool', 'Procedural atmosphere' ], [ 'moon', 'bool', 'Moon (not sun)' ], [ 'disc', 0, 3, 0.01, 'Sun / moon disc' ], [ 'glitter', 0, 3, 0.01, 'Sea glitter' ],
 			[ 'sun', 0, 20, 0.1, 'Sun / moonlight' ], [ 'sunColor', 'color', 'Sun color' ], [ 'sunAz', - 180, 0, 0.5, 'Sun azimuth (°)' ], [ 'sunEl', 2, 70, 0.5, 'Sun elevation (°)' ],
 			[ 'wind', 0, 10, 0.1, 'Wind (m/s)' ], [ 'windDir', - 180, 180, 1, 'Wind towards (°)' ], [ 'gust', 0, 0.6, 0.01, 'Gusts (sea)' ], [ 'gustScale', 10, 150, 1, 'Gust size (m)' ],
 			[ 'paws', 0, 1, 0.01, "Cat's paws" ], [ 'pawWind', 1, 10, 0.1, "Cat's paws wind (m/s)" ], [ 'pawCover', 0.02, 1, 0.01, "Cat's paws cover" ], [ 'pawScale', 5, 150, 1, "Cat's paws size (m)" ], [ 'swell', 0, 1.5, 0.01, 'Swell height (m)' ],
@@ -1157,7 +1172,8 @@ export class Azurea {
 		{
 
 			const U = M.backdrop.userData.u;
-			U.uLightDir.value.copy( dir ); U.uMoon.value = L.moon ? 1 : 0; U.uDisc.value = L.disc ?? 0; U.uGlitter.value = L.glitter ?? 0;
+			U.uAtmosphere.value = L.atmosphere !== false; U.uSkyPhoto.value = M.backdrop.map;
+			U.uLightDir.value.copy( dir ); U.uMoon.value = L.moon ? 1 : 0; U.uDisc.value = U.uAtmosphere.value ? ( L.disc ?? 0 ) : 0; U.uGlitter.value = L.glitter ?? 0;
 			U.uSeaVis.value = L.seaVis ?? 25; this.sky.uniforms.uSunCore.value = L.moon ? 1 : ( L.sunCore ?? 1 ); this.sky.uniforms.uMoonCore.value = L.moon ? ( L.moonCore ?? 1 ) : 1;
 			this.ocean.set( this._seaState() );
 			this.ocean.setGust( L.gust ?? 0, L.gustScale ?? 50 );		// (the gusts: no new spectrum, a uniform)
@@ -1196,9 +1212,9 @@ export class Azurea {
 			this.sky.set( { clearDay: L.outside === 'day' && ! L.moon, light: dir, haze: L.haze ?? 1, hue: L.skyHue ?? 0.35, airglow: L.moon ? ( L.airglow ?? 0.25 ) : 0, stars: ( L.stars ?? 0 ) * 6e-5 * tl,
 				clouds: L.clouds ?? 0, wisps: L.wisps ?? 0, target: T, profile: ph?.profile, az0: SKY.pa0, az1: SKY.pa1 } );
 			const r = this._renderer ?? this.baker?.renderer;
-			if ( r ) this.sky.update( r );
+			if ( r && U.uAtmosphere.value ) this.sky.update( r );
 			// (the window's light: the sky's own colour, paler)
-			const mc = this.sky.mean, ml = Math.max( 0.2126 * mc[ 0 ] + 0.7152 * mc[ 1 ] + 0.0722 * mc[ 2 ], 1e-9 );
+			const mc = U.uAtmosphere.value ? this.sky.mean : T, ml = Math.max( 0.2126 * mc[ 0 ] + 0.7152 * mc[ 1 ] + 0.0722 * mc[ 2 ], 1e-9 );
 			this.portal.color.setRGB( mc[ 0 ] / ml, mc[ 1 ] / ml, mc[ 2 ] / ml ).lerp( new THREE.Color( '#ffffff' ), 0.6 );
 
 		}
@@ -1377,7 +1393,7 @@ export class Azurea {
 		const zero = h( 0 );
 		for ( let y = 0; y < Math.floor( Hh / 2 ); ++ y ) for ( let x = 0; x < W; ++ x ) { const i = 4 * ( y * W + x ); d[ i ] = d[ i + 1 ] = d[ i + 2 ] = zero; }
 		const L = this.light;
-		if ( ! ( ( L.disc ?? 0 ) > 0 ) ) { env.needsUpdate = true; return; }
+		if ( L.atmosphere === false || ! ( ( L.disc ?? 0 ) > 0 ) ) { env.needsUpdate = true; return; }
 		const s = this.sunDirection().normalize(), R = ( L.moon ? 0.0115 : 0.0135 ) + 2 * Math.PI / W;
 		const dirOf = ( x, y ) => {
 
@@ -1418,7 +1434,7 @@ export class Azurea {
 	_outsideKey() {
 
 		const L = this.light;
-		return JSON.stringify( [ L.outside, L.sky, L.haze, L.skyHue, L.clouds, L.wisps, L.stars, L.airglow, L.tint, L.sunAz, L.sunEl, L.sunColor, L.moon, L.disc, L.glitter, L.sunCore, L.moonCore, L.seaVis, this._seaState(), this.materials.backdrop.map?.uuid ?? null, !! this.skyPhotos ] );
+		return JSON.stringify( [ L.atmosphere !== false, L.outside, L.sky, L.haze, L.skyHue, L.clouds, L.wisps, L.stars, L.airglow, L.tint, L.sunAz, L.sunEl, L.sunColor, L.moon, L.disc, L.glitter, L.sunCore, L.moonCore, L.seaVis, this._seaState(), this.materials.backdrop.map?.uuid ?? null, !! this.skyPhotos ] );
 
 	}
 
@@ -1427,7 +1443,7 @@ export class Azurea {
 
 		const r = this.baker.renderer, face = width / 4;
 		this.ocean.update( r, clock.now() / 1000 );		// (its textures drawn before the capture reads them)
-		this.sky.update( r );
+		if ( this.light.atmosphere !== false ) this.sky.update( r );
 		const rt = new THREE.WebGLCubeRenderTarget( face, { type: THREE.HalfFloatType, generateMipmaps: false } );
 		const cam = new THREE.CubeCamera( 0.1, 100, rt ), scene = new THREE.Scene();
 		scene.add( new THREE.Mesh( this.dome.geometry, this.materials.sky ), new THREE.Mesh( this.backdrop.geometry, this.materials.backdrop ), cam );
@@ -1448,7 +1464,7 @@ export class Azurea {
 		this.poolWater?.update( renderer, t );		// (the pool's surface stepped to t: the render clock offline, a pure function of it)
 		this.materials.backdrop.userData.u.uTime.value = t;		// (the glints' draws)
 		this.ocean.update( renderer, t );		// (the sea's surface at t: a pure function of the render clock)
-		this.sky.update( renderer );		// (its LUTs, if the light or the haze changed)
+		if ( this.light.atmosphere !== false ) this.sky.update( renderer );		// (its LUTs, if the light or the haze changed)
 		if ( this.mode === 'pathtrace' ) return;
 		const mirrorScale = this.mirrorScale ?? ( this.highQuality ? 0.5 : 0.35 );
 		this.mirror.update( renderer, this.scene, camera, [ this.floorMesh ], mirrorScale );
