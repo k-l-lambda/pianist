@@ -100,7 +100,7 @@ const LAYOUT = [
 // its brightness is the photo's sky's always), clouds (thin high cloud's cover, 0..1), stars (× a night sky's),
 // airglow (the night sky's share of it)
 export const AZUREA_PRESETS = {
-	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 7.2, sunColor: '#fff4e4', sunAz: - 112, sunEl: 68, moon: false, disc: 1, glitter: 0.6, sky: 1.0, skyExposure: 1.0, skySat: 1.45, skyRayH: 1.2, skyColor: '#66bdff', skyGain: 2.7, haze: 0.1, skyHue: 0.0, clouds: 0.25, stars: 0, airglow: 0, tint: '#b9e6ff', portal: 2.0, cove: 1.0, coveColor: '#e6f4ff', led: 3.5, ledColor: '#bfe7ff', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
+	'Day': { wisps: 0, deckLights: 0.15, moonCore: 1, sunCore: 20, seaVis: 25, wind: 0.7, windDir: 90, gust: 0.25, gustScale: 50, paws: 0.8, pawWind: 5, pawCover: 1, pawScale: 30, swell: 0.15, swellDir: 90, swellPeriod: 9, outside: 'day', sun: 7.2, sunColor: '#fff4e4', sunAz: - 112, sunEl: 68, moon: false, disc: 1, glitter: 0.6, sky: 1.0, skyExposure: 1.0, skySat: 1.45, skyRayH: 1.2, skyColor: '#66bdff', skyGain: 2.7, haze: 0.1, skyHue: 0.0, clouds: 0.25, stars: 0, airglow: 0, tint: '#b9e6ff', portal: 2.0, cove: 1.8, coveColor: '#fff0d0', led: 5.0, ledColor: '#ffe1bd', bottles: 1.3, chand: 0, chandColor: '#ffd9a8', env: 0.8, exposure: 0.42, bloom: 0.06, bloomThreshold: 6 },
 	// (the sun low over the sea, to the right of straight out: az -50)
 	'Golden hour': { wisps: 0, deckLights: 0.35, moonCore: 1, sunCore: 16, seaVis: 22, wind: 0.5, windDir: 90, gust: 0.22, gustScale: 50, paws: 0.6, pawWind: 3.5, pawCover: 1, pawScale: 22, swell: 0.12, swellDir: 90, swellPeriod: 10, outside: 'sunset', sun: 7, sunColor: '#ffaa62', sunAz: - 50, sunEl: 4.5, moon: false, disc: 1, glitter: 1, sky: 0.85, skyExposure: 1.0, skySat: 1.2, skyRayH: 8, haze: 1.6, skyHue: 0.6, clouds: 0.3, stars: 0, airglow: 0, tint: '#ffffff', portal: 1.2, cove: 2.2, coveColor: '#ffe6c4', led: 4.5, ledColor: '#ffe2bd', bottles: 2.0, chand: 0, chandColor: '#ffd9a8', env: 0.7, exposure: 0.6, bloom: 0.1, bloomThreshold: 5 },
 	// (the golden hour's light on a calm sea: no wind of its own, a low swell, glassy; cat's paws drifting over it,
@@ -1122,11 +1122,11 @@ export class Azurea {
 			add( box( tx - 0.32, tx + 0.02, 0.438, 0.47, tz - 0.12, tz + 0.08 ), M.book );
 			add( box( tx - 0.29, tx - 0.01, 0.472, 0.502, tz - 0.11, tz + 0.07 ), M.marble );
 			add( new THREE.CylinderGeometry( 0.105, 0.075, 0.18, 24 ).translate( tx + 0.26, 0.56, tz ), M.ceramic );
-			for ( let i = 0; i < 13; ++ i ) {
+			for ( let i = 0; i < 19; ++ i ) {
 
 				const a = i * 2.399, x = tx + .26 + .09 * Math.cos( a ), z = tz + .09 * Math.sin( a );
 				add( new THREE.CylinderGeometry( .003, .003, .12, 5 ).translate( x, .68, z ), M.stem );
-				for ( let k = 0; k < 5; ++ k ) add( new THREE.SphereGeometry( .03, 7, 5 ).scale( 1,.55,1 ).translate( x + .02 * Math.cos( k * 1.256 ), .79 + .025 * Math.sin( a ), z + .02 * Math.sin( k * 1.256 ) ), M.flower );
+				for ( let k = 0; k < 5; ++ k ) add( new THREE.SphereGeometry( .03, 7, 5 ).scale( 1,.55,1 ).translate( x + .02 * Math.cos( k * 1.256 ), .78 + .025 * Math.sin( a ), z + .02 * Math.sin( k * 1.256 ) ), M.flower );
 
 			}
 
@@ -1362,7 +1362,7 @@ export class Azurea {
 
 				const a = 2 * Math.PI * ( i + 0.5 * ( r * 3 % 1 ) ) / n, x = COVE.cx + r * Math.cos( a ), z = COVE.cz + r * Math.sin( a );
 				const dBar = Math.hypot( x - BAR.cx, z - BAR.cz );
-				if ( dBar < 0.85 ) continue;
+				if ( dBar < 1.15 ) continue;
 				let bottom = top - ( 1.0 + 1.75 * ( 1 - r / 3.0 ) ** 2 + 0.18 * Math.sin( 3 * a + r * 2 ) );
 				if ( dBar < 2.65 * BAR_SCALE * 1.06 + 1.2 ) bottom = Math.max( bottom, 2.25 + 0.42 * Math.sin( 2 * a + r * 1.6 ) );
 				const yaw = Math.PI / 2 - a + 0.35 * Math.sin( r * 2.7 ), tilt = 0.2 * Math.sin( a * 2.0 + r ), pitch = 0.65 + 0.35 * Math.sin( a + r * 2 );
@@ -1410,6 +1410,18 @@ export class Azurea {
 		const chandFill = this.chandFill = new THREE.PointLight( '#ffd2a1', 0, 9, 2 );
 		chandFill.position.set( COVE.cx, Math.max( 1.2, H - 1.0 ), COVE.cz );
 		this.lights.add( chandFill );
+		// Broad warm architectural bounce is local to the interior; sky/exposure are untouched.
+		this.coveFill = new THREE.RectAreaLight( '#ffdfb6', 1.3, 6.0, 6.0 );
+		this.coveFill.position.set( COVE.cx, H - .38, COVE.cz ); this.coveFill.lookAt( COVE.cx, 0, COVE.cz ); this.lights.add( this.coveFill );
+		this.shelfFills = [];
+		for ( let i = 1; i <= 6; ++ i ) {
+
+			const l = new THREE.PointLight( '#ffe4bd', 0.35, 1.2, 2 );
+			l.position.set( BAR.cx, 1.18 + i * ( H - .35 - 1.18 ) / 6 - .10, BAR.cz + .90 );
+			this.lights.add( l ); this.shelfFills.push( l );
+
+		}
+
 		// the lounges' table lamps: a warm point each, in its shade (no shadows: the shade's own glow is the look)
 		this.lampLights = LOUNGES.flatMap( g => g.lamps ).map( ( at, i ) => {
 
@@ -1455,14 +1467,16 @@ export class Azurea {
 		M.cove.emissive.set( L.coveColor ); M.cove.emissiveIntensity = L.cove;
 		// Keep the raster/PT fixture balance stable: updateLights() can run after setMode().
 		M.led.emissive.set( L.ledColor ); M.led.emissiveIntensity = L.led * ( this.mode === 'pathtrace' ? 0.35 : 1 );
-		M.barLight.emissiveIntensity = this.mode === 'pathtrace' ? 0.75 : 2.2;
+		M.barLight.emissiveIntensity = this.mode === 'pathtrace' ? 1.2 : 5.0;
 		M.bottles.emissiveIntensity = L.bottles;
+		this.coveFill.intensity = this.mode === 'pathtrace' ? .3 : 1.3;
+		for ( const l of this.shelfFills ) l.intensity = ( L.bottles ?? 1.3 ) * .16;
 		this.keySpec.value = L.keySpec ?? 1; this.keySpecGlass.value = L.keySpecGlass ?? 0;
 		for ( const l of this.deckLights ) { l.intensity = L.deckLights ?? 0; l.visible = l.intensity > 0; }
 		M.deckLamp.emissiveIntensity = 8 * ( L.deckLights ?? 0 );
 		this.chandLight.color.set( L.chandColor ?? '#ffcf96' ); this.chandLight.intensity = L.chand ?? 0; this.chandLight.visible = ( L.chand ?? 0 ) > 0;
-		this.chandFill.intensity = this.mode === 'pathtrace' ? 0.35 : ( L.outside === 'day' ? 0.75 : 1.2 ); this.chandFill.visible = this.chandFill.intensity > 0;
-		for ( const l of this.lampLights ) { l.intensity = ( L.outside === 'day' ? 0.5 : 1.2 ) * ( this.mode === 'pathtrace' ? 0.5 : 1 ); l.visible = l.intensity > 0; }
+		this.chandFill.intensity = this.mode === 'pathtrace' ? 0.35 : ( L.outside === 'day' ? 1.5 : 2.4 ); this.chandFill.visible = this.chandFill.intensity > 0;
+		for ( const l of this.lampLights ) { l.intensity = ( L.outside === 'day' ? 1.0 : 1.8 ) * ( this.mode === 'pathtrace' ? 0.5 : 1 ); l.visible = l.intensity > 0; }
 		// the outside: its photo (the hour's), the disc and its path in the key light's direction
 		const sea = this.seas?.[ L.outside ] ?? this.seas?.day;
 		if ( sea && M.backdrop.map !== sea ) { M.backdrop.map = sea; M.backdrop.needsUpdate = true; }
