@@ -37,11 +37,11 @@ export const MOUNTAIN_GLSL = /* glsl */`
 			return e * ( 0.75 + 0.5 * mtnRidge( A * 0.6 + 11.0 ) );
 		}
 		if ( i == 1 ) {		// the far ridge behind the headland: long, pale, rising to the right
-			float e = mtnEnv( A, - 128.0, 22.0, 6.0, 8.0 );
+			float e = mtnEnv( A, - 128.0, 22.0, 80.0, 8.0 );
 			return e * ( 0.45 + 0.9 * smoothstep( - 110.0, - 50.0, A ) ) * ( 0.8 + 0.35 * mtnRidge( A * 0.08 + 3.0 ) );
 		}
 		if ( i == 2 ) {		// the mountain behind the headland: a long shoulder from the left, high to the right, hazy
-			float e = mtnEnv( A, - 106.0, 30.0, 8.0, 6.0 );
+			float e = mtnEnv( A, - 106.0, 30.0, 80.0, 6.0 );
 			// (its crest under ~3.5 deg: the golden hour's sun (az -50, el 4.5) sets clear of it)
 			return e * ( 1.1 + 2.0 * smoothstep( - 82.0, - 30.0, A ) ) * ( 0.78 + 0.35 * mtnRidge( A * 0.1 + 7.0 ) );
 		}
@@ -50,7 +50,7 @@ export const MOUNTAIN_GLSL = /* glsl */`
 			return e * 1.25 * ( 0.7 + 0.45 * mtnRidge( A * 0.15 + 2.0 ) );
 		}
 		if ( i == 4 ) {		// the near headland: a steep tip of white cliffs to the sea, wooded above, a low rocky point off it
-			float e = sqrt( mtnEnv( A, - 100.0, 2.5, - 24.0, 12.0 ) );
+			float e = sqrt( mtnEnv( A, - 100.0, 2.5, 80.0, 6.0 ) );
 			float h = e * ( 1.3 + 1.0 * smoothstep( - 98.0, - 70.0, A ) ) * ( 0.7 + 0.5 * mtnRidge( A * 0.22 + 5.0 ) );
 			return max( h, mtnBump( A, - 102.0, 3.0 ) * 0.14 * ( 0.8 + 0.4 * mtnRidge( A * 2.0 ) ) );
 		}
@@ -115,8 +115,10 @@ export const MOUNTAIN_GLSL = /* glsl */`
 		float U = degrees( asin( clamp( vd.y, - 1.0, 1.0 ) ) );
 		if ( uMtn <= 0.0 || U > 5.0 || U < - 0.05 ) return vec4( bg, 0.0 );
 		float A = degrees( atan( vd.z, vd.x ) );
-		if ( A > 15.0 ) A -= 360.0;		// (the land side behind the room, past -180: the left headland's tail)
-		if ( A > 12.0 || A < - 200.0 ) return vec4( bg, 0.0 );
+		// (the right-hand coast runs on past the right wall's line (behind it from the window: about +45 deg), so no
+		// open sea shows between it and the wall; past -180 the left headland's tail)
+		if ( A > 90.0 ) A -= 360.0;
+		if ( A > 80.0 || A < - 200.0 ) return vec4( bg, 0.0 );
 		float pw = degrees( max( pix, blur ) ) * 0.75 + 1e-4;
 		vec3 air = uAtmosphere ? skyAir( vd ).rgb : bg;
 		vec3 Ls = uAtmosphere ? normalize( uSkyLight ) : normalize( uLightDir );
