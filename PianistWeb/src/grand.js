@@ -230,6 +230,31 @@ function extrudeXZ( shape, y0, y1, bevel = 0.003 ) {
 }
 
 /**
+ * Drop a non-indexed geometry's triangles for which `test( a, b, c )` (their corners) holds: faces lying on another
+ * part's face (coplanar, so the two fight in the depth test and flicker, seen through the crystal grand's clear rim).
+ */
+function dropFaces( g, test ) {
+
+	const names = Object.keys( g.attributes ), keep = [];
+	const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), pos = g.attributes.position;
+	for ( let f = 0; f < pos.count / 3; ++ f ) {
+
+		a.fromBufferAttribute( pos, 3 * f ); b.fromBufferAttribute( pos, 3 * f + 1 ); c.fromBufferAttribute( pos, 3 * f + 2 );
+		if ( ! test( a, b, c ) ) keep.push( f );
+
+	}
+	for ( const n of names ) {
+
+		const at = g.attributes[ n ], k = at.itemSize, out = new at.array.constructor( keep.length * 3 * k );
+		keep.forEach( ( f, j ) => out.set( at.array.subarray( 3 * f * k, 3 * ( f + 1 ) * k ), 3 * j * k ) );
+		g.setAttribute( n, new THREE.BufferAttribute( out, k, at.normalized ) );
+
+	}
+	return g;
+
+}
+
+/**
  * Vertical ribbon along a polyline in (x, z) from y0 to y1, facing the polyline's left side
  * (the inside of the rim); UVs in metres (u along the polyline, v up) for the wood textures.
  */
@@ -457,7 +482,10 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		const s = new THREE.Shape( outer );
 		for ( let i = inner.length - 1; i >= 0; -- i ) s.lineTo( inner[ i ].x, inner[ i ].y );
 		s.closePath();
-		group.add( mesh( extrudeXZ( s, RIM_BOTTOM, RIM_TOP, 0.004 ), RIM ) );
+		// (without its bottom, which lay on the bottom board's top, and its front ends, on the side boards' backs:
+		// coplanar, they flickered through the crystal grand's clear rim)
+		const flat = ( a, b, c, k, v ) => Math.abs( a[ k ] - v ) < 1e-5 && Math.abs( b[ k ] - v ) < 1e-5 && Math.abs( c[ k ] - v ) < 1e-5;
+		group.add( mesh( dropFaces( extrudeXZ( s, RIM_BOTTOM, RIM_TOP, 0.004 ), ( a, b, c ) => flat( a, b, c, 'y', RIM_BOTTOM ) || flat( a, b, c, 'z', RIM_START ) ), RIM ) );
 
 		// bottom board (on to the front of the case, under the keybed), and the deeper front
 		// section holding keybed and action, down to FRONT_BOTTOM back to z = -0.72 (Fig. 5)
@@ -468,7 +496,8 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 		front.closePath();
 		group.add( mesh( extrudeXZ( front, FRONT_BOTTOM, RIM_BOTTOM - 0.03, 0.006 ), BASE ) );
 
-		const sb = new THREE.Shape( inner );
+		// (1 mm inside the rim's inner face and behind the side boards: its edge on them flickered)
+		const sb = new THREE.Shape( offsetPolyline( inner, 0.001 ).map( p => v2( p.x, Math.min( p.y, RIM_START - 0.001 ) ) ) );
 		sb.closePath();
 		// (its grain diagonal, as a grand's: from the treble's front towards the bass's tail, along ( 1, 1 ) in plan;
 		// the texture's u along the grain)
@@ -1243,7 +1272,7 @@ export function buildGrand( M, { lidAngle = 34 } = {} ) {
 			// rotate 180° about the fold line at the lid's top face: the flap lies on the lid
 			flapGeo.translate( 0, - T, - FOLD_Z );
 			flapGeo.rotateX( Math.PI );
-			flapGeo.translate( 0, T, FOLD_Z );
+			flapGeo.translate( 0, T + 0.0005, FOLD_Z );		// (0.5 mm clear of it: on it, the two faces flickered through the crystal's clear lid)
 
 		}
 

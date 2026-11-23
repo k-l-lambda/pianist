@@ -311,6 +311,7 @@ function leatherGrain() {
 const FRAME_TOP = 0.36;				// legs and aprons
 const BOX_BOTTOM = 0.405, BOX_TOP = 0.475;	// the storage box, lifted on the scissors
 const SEAT = 0.53;					// top of the cushion
+const CUSHION_Y = BOX_TOP + 0.0005;	// the cushion's bottom: 0.5 mm over the box (on its top, the two faces flickered through the crystal's clear box)
 
 /**
  * @param {THREE.Material} lacquer the piano's case material (legs, aprons, box)
@@ -384,13 +385,13 @@ export function buildBench( lacquer, { dark = true, metal: trim = null } = {} ) 
 	// the whole top, rolled down into the side at its edge (cushionGeometry: one surface)
 	{
 
-		const { geo, top } = cushionGeometry( SEAT - BOX_TOP );
-		mesh( geo.translate( 0, BOX_TOP, 0 ), leather );
+		const { geo, top } = cushionGeometry( SEAT - CUSHION_Y );
+		mesh( geo.translate( 0, CUSHION_Y, 0 ), leather );
 		const btn = [];
 		for ( const [ u, v ] of BENCH_TOP.buttons ) for ( const sx of u ? [ - 1, 1 ] : [ 1 ] ) for ( const sz of v ? [ - 1, 1 ] : [ 1 ] ) {
 
 			const bx = sx * u * W / 2, bz = sz * v * D / 2;
-			btn.push( new THREE.SphereGeometry( 0.0075, 12, 8 ).scale( 1, 0.55, 1 ).translate( bx, BOX_TOP + top( bx, bz ) + 0.0012, bz ).toNonIndexed() );		// (on the dimple's floor)
+			btn.push( new THREE.SphereGeometry( 0.0075, 12, 8 ).scale( 1, 0.55, 1 ).translate( bx, CUSHION_Y + top( bx, bz ) + 0.0012, bz ).toNonIndexed() );		// (on the dimple's floor)
 
 		}
 		mesh( mergeGeometries( btn ), button );
