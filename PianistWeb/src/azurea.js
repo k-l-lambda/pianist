@@ -711,8 +711,9 @@ function keySpecular( material, u ) {
 
 }
 
-// Azurea's only RectAreaLight is the window portal, a diffuse proxy for skylight, not a luminous panel.
-// Keep three's own diffuse integral; the planar mirrors already supply the actual window radiance.
+// Azurea's RectAreaLights (the window portal, a proxy for skylight, and the cove's warm fill) are diffuse proxies,
+// not luminous panels. Keep three's own diffuse integral, drop their highlight: the planar mirrors already supply the
+// actual window radiance, and in the glass a light's highlight is a sharp rectangle nothing in the room accounts for.
 function diffuseWindowFill( material ) {
 
 	chainCompile( material, shader => {
@@ -845,7 +846,9 @@ export class Azurea {
 		this.ceilingMirror = new PlaneMirror( new THREE.Plane( V( 0, - 1, 0 ), H ) );
 		this.mirror.addTo( M.floor );
 		this.ceilingMirror.addTo( M.ceiling );
-		for ( const m of [ M.floor, M.ceiling ] ) diffuseWindowFill( m );
+		// (and the glass: the cove's 6 m fill showed in the glass wall as a sharp pale rectangle over the sky, strongest
+		// by night)
+		for ( const m of [ M.floor, M.ceiling, ...this.clear ] ) diffuseWindowFill( m );
 		// The direct-light shader treatment separates the directional sun from indoor point/area fixtures.
 		// The same uniform is retained for the sun's specular contribution in both raster and PT.
 		this.keySpec = { value: 1 }; this.keySpecGlass = { value: 1 }; this.keySpecWater = { value: 1 };
