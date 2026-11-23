@@ -27,6 +27,7 @@ import { clock, RENDER_OPTS } from './rendermode.js';
 import { PoolWater, patchPoolWater } from './water.js';
 import { Ocean, OCEAN_GLSL } from './ocean.js';
 import { Sky, SKY_GLSL, DISC_GLSL } from './sky.js';
+import { MOUNTAIN_GLSL } from './azurea-mountains.js';
 import { applyPoolTiles } from './pooltiles.js';
 import { clearMaterial, setClearMode } from './clearglass.js';
 import { CubeToEquirectGenerator } from 'three-gpu-pathtracer/src/utils/CubeToEquirectGenerator.js';
@@ -111,6 +112,8 @@ export const AZUREA_PRESETS = {
 	// (the moon low over the sea, a little right of straight out: az -75, 9 deg up; its light the main light, cool)
 	'Night': { wisps: 0.35, deckLights: 0.5, moonCore: 0.3, sunCore: 1, seaVis: 30, wind: 0.3, windDir: 90, gust: 0.12, gustScale: 40, paws: 0.35, pawWind: 3, pawCover: 1, pawScale: 40, swell: 0.08, swellDir: 90, swellPeriod: 11, outside: 'night', sun: 1.5, sunColor: '#b4c8ff', sunAz: - 75, sunEl: 9, moon: true, disc: 1, glitter: 0.02, sky: 1.0, skyExposure: 1.0, skySat: 1.0, skyRayH: 8, haze: 1.0, skyHue: 0.75, clouds: 0.12, stars: 1.6, airglow: 0.2, tint: '#ffffff', portal: 0.08, cove: 0.9, coveColor: '#ffd8a8', led: 2.4, ledColor: '#8fd2ff', bottles: 1.2, chand: 4, chandColor: '#ffcf96', keySpec: 0.05, env: 0.45, exposure: 0.6, bloom: 0.06, bloomThreshold: 9 },
 };
+// (the procedural coast: src/azurea-mountains.js; its village lights by night)
+for ( const p of Object.values( AZUREA_PRESETS ) ) Object.assign( p, { mountains: 1, mtnSun: 0.45, mtnVis: 110, mtnLights: p.moon ? 1 : 0, ...p } );
 const DEFAULT_PRESET = 'Day';
 
 // ---- geometry ----
@@ -373,6 +376,8 @@ function backdropMaterial( ocean, sky ) {
 	const U = m.userData.u = { uAtmosphere: { value: true }, uCloudsOnly: { value: false }, uLightDir: { value: V( 0, 1, 0 ) }, uDiscColor: { value: new THREE.Color() }, uDisc: { value: 0 }, uGlitter: { value: 0 }, uSunE: { value: new THREE.Vector3() }, uSeaWind: { value: new THREE.Vector4( 0, 1, 3, 0 ) }, uMoon: { value: 0 }, uTime: { value: 0 },
 		uSkyHor: { value: new THREE.Color( '#dfeaf2' ) }, uSkyZen: { value: new THREE.Color( '#3f7fb8' ) }, uSeaColor: { value: new THREE.Color( '#1d6480' ) },
 		uSeaExt: { value: new THREE.Vector3( 0.30, 0.055, 0.020 ) }, uSeaExtScale: { value: 1.0 }, uSeaVis: { value: 25 },
+		// (the procedural coast: src/azurea-mountains.js; on, its sunlight's gain, the land's visibility (km), village lights)
+		uMtn: { value: 1 }, uMtnSun: { value: 1 }, uMtnVis: { value: 110 }, uMtnLights: { value: 0 },
 		// (the photo's grade: the sea tint and the hour's gain, on the photo's sea and land only. The procedural sky
 		// (src/sky.js) is the air's own colour: its exposure and saturation are its own, and a sea tint no longer
 		// multiplies it)
@@ -436,6 +441,7 @@ function backdropMaterial( ocean, sky ) {
 			${ SKY_GLSL }
 			${ PHOTO_SKY_GLSL }
 			${ DISC_GLSL }
+			${ MOUNTAIN_GLSL }
 			uniform sampler2D uMatte;
 			float landA = 0.0;		// (how much of this pixel is the photo's land: the disc behind it)` )
 			.replace( '#include <map_fragment>', `
@@ -502,8 +508,12 @@ function backdropMaterial( ocean, sky ) {
 				// how much of a pixel is land (straight alpha: an edge's pixel keeps a trace of the photo's own sky)
 				if ( up >= 0.0 ) {
 
-					landA = mt * ( 1.0 - skyMix );
+					// (the photo's own land only without the procedural coast, which replaces it)
+					landA = mt * ( 1.0 - skyMix ) * ( 1.0 - uMtn );
 					ph = uAtmosphere || uCloudsOnly ? mix( skyColor( vd, pix, 0.0, uAtmosphere ), ph, landA ) : photoSky( map, vd, 0.0 );
+					// the coast (src/azurea-mountains.js) over it: the sun's disc hidden behind it too
+					vec4 mtn = mtnLand( vd, pix, 0.0, ph );
+					ph = mix( ph, mtn.rgb, uMtn ); landA = max( landA, mtn.a );
 
 				}
 				// below the horizon: the sea's surface (src/ocean.js). Its normal: the waves resolved at this pixel (their
@@ -546,8 +556,10 @@ function backdropMaterial( ocean, sky ) {
 					phM = mix( vec3( plM ), phM, 1.45 );
 					// (what it mirrors: the photo's land (its matte), else the sky (src/sky.js), blurred by the spread: its
 					// stars and clouds softened)
-					float aM = textureLod( uMatte, uvM, 0.0 ).r * ( 1.0 - smoothstep( 0.78, 0.99, pow( eM, 0.7 ) ) ) * ( 1.0 - smoothstep( 0.0, ${ ( 22 * D ).toFixed( 6 ) }, outR ) );
+					float aM = textureLod( uMatte, uvM, 0.0 ).r * ( 1.0 - smoothstep( 0.78, 0.99, pow( eM, 0.7 ) ) ) * ( 1.0 - smoothstep( 0.0, ${ ( 22 * D ).toFixed( 6 ) }, outR ) ) * ( 1.0 - uMtn );
 					vec3 reflSky = uAtmosphere || uCloudsOnly ? mix( skyColor( rd, pix, spread, uAtmosphere ), phM, aM ) : photoSky( map, rd, lodR );
+					// (the coast mirrored too, blurred by the slopes' spread)
+					reflSky = mix( reflSky, mtnLand( rd, pix, spread, reflSky ).rgb, uMtn );
 					float cosI = clamp( dot( - vd, nW ), 0.0, 1.0 );
 					float fres = azFresnel( max( cosI, 1e-3 ) );
 					// (the body: the light's path in the water — its extinction per metre, red first)
@@ -935,7 +947,7 @@ export class Azurea {
 			[ 'wind', 0, 10, 0.1, 'Wind (m/s)' ], [ 'windDir', - 180, 180, 1, 'Wind towards (°)' ], [ 'gust', 0, 0.6, 0.01, 'Gusts (sea)' ], [ 'gustScale', 10, 150, 1, 'Gust size (m)' ],
 			[ 'paws', 0, 1, 0.01, "Cat's paws" ], [ 'pawWind', 1, 10, 0.1, "Cat's paws wind (m/s)" ], [ 'pawCover', 0.02, 1, 0.01, "Cat's paws cover" ], [ 'pawScale', 5, 150, 1, "Cat's paws size (m)" ], [ 'swell', 0, 1.5, 0.01, 'Swell height (m)' ],
 			[ 'swellDir', - 180, 180, 1, 'Swell towards (°)' ], [ 'swellPeriod', 4, 16, 0.1, 'Swell period (s)' ],
-			[ 'sky', 0, 3, 0.01, 'Sky and sea' ], [ 'skyExposure', 0.2, 3, 0.01, 'Sky exposure' ], [ 'skySat', 0, 2.5, 0.01, 'Sky saturation' ], [ 'skyRayH', 0, 12, 0.1, 'Rayleigh height (km)' ], [ 'skyColor', 'color', 'Sky colour (clear day)' ], [ 'skyGain', 0, 5, 0.01, 'Sky colour gain' ], [ 'sunCore', 1, 20, 0.1, 'Sun disc brightness' ], [ 'moonCore', 0.05, 2, 0.01, 'Moon disc brightness' ], [ 'seaVis', 5, 100, 0.5, 'Sea visibility (km)' ], [ 'haze', 0, 6, 0.01, 'Haze' ], [ 'skyHue', 0, 1, 0.01, 'Sky hue (photo)' ], [ 'clouds', 0, 1, 0.01, 'High cloud' ], [ 'wisps', 0, 1, 0.01, 'Thin low cloud' ],
+			[ 'sky', 0, 3, 0.01, 'Sky and sea' ], [ 'skyExposure', 0.2, 3, 0.01, 'Sky exposure' ], [ 'skySat', 0, 2.5, 0.01, 'Sky saturation' ], [ 'skyRayH', 0, 12, 0.1, 'Rayleigh height (km)' ], [ 'skyColor', 'color', 'Sky colour (clear day)' ], [ 'skyGain', 0, 5, 0.01, 'Sky colour gain' ], [ 'sunCore', 1, 20, 0.1, 'Sun disc brightness' ], [ 'moonCore', 0.05, 2, 0.01, 'Moon disc brightness' ], [ 'seaVis', 5, 100, 0.5, 'Sea visibility (km)' ], [ 'mountains', 0, 1, 0.01, 'Coast (procedural)' ], [ 'mtnSun', 0, 4, 0.01, 'Coast sunlight' ], [ 'mtnVis', 10, 300, 1, 'Coast visibility (km)' ], [ 'mtnLights', 0, 4, 0.01, 'Coast village lights' ], [ 'haze', 0, 6, 0.01, 'Haze' ], [ 'skyHue', 0, 1, 0.01, 'Sky hue (photo)' ], [ 'clouds', 0, 1, 0.01, 'High cloud' ], [ 'wisps', 0, 1, 0.01, 'Thin low cloud' ],
 			[ 'stars', 0, 4, 0.01, 'Stars' ], [ 'airglow', 0, 1, 0.01, 'Airglow (night)' ], [ 'tint', 'color', 'Photo tint (sea, land)' ], [ 'portal', 0, 6, 0.01, 'Window light' ],
 			[ 'cove', 0, 6, 0.01, 'Cove' ], [ 'coveColor', 'color', 'Cove color' ], [ 'led', 0, 12, 0.1, 'Bar strips' ], [ 'ledColor', 'color', 'Strip color' ],
 			[ 'bottles', 0, 5, 0.01, 'Bottle wall' ], [ 'chand', 0, 60, 0.1, 'Chandelier' ], [ 'chandColor', 'color', 'Chandelier color' ], [ 'deckLights', 0, 3, 0.01, 'Deck ground lights' ], [ 'env', 0, 2, 0.01, 'Ambient (probe)' ],
@@ -1601,7 +1613,8 @@ export class Azurea {
 			U.uLightDir.value.copy( dir ); U.uMoon.value = L.moon ? 1 : 0; U.uDisc.value = U.uAtmosphere.value ? ( L.disc ?? 0 ) : 0; U.uGlitter.value = L.glitter ?? 0;
 			U.uSunE.value.set( this.sun.color.r, this.sun.color.g, this.sun.color.b ).multiplyScalar( L.sun ?? 0 );
 			{ const wd = ( L.windDir ?? 90 ) * D; U.uSeaWind.value.set( Math.cos( wd ), Math.sin( wd ), L.wind ?? 3, 0 ); }
-			U.uSeaVis.value = L.seaVis ?? 25; this.sky.uniforms.uSunCore.value = L.moon ? 1 : ( L.sunCore ?? 1 ); this.sky.uniforms.uMoonCore.value = L.moon ? ( L.moonCore ?? 1 ) : 1;
+			U.uSeaVis.value = L.seaVis ?? 25;
+			U.uMtn.value = L.mountains ?? 1; U.uMtnSun.value = L.mtnSun ?? 0.45; U.uMtnVis.value = L.mtnVis ?? 110; U.uMtnLights.value = L.mtnLights ?? ( L.moon ? 1 : 0 ); this.sky.uniforms.uSunCore.value = L.moon ? 1 : ( L.sunCore ?? 1 ); this.sky.uniforms.uMoonCore.value = L.moon ? ( L.moonCore ?? 1 ) : 1;
 			this.ocean.set( this._seaState() );
 			this.ocean.setGust( L.gust ?? 0, L.gustScale ?? 50 );		// (the gusts: no new spectrum, a uniform)
 			// (the cat's paws: their spectra only when their wind changes, stepped as the sea's)
@@ -1862,7 +1875,7 @@ export class Azurea {
 	_outsideKey() {
 
 		const L = this.light;
-		return JSON.stringify( [ L.atmosphere !== false, L.skyFallback, L.outside, L.sky, L.skyExposure, L.skySat, L.skyRayH, L.skyColor, L.skyGain, L.haze, L.skyHue, L.clouds, L.wisps, L.stars, L.airglow, L.tint, L.sunAz, L.sunEl, L.sunColor, L.moon, L.disc, L.glitter, L.sunCore, L.moonCore, L.seaVis, this._seaState(), this.materials.backdrop.map?.uuid ?? null, !! this.skyPhotos ] );
+		return JSON.stringify( [ L.atmosphere !== false, L.skyFallback, L.outside, L.sky, L.skyExposure, L.skySat, L.skyRayH, L.skyColor, L.skyGain, L.haze, L.skyHue, L.clouds, L.wisps, L.stars, L.airglow, L.tint, L.sunAz, L.sunEl, L.sunColor, L.moon, L.disc, L.glitter, L.sunCore, L.moonCore, L.seaVis, L.mountains, L.mtnSun, L.mtnVis, L.mtnLights, this._seaState(), this.materials.backdrop.map?.uuid ?? null, !! this.skyPhotos ] );
 
 	}
 
